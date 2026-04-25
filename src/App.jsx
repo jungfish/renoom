@@ -27,6 +27,10 @@ const IMAGE_ANALYSIS_STORAGE_KEY = "palette_image_analysis_v1";
 const DELETED_IMAGES_STORAGE_KEY = "palette_deleted_images_v1";
 const PLAN_EXTRA_STORAGE_KEY = "palette_plan_extra_images_v1";
 const MATERIAL_EXTRA_STORAGE_KEY = "palette_material_extra_images_v1";
+const CUSTOM_ROOMS_STORAGE_KEY = "palette_custom_rooms_v1";
+const HIDDEN_ROOMS_STORAGE_KEY = "palette_hidden_rooms_v1";
+const PROJECT_STATE_STORAGE_KEY = "palette_project_state_v1";
+const LAST_SAVE_STORAGE_KEY = "palette_last_save_v1";
 const IMAGE_DB_NAME = "palette-appartement-images";
 const IMAGE_DB_STORE = "records";
 
@@ -221,6 +225,31 @@ function textColor(hex) {
   const b = bigint & 255;
   const brightness = (r * 299 + g * 587 + b * 114) / 1000;
   return brightness > 165 ? "#24303a" : "#ffffff";
+}
+
+function slugifyRoomName(name) {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+function createUniqueRoomKey(label, existingKeys) {
+  const base = slugifyRoomName(label) || "piece";
+  let key = `custom-${base}`;
+  let index = 2;
+  while (existingKeys.includes(key)) {
+    key = `custom-${base}-${index}`;
+    index += 1;
+  }
+  return key;
+}
+
+function removeRoomData(object, roomKey) {
+  return Object.fromEntries(Object.entries(object).filter(([key]) => key !== roomKey && !key.startsWith(`${roomKey}-`)));
 }
 
 function readFileAsDataUrl(file) {
@@ -1108,6 +1137,29 @@ export default function App() {
   const [room, setRoom] = useState("salon");
   const [globalAccent, setGlobalAccent] = useState("butter");
   const [warmth, setWarmth] = useState(60);
+  const [customRooms, setCustomRooms] = useState(() => {
+    try {
+      const raw = localStorage.getItem(CUSTOM_ROOMS_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [hiddenRooms, setHiddenRooms] = useState(() => {
+    try {
+      const raw = localStorage.getItem(HIDDEN_ROOMS_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [lastSavedAt, setLastSavedAt] = useState(() => {
+    try {
+      return localStorage.getItem(LAST_SAVE_STORAGE_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
   const [uploadedImages, setUploadedImages] = useState(() => {
     try {
       const raw = localStorage.getItem(UPLOAD_STORAGE_KEY);
@@ -1214,8 +1266,24 @@ export default function App() {
     }
   });
 
-  const preset = roomPresets[room];
-  const activeNuance = roomNuances[room];
+  const customRoomPresets = Object.fromEntries(
+    customRooms.map((customRoom) => [
+      customRoom.key,
+      {
+        label: customRoom.label,
+        dominant: customRoom.dominant || "creme",
+        secondary: customRoom.secondary || "bois",
+        line: customRoom.line || `${customRoom.label} : base douce, nuances à ajuster selon les inspirations ajoutées.`,
+        notes: customRoom.notes || ["Ajoute des images pour construire la direction de cette pièce."],
+      },
+    ]),
+  );
+  const allRoomPresets = { ...roomPresets, ...customRoomPresets };
+  const activeRooms = [...rooms.filter((key) => !hiddenRooms.includes(key)), ...customRooms.map((customRoom) => customRoom.key)].filter(
+    (key) => allRoomPresets[key],
+  );
+  const preset = allRoomPresets[room] || allRoomPresets[activeRooms[0]] || roomPresets.salon;
+  const activeNuance = roomNuances[room] || INITIAL_ROOM_NUANCES[room] || { dominant: "moyen", secondary: "moyen", accent: globalAccent };
   const dominantHex = getShade(preset.dominant, activeNuance.dominant);
   const secondaryHex = getShade(preset.secondary, activeNuance.secondary);
   const accentHex = activeNuance.accent === "bois" ? baseColors.bois.hex : accents[activeNuance.accent]?.hex || accents[globalAccent].hex;
@@ -1246,11 +1314,103 @@ export default function App() {
     setRoomNuances((prev) => ({ ...prev, [room]: { ...prev[room], [key]: value } }));
   };
 
+  const addRoom = () => {
+    const label = window.prompt("Nom de la nouvelle pièce ?");
+    if (!label?.trim()) return;
+
+    const key = createUniqueRoomKey(label.trim(), [...rooms, ...customRooms.map((customRoom) => customRoom.key)]);
+    const newRoom = {
+      key,
+      label: label.trim(),
+      dominant: "creme",
+      secondary: "bois",
+      line: `${label.trim()} : base douce, nuances à ajuster selon les inspirations ajoutées.`,
+      notes: ["Ajoute des images pour construire la direction de cette pièce."],
+    };
+
+    setCustomRooms((prev) => [...prev, newRoom]);
+    setRoomNuances((prev) => ({ ...prev, [key]: { dominant: "moyen", secondary: "moyen", accent: globalAccent } }));
+    setRoomNotes((prev) => ({ ...prev, [key]: "" }));
+    setRoom(key);
+  };
+
+  const deleteRoom = () => {
+    if (activeRooms.length <= 1) return;
+    const roomLabel = allRoomPresets[room]?.label || "cette pièce";
+    if (!window.confirm(`Supprimer ${roomLabel} de l'app ?`)) return;
+
+    const nextRoom = activeRooms.find((key) => key !== room) || "salon";
+    if (rooms.includes(room)) {
+      setHiddenRooms((prev) => [...new Set([...prev, room])]);
+    } else {
+      setCustomRooms((prev) => prev.filter((customRoom) => customRoom.key !== room));
+    }
+
+    setUploadedImages((prev) => removeRoomData(prev, room));
+    setInspirationLinks((prev) => removeRoomData(prev, room));
+    setMaterialUploads((prev) => removeRoomData(prev, room));
+    setMaterialLinks((prev) => removeRoomData(prev, room));
+    setPlanUploads((prev) => removeRoomData(prev, room));
+    setPlanLinks((prev) => removeRoomData(prev, room));
+    setExtraPlanImages((prev) => removeRoomData(prev, room));
+    setExtraMaterialImages((prev) => removeRoomData(prev, room));
+    setAiInspirations((prev) => removeRoomData(prev, room));
+    setImageAnalysis((prev) => removeRoomData(prev, room));
+    setDeletedImages((prev) => removeRoomData(prev, room));
+    setRoomNuances((prev) => removeRoomData(prev, room));
+    setRoomNotes((prev) => removeRoomData(prev, room));
+    setRoom(nextRoom);
+  };
+
   const addAiInspiration = (targetRoom, image) => {
     setAiInspirations((prev) => ({
       ...prev,
       [targetRoom]: [...(prev[targetRoom] || []), image],
     }));
+  };
+
+  const saveProject = async () => {
+    const savedAt = new Date().toISOString();
+    const projectState = {
+      version: 1,
+      savedAt,
+      room,
+      globalAccent,
+      warmth,
+      customRooms,
+      hiddenRooms,
+      uploadedImages,
+      inspirationLinks,
+      materialUploads,
+      materialLinks,
+      planUploads,
+      planLinks,
+      extraPlanImages,
+      extraMaterialImages,
+      aiInspirations,
+      imageAnalysis,
+      deletedImages,
+      roomNuances,
+      roomNotes,
+    };
+
+    await storeLargeValue(PROJECT_STATE_STORAGE_KEY, projectState);
+    safelyStore(CUSTOM_ROOMS_STORAGE_KEY, customRooms);
+    safelyStore(HIDDEN_ROOMS_STORAGE_KEY, hiddenRooms);
+    safelyStore(UPLOAD_STORAGE_KEY, uploadedImages);
+    safelyStore(LINK_STORAGE_KEY, inspirationLinks);
+    safelyStore(MATERIAL_UPLOAD_STORAGE_KEY, materialUploads);
+    safelyStore(MATERIAL_LINK_STORAGE_KEY, materialLinks);
+    safelyStore(ROOM_NUANCES_STORAGE_KEY, roomNuances);
+    safelyStore(ROOM_NOTES_STORAGE_KEY, roomNotes);
+    safelyStore(PLAN_UPLOAD_STORAGE_KEY, planUploads);
+    safelyStore(PLAN_LINK_STORAGE_KEY, planLinks);
+    safelyStore(PLAN_EXTRA_STORAGE_KEY, extraPlanImages);
+    safelyStore(MATERIAL_EXTRA_STORAGE_KEY, extraMaterialImages);
+    safelyStore(IMAGE_ANALYSIS_STORAGE_KEY, imageAnalysis);
+    safelyStore(DELETED_IMAGES_STORAGE_KEY, deletedImages);
+    localStorage.setItem(LAST_SAVE_STORAGE_KEY, savedAt);
+    setLastSavedAt(savedAt);
   };
 
   useEffect(() => {
@@ -1268,6 +1428,52 @@ export default function App() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    readLargeValue(PROJECT_STATE_STORAGE_KEY)
+      .then((saved) => {
+        if (!isMounted || !saved) return;
+        if (saved.room) setRoom(saved.room);
+        if (saved.globalAccent) setGlobalAccent(saved.globalAccent);
+        if (typeof saved.warmth === "number") setWarmth(saved.warmth);
+        if (Array.isArray(saved.customRooms)) setCustomRooms(saved.customRooms);
+        if (Array.isArray(saved.hiddenRooms)) setHiddenRooms(saved.hiddenRooms);
+        if (saved.uploadedImages) setUploadedImages(saved.uploadedImages);
+        if (saved.inspirationLinks) setInspirationLinks(saved.inspirationLinks);
+        if (saved.materialUploads) setMaterialUploads(saved.materialUploads);
+        if (saved.materialLinks) setMaterialLinks(saved.materialLinks);
+        if (saved.planUploads) setPlanUploads(saved.planUploads);
+        if (saved.planLinks) setPlanLinks(saved.planLinks);
+        if (saved.extraPlanImages) setExtraPlanImages(saved.extraPlanImages);
+        if (saved.extraMaterialImages) setExtraMaterialImages(saved.extraMaterialImages);
+        if (saved.aiInspirations) setAiInspirations(saved.aiInspirations);
+        if (saved.imageAnalysis) setImageAnalysis(saved.imageAnalysis);
+        if (saved.deletedImages) setDeletedImages(saved.deletedImages);
+        if (saved.roomNuances) setRoomNuances(saved.roomNuances);
+        if (saved.roomNotes) setRoomNotes(saved.roomNotes);
+        if (saved.savedAt) setLastSavedAt(saved.savedAt);
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeRooms.length && !activeRooms.includes(room)) {
+      setRoom(activeRooms[0]);
+    }
+  }, [activeRooms, room]);
+
+  useEffect(() => {
+    safelyStore(CUSTOM_ROOMS_STORAGE_KEY, customRooms);
+  }, [customRooms]);
+
+  useEffect(() => {
+    safelyStore(HIDDEN_ROOMS_STORAGE_KEY, hiddenRooms);
+  }, [hiddenRooms]);
 
   useEffect(() => {
     safelyStore(UPLOAD_STORAGE_KEY, uploadedImages);
@@ -1328,14 +1534,28 @@ export default function App() {
     <div className="min-h-screen bg-white text-slate-800">
       <main className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-8">
         <header className="rounded-xl border border-black/10 bg-white p-5">
-          <p className="font-display text-xs uppercase tracking-[0.2em] text-slate-500">Palette appartement interactive</p>
-          <h1 className="font-display text-3xl">Univers rétro, coloré, doux</h1>
-          <p className="mt-2 text-sm text-slate-600">Projet de Violette et Matthieu Jungfer pour Botzaris.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-display text-xs uppercase tracking-[0.2em] text-slate-500">Palette appartement interactive</p>
+              <h1 className="font-display text-3xl">Univers rétro, coloré, doux</h1>
+              <p className="mt-2 text-sm text-slate-600">Projet de Violette et Matthieu Jungfer pour Botzaris.</p>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                type="button"
+                onClick={saveProject}
+                className="rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-700"
+              >
+                Save
+              </button>
+              {lastSavedAt ? <span className="text-xs text-slate-500">Sauvé: {new Date(lastSavedAt).toLocaleString("fr-FR")}</span> : null}
+            </div>
+          </div>
         </header>
 
         <section className="sticky top-2 z-30 rounded-xl border border-black/10 bg-white/95 p-4 backdrop-blur md:top-4">
-          <div className="mb-3 flex flex-wrap gap-2">
-            {rooms.map((key) => (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {activeRooms.map((key) => (
               <button
                 key={key}
                 onClick={() => setRoom(key)}
@@ -1343,9 +1563,18 @@ export default function App() {
                   room === key ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-[#f9f7f3]"
                 }`}
               >
-                {roomPresets[key].label}
+                {allRoomPresets[key].label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={addRoom}
+              title="Ajouter une pièce"
+              aria-label="Ajouter une pièce"
+              className="grid h-10 w-10 place-items-center rounded-full border border-black/15 bg-white text-xl leading-none shadow-sm hover:bg-[#fcf8d5]"
+            >
+              +
+            </button>
           </div>
         </section>
 
@@ -1394,7 +1623,20 @@ export default function App() {
           </div>
 
           <div className="space-y-4 rounded-xl border border-black/10 bg-white p-4">
-            <h2 className="font-display text-2xl">{preset.label}</h2>
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="font-display text-2xl">{preset.label}</h2>
+              {activeRooms.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={deleteRoom}
+                  title="Supprimer cette pièce"
+                  aria-label="Supprimer cette pièce"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-base font-bold text-red-600 shadow-sm hover:bg-red-50"
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
             <p className="text-sm text-slate-700">{preset.line}</p>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <label className="text-sm">

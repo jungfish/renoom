@@ -502,8 +502,8 @@ function LinkAction({ value, onChange }) {
         title="Ajouter un lien"
         aria-label="Ajouter un lien"
         onClick={() => setOpen((current) => !current)}
-        className={`grid h-9 w-9 place-items-center rounded-md border border-black/15 bg-white text-sm shadow-sm hover:bg-[#fcf8d5] ${
-          value ? "ring-2 ring-[#b8c9d0]" : ""
+        className={`grid h-9 w-9 place-items-center rounded-md border border-black/15 bg-white/90 text-sm text-slate-950 shadow-sm backdrop-blur hover:bg-white ${
+          value ? "ring-2 ring-slate-900/20" : ""
         }`}
       >
         🔗
@@ -620,7 +620,7 @@ function AiImageEditor({ imageSrc, imageKind, imageTitle, aiContext, imageMetada
         title="Générer une proposition IA"
         aria-label="Générer une proposition IA"
         onClick={openPanel}
-        className="grid h-9 w-9 place-items-center rounded-md border border-black/15 bg-[#fcf8d5] text-base font-medium shadow-sm hover:bg-white"
+        className="grid h-9 w-9 place-items-center rounded-md border border-black/15 bg-white/90 text-base font-medium text-slate-950 shadow-sm backdrop-blur hover:bg-white"
       >
         🪄
       </button>
@@ -832,20 +832,6 @@ function PlanPreview({
               onApply={(image) => setPlanUploads((prev) => ({ ...prev, [currentKey]: image }))}
               onAddToInspirations={(image) => addAiInspiration(room, image)}
             />
-            <button
-              type="button"
-              title="Supprimer l'image"
-              aria-label="Supprimer l'image"
-              className="grid h-9 w-9 place-items-center rounded-md border border-red-200 bg-white text-base font-bold text-red-600 shadow-sm hover:bg-red-50"
-              onClick={() => {
-                setDeletedImages((prev) => ({ ...prev, [currentKey]: true }));
-                setPlanUploads((prev) => removeObjectKey(prev, currentKey));
-                setPlanLinks((prev) => removeObjectKey(prev, currentKey));
-                setImageAnalysis((prev) => removeObjectKey(prev, currentKey));
-              }}
-            >
-              ×
-            </button>
             <LinkAction
               value={currentLink}
               onChange={(value) =>
@@ -855,6 +841,20 @@ function PlanPreview({
                 }))
               }
             />
+            <button
+              type="button"
+              title="Supprimer l'image"
+              aria-label="Supprimer l'image"
+              className="grid h-9 w-9 place-items-center rounded-md border border-black/15 bg-white/90 text-base font-bold text-slate-950 shadow-sm backdrop-blur hover:bg-white"
+              onClick={() => {
+                setDeletedImages((prev) => ({ ...prev, [currentKey]: true }));
+                setPlanUploads((prev) => removeObjectKey(prev, currentKey));
+                setPlanLinks((prev) => removeObjectKey(prev, currentKey));
+                setImageAnalysis((prev) => removeObjectKey(prev, currentKey));
+              }}
+            >
+              ×
+            </button>
           </div>
         ) : null}
       </div>
@@ -992,20 +992,6 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
                       onApply={(image) => setUploadedImages((prev) => ({ ...prev, [cardKey]: image }))}
                       onAddToInspirations={(image) => addAiInspiration(room, image)}
                     />
-                    <button
-                      type="button"
-                      title="Supprimer l'image"
-                      aria-label="Supprimer l'image"
-                      className="grid h-9 w-9 place-items-center rounded-md border border-red-200 bg-white text-base font-bold text-red-600 shadow-sm hover:bg-red-50"
-                      onClick={() => {
-                        setDeletedImages((prev) => ({ ...prev, [cardKey]: true }));
-                        setUploadedImages((prev) => removeObjectKey(prev, cardKey));
-                        setInspirationLinks((prev) => removeObjectKey(prev, cardKey));
-                        setImageAnalysis((prev) => removeObjectKey(prev, cardKey));
-                      }}
-                    >
-                      ×
-                    </button>
                     <LinkAction
                       value={linkValue}
                       onChange={(value) =>
@@ -1015,6 +1001,20 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
                         }))
                       }
                     />
+                    <button
+                      type="button"
+                      title="Supprimer l'image"
+                      aria-label="Supprimer l'image"
+                      className="grid h-9 w-9 place-items-center rounded-md border border-black/15 bg-white/90 text-base font-bold text-slate-950 shadow-sm backdrop-blur hover:bg-white"
+                      onClick={() => {
+                        setDeletedImages((prev) => ({ ...prev, [cardKey]: true }));
+                        setUploadedImages((prev) => removeObjectKey(prev, cardKey));
+                        setInspirationLinks((prev) => removeObjectKey(prev, cardKey));
+                        setImageAnalysis((prev) => removeObjectKey(prev, cardKey));
+                      }}
+                    >
+                      ×
+                    </button>
                   </div>
                 </div>
                 <div className="space-y-2 p-3">
@@ -1155,20 +1155,6 @@ function MaterialsSection({
                     onApply={(image) => setMaterialUploads((prev) => ({ ...prev, [cardKey]: image }))}
                     onAddToInspirations={(image) => addAiInspiration(room, image)}
                   />
-                  <button
-                    type="button"
-                    title="Supprimer l'image"
-                    aria-label="Supprimer l'image"
-                    className="grid h-9 w-9 place-items-center rounded-md border border-red-200 bg-white text-base font-bold text-red-600 shadow-sm hover:bg-red-50"
-                    onClick={() => {
-                      setDeletedImages((prev) => ({ ...prev, [cardKey]: true }));
-                      setMaterialUploads((prev) => removeObjectKey(prev, cardKey));
-                      setMaterialLinks((prev) => removeObjectKey(prev, cardKey));
-                      setImageAnalysis((prev) => removeObjectKey(prev, cardKey));
-                    }}
-                  >
-                    ×
-                  </button>
                   <LinkAction
                     value={linkValue}
                     onChange={(value) =>
@@ -1178,6 +1164,20 @@ function MaterialsSection({
                       }))
                     }
                   />
+                  <button
+                    type="button"
+                    title="Supprimer l'image"
+                    aria-label="Supprimer l'image"
+                    className="grid h-9 w-9 place-items-center rounded-md border border-black/15 bg-white/90 text-base font-bold text-slate-950 shadow-sm backdrop-blur hover:bg-white"
+                    onClick={() => {
+                      setDeletedImages((prev) => ({ ...prev, [cardKey]: true }));
+                      setMaterialUploads((prev) => removeObjectKey(prev, cardKey));
+                      setMaterialLinks((prev) => removeObjectKey(prev, cardKey));
+                      setImageAnalysis((prev) => removeObjectKey(prev, cardKey));
+                    }}
+                  >
+                    ×
+                  </button>
                 </div>
               </div>
                 <div className="space-y-2 p-4">

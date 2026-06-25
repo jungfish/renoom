@@ -1549,16 +1549,18 @@ export default function App() {
         if (typeof saved.warmth === "number") setWarmth(saved.warmth);
         if (Array.isArray(saved.customRooms)) setCustomRooms(saved.customRooms);
         if (Array.isArray(saved.hiddenRooms)) setHiddenRooms(saved.hiddenRooms);
-        if (saved.uploadedImages) setUploadedImages(saved.uploadedImages);
+        // For image states: prefer localStorage (loaded by useState) if it already has data,
+        // since auto-sync effects keep it more current than IndexedDB (only updated on explicit save).
+        if (saved.uploadedImages) setUploadedImages(prev => Object.keys(prev).length ? { ...saved.uploadedImages, ...prev } : saved.uploadedImages);
         if (saved.inspirationLinks) setInspirationLinks(saved.inspirationLinks);
-        if (saved.materialUploads) setMaterialUploads(saved.materialUploads);
+        if (saved.materialUploads) setMaterialUploads(prev => Object.keys(prev).length ? { ...saved.materialUploads, ...prev } : saved.materialUploads);
         if (saved.materialLinks) setMaterialLinks(saved.materialLinks);
-        if (saved.planUploads) setPlanUploads(saved.planUploads);
+        if (saved.planUploads) setPlanUploads(prev => Object.keys(prev).length ? { ...saved.planUploads, ...prev } : saved.planUploads);
         if (saved.planLinks) setPlanLinks(saved.planLinks);
-        if (saved.extraPlanImages) setExtraPlanImages(saved.extraPlanImages);
-        if (saved.extraMaterialImages) setExtraMaterialImages(saved.extraMaterialImages);
-        if (saved.aiInspirations) setAiInspirations(saved.aiInspirations);
-        if (saved.imageAnalysis) setImageAnalysis(saved.imageAnalysis);
+        if (saved.extraPlanImages) setExtraPlanImages(prev => Object.keys(prev).length ? { ...saved.extraPlanImages, ...prev } : saved.extraPlanImages);
+        if (saved.extraMaterialImages) setExtraMaterialImages(prev => Object.keys(prev).length ? { ...saved.extraMaterialImages, ...prev } : saved.extraMaterialImages);
+        if (saved.aiInspirations) setAiInspirations(prev => Object.keys(prev).length ? { ...saved.aiInspirations, ...prev } : saved.aiInspirations);
+        if (saved.imageAnalysis) setImageAnalysis(prev => Object.keys(prev).length ? { ...saved.imageAnalysis, ...prev } : saved.imageAnalysis);
         if (saved.deletedImages) setDeletedImages(saved.deletedImages);
         if (saved.roomNuances) setRoomNuances(saved.roomNuances);
         if (saved.roomNotes) setRoomNotes(saved.roomNotes);

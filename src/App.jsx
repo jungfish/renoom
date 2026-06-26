@@ -1562,8 +1562,10 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
   const [isLoading, setIsLoading] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState(null);
   const [generatingFor, setGeneratingFor] = useState(null);
+  const [pendingImage, setPendingImage] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const messages = chatHistory[room] || [];
 
@@ -1571,12 +1573,20 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const handleImagePick = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    readFileAsDataUrl(file).then((dataUrl) => setPendingImage(dataUrl));
+    e.target.value = "";
+  };
+
   const sendMessage = async (text) => {
     const trimmed = (text || input).trim();
-    if (!trimmed || isLoading) return;
+    if ((!trimmed && !pendingImage) || isLoading) return;
 
-    const userMsg = { id: `msg-${Date.now()}`, role: "user", content: trimmed };
+    const userMsg = { id: `msg-${Date.now()}`, role: "user", content: trimmed, ...(pendingImage ? { image: pendingImage } : {}) };
     const nextHistory = [...messages, userMsg];
+    setPendingImage(null);
     setChatHistory((prev) => ({ ...prev, [room]: nextHistory }));
     setInput("");
     setIsLoading(true);
@@ -1595,7 +1605,11 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: nextHistory.slice(-20).map(({ role, content }) => ({ role, content })),
+          messages: nextHistory.slice(-20).map(({ role, content, image }, i, arr) => ({
+            role,
+            content,
+            ...(image && i >= arr.length - 4 ? { image } : {}),
+          })),
           roomContext: {
             label: aiContext.roomLabel,
             line: aiContext.line,
@@ -1715,7 +1729,10 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
                   ? "rounded-bl-sm bg-red-50 text-red-700 border border-red-100"
                   : "rounded-bl-sm bg-[#f9f7f3] border border-black/10 text-slate-800"
               }`}>
-                <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                {msg.image ? (
+                  <img src={msg.image} alt="" className="mb-1 max-h-48 w-full rounded-lg object-cover" />
+                ) : null}
+                {msg.content ? <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p> : null}
                 {msg.generatedImage ? (
                   <img src={msg.generatedImage} alt="Image générée" className="mt-2 w-full rounded-lg" />
                 ) : null}
@@ -1774,7 +1791,35 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
       </div>
 
       <div className="border-t border-black/10 p-3">
+        {pendingImage ? (
+          <div className="mb-2 flex items-start gap-2">
+            <img src={pendingImage} alt="preview" className="h-16 w-16 rounded-lg object-cover border border-black/10" />
+            <button
+              type="button"
+              onClick={() => setPendingImage(null)}
+              className="text-xs text-slate-400 hover:text-slate-700"
+            >
+              ✕ Retirer
+            </button>
+          </div>
+        ) : null}
         <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImagePick}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            className="shrink-0 self-end rounded-md border border-black/15 bg-[#f9f7f3] px-3 py-2 text-sm text-slate-500 hover:bg-[#f0ebe0] disabled:opacity-40"
+            title="Joindre une image"
+          >
+            📎
+          </button>
           <textarea
             ref={inputRef}
             value={input}
@@ -1792,7 +1837,7 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
           <button
             type="button"
             onClick={() => sendMessage()}
-            disabled={!input.trim() || isLoading}
+            disabled={(!input.trim() && !pendingImage) || isLoading}
             className="shrink-0 self-end rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
           >
             Envoyer

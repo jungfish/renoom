@@ -85,12 +85,12 @@ export default async function handler(req, res) {
         instructions: buildSystemPrompt(roomContext || {}),
         input: historyToSend.map((m) => ({
           role: m.role,
-          content: [
-            {
-              type: m.role === "user" ? "input_text" : "output_text",
-              text: m.content,
-            },
-          ],
+          content: m.role === "user" && m.image
+            ? [
+                ...(m.content ? [{ type: "input_text", text: m.content }] : []),
+                { type: "input_image", image_url: m.image },
+              ]
+            : [{ type: m.role === "user" ? "input_text" : "output_text", text: m.content }],
         })),
       }),
     });

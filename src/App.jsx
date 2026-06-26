@@ -302,6 +302,16 @@ async function uploadToBlob(dataUrl, filename) {
   }
 }
 
+async function fetchLinkPreview(url) {
+  const res = await fetch("/api/fetch-link-preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) return { url, title: url, description: null, image: null };
+  return res.json();
+}
+
 function normalizeImageMetadata(metadata, fallbackType = "reference") {
   if (!metadata) return null;
   if (typeof metadata === "string") {
@@ -521,6 +531,162 @@ function AddImageButton({ onFile, accept = "image/*" }) {
         +
       </button>
     </>
+  );
+}
+
+function LinkPreviewCard({ preview, onClick }) {
+  const hostname = (() => {
+    try {
+      return new URL(preview.url).hostname.replace(/^www\./, "");
+    } catch {
+      return preview.url;
+    }
+  })();
+
+  return (
+    <div className="relative h-full cursor-pointer" onClick={onClick}>
+      {preview.image ? (
+        <img
+          src={preview.image}
+          alt={preview.title || ""}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center bg-slate-100">
+          <span className="text-4xl">🔗</span>
+        </div>
+      )}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent px-3 pb-3 pt-10">
+        {preview.title && (
+          <p className="line-clamp-2 text-xs font-semibold leading-tight text-white">
+            {preview.title}
+          </p>
+        )}
+        <p className="mt-0.5 truncate text-[11px] text-white/60">{hostname}</p>
+      </div>
+    </div>
+  );
+}
+
+function AddMaterialButton({ onFile, onLink }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState(null);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const inputRef = useRef(null);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+        setMode(null);
+        setLinkUrl("");
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [open]);
+
+  const handleLinkSubmit = async () => {
+    if (!linkUrl.trim()) return;
+    setIsLoading(true);
+    try {
+      const preview = await fetchLinkPreview(linkUrl.trim());
+      onLink(preview);
+      setOpen(false);
+      setMode(null);
+      setLinkUrl("");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            onFile(file);
+            setOpen(false);
+          }
+          e.target.value = "";
+        }}
+      />
+      <button
+        type="button"
+        title="Ajouter un matériau"
+        aria-label="Ajouter un matériau"
+        onClick={() => {
+          setOpen((o) => !o);
+          setMode(null);
+          setLinkUrl("");
+        }}
+        className="grid h-11 w-11 place-items-center rounded-full border border-black/15 bg-white text-lg leading-none shadow-sm hover:bg-[#fcf8d5]"
+      >
+        +
+      </button>
+      {open && (
+        <div className="absolute right-0 top-12 z-50 w-52 rounded-xl border border-black/15 bg-white p-3 shadow-xl">
+          {mode !== "link" ? (
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-left text-slate-700 hover:bg-slate-50"
+              >
+                <span>📷</span>
+                <span>Image</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("link")}
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-left text-slate-700 hover:bg-slate-50"
+              >
+                <span>🔗</span>
+                <span>Lien</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <input
+                type="url"
+                autoFocus
+                placeholder="https://..."
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLinkSubmit()}
+                className="w-full rounded border border-black/15 bg-white p-2 text-xs"
+              />
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setMode(null)}
+                  className="flex-1 rounded-lg border border-black/15 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+                >
+                  ← Retour
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLinkSubmit}
+                  disabled={isLoading || !linkUrl.trim()}
+                  className="flex-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white disabled:opacity-50"
+                >
+                  {isLoading ? "..." : "Ajouter"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -910,16 +1076,21 @@ function PlanPreview({
       >
         {currentSrc ? (
           isPdfUrl(currentSrc) ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#f8f5ef] p-4">
-              <div className="text-5xl">📄</div>
+            <div className="relative h-full w-full bg-[#f8f5ef]">
+              <iframe
+                src={currentSrc}
+                title={`Plan ${label}`}
+                className="h-full w-full border-0"
+                onClick={(e) => e.stopPropagation()}
+              />
               <a
                 href={currentSrc}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-md border border-black/15 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+                className="absolute bottom-3 right-3 z-10 rounded-md border border-black/15 bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm backdrop-blur hover:bg-white"
                 onClick={(e) => e.stopPropagation()}
               >
-                Ouvrir le PDF
+                ↗ Plein écran
               </a>
             </div>
           ) : (
@@ -1175,11 +1346,19 @@ function MaterialsSection({
 }) {
   const items = [
     ...(materialsByRoom[room] || []).map((item, i) => ({ item, cardKey: `${room}-material-${i}`, index: i })),
-    ...(extraMaterialImages[room] || []).map((src, i) => ({
-      item: { label: "Ajout", value: "Matériau ajouté", src },
-      cardKey: `${room}-material-extra-${i}`,
-      index: i,
-    })),
+    ...(extraMaterialImages[room] || []).map((entry, i) => {
+      const isLink = entry && typeof entry === "object" && entry.type === "link";
+      return {
+        item: {
+          label: isLink ? "Lien produit" : "Ajout",
+          value: isLink ? (entry.title || entry.url) : "Matériau ajouté",
+          src: isLink ? (entry.image || "") : entry,
+          linkPreview: isLink ? entry : null,
+        },
+        cardKey: `${room}-material-extra-${i}`,
+        index: i,
+      };
+    }),
   ]
     .filter(({ cardKey }) => !deletedImages[cardKey]);
   const [missingCards, setMissingCards] = useState({});
@@ -1227,6 +1406,13 @@ function MaterialsSection({
     }
   };
 
+  const handleAddLink = (preview) => {
+    setExtraMaterialImages((prev) => ({
+      ...prev,
+      [room]: [...(prev[room] || []), { type: "link", ...preview }],
+    }));
+  };
+
   const visibleItems = items
     .slice(page * pageSize, page * pageSize + pageSize)
     .map((entry, offset) => ({ ...entry, displayIndex: page * pageSize + offset }));
@@ -1262,45 +1448,70 @@ function MaterialsSection({
               </button>
             </div>
           ) : null}
-          <AddImageButton onFile={handleAddImage} />
+          <AddMaterialButton onFile={handleAddImage} onLink={handleAddLink} />
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {visibleItems.map(({ item, cardKey, displayIndex: index }) => {
+          const isLinkPreview = !!item.linkPreview;
           const imageSrc = materialUploads[cardKey] || item.src;
           const linkValue = materialLinks[cardKey] ?? item.link ?? "";
           const isMissing = !!missingCards[cardKey];
           return (
             <div key={cardKey} className="overflow-visible rounded-xl border border-black/10 bg-white">
               <div
-                className="group relative h-52 sm:h-48"
-                style={{ cursor: "zoom-in" }}
-                onClick={() => { if (onImageClick) onImageClick(imageSrc); }}
+                className="group relative h-52 overflow-hidden rounded-t-xl sm:h-48"
+                onClick={() => {
+                  if (isLinkPreview) {
+                    window.open(item.linkPreview.url, "_blank", "noreferrer");
+                  } else if (onImageClick && imageSrc) {
+                    onImageClick(imageSrc);
+                  }
+                }}
+                style={{ cursor: isLinkPreview ? "pointer" : "zoom-in" }}
               >
-                <RepoImage src={imageSrc} alt={`${item.label} ${item.value}`} onMissingChange={(missing) => handleMissingChange(cardKey, missing)} />
-                <div className="absolute inset-x-2 top-2 z-20 flex flex-wrap items-start justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" onClick={(e) => e.stopPropagation()}>
-                  <AiImageEditor
-                    imageSrc={imageSrc}
-                    imageKind="matériau"
-                    imageTitle={`${item.label} - ${item.value}`}
-                    aiContext={aiContext}
-                    imageMetadata={imageAnalysis[cardKey]}
-                    onApply={(image) => setMaterialUploads((prev) => ({ ...prev, [cardKey]: image }))}
-                    onAddToInspirations={(image) => addAiInspiration(room, image)}
+                {isLinkPreview ? (
+                  <LinkPreviewCard
+                    preview={item.linkPreview}
+                    onClick={() => {}}
                   />
-                  <LinkAction
-                    value={linkValue}
-                    onChange={(value) =>
-                      setMaterialLinks((prev) => ({
-                        ...prev,
-                        [cardKey]: value,
-                      }))
-                    }
+                ) : (
+                  <RepoImage
+                    src={imageSrc}
+                    alt={`${item.label} ${item.value}`}
+                    onMissingChange={(missing) => handleMissingChange(cardKey, missing)}
                   />
+                )}
+                <div
+                  className="absolute inset-x-2 top-2 z-20 flex flex-wrap items-start justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {!isLinkPreview && (
+                    <AiImageEditor
+                      imageSrc={imageSrc}
+                      imageKind="matériau"
+                      imageTitle={`${item.label} - ${item.value}`}
+                      aiContext={aiContext}
+                      imageMetadata={imageAnalysis[cardKey]}
+                      onApply={(image) => setMaterialUploads((prev) => ({ ...prev, [cardKey]: image }))}
+                      onAddToInspirations={(image) => addAiInspiration(room, image)}
+                    />
+                  )}
+                  {!isLinkPreview && (
+                    <LinkAction
+                      value={linkValue}
+                      onChange={(value) =>
+                        setMaterialLinks((prev) => ({
+                          ...prev,
+                          [cardKey]: value,
+                        }))
+                      }
+                    />
+                  )}
                   <button
                     type="button"
-                    title="Supprimer l'image"
-                    aria-label="Supprimer l'image"
+                    title="Supprimer"
+                    aria-label="Supprimer"
                     className="grid h-11 w-11 place-items-center rounded-md border border-black/15 bg-white/90 text-base font-bold text-slate-950 shadow-sm backdrop-blur hover:bg-white"
                     onClick={() => {
                       setDeletedImages((prev) => ({ ...prev, [cardKey]: true }));
@@ -1313,11 +1524,26 @@ function MaterialsSection({
                   </button>
                 </div>
               </div>
-                <div className="space-y-2 p-4">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">{item.label}</div>
-                  <div className="text-sm font-medium">{item.value}</div>
-                {isMissing ? <div className="text-xs text-slate-500">Image manquante: ajoute une image avec le bouton +.</div> : null}
-                {linkValue ? (
+              <div className="space-y-2 p-4">
+                <div className="text-xs uppercase tracking-wide text-slate-500">{item.label}</div>
+                <div className="text-sm font-medium line-clamp-2">{item.value}</div>
+                {isLinkPreview && item.linkPreview?.description ? (
+                  <p className="text-xs text-slate-500 line-clamp-2">{item.linkPreview.description}</p>
+                ) : null}
+                {!isLinkPreview && isMissing ? (
+                  <div className="text-xs text-slate-500">Image manquante: ajoute une image avec le bouton +.</div>
+                ) : null}
+                {isLinkPreview ? (
+                  <a
+                    className="text-sm underline underline-offset-2"
+                    href={item.linkPreview.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Voir le produit →
+                  </a>
+                ) : linkValue ? (
                   <a className="text-sm underline underline-offset-2" href={linkValue} target="_blank" rel="noreferrer">
                     {item.cta || "Voir le produit"}
                   </a>

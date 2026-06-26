@@ -1,7 +1,7 @@
 import { allowCors, sendJson, parseJsonBody } from "./_openai.js";
 
 export const config = {
-  api: { bodyParser: { sizeLimit: "1mb" } },
+  api: { bodyParser: { sizeLimit: "10mb" } },
 };
 
 const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL || "gpt-4.1";
@@ -83,15 +83,22 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: CHAT_MODEL,
         instructions: buildSystemPrompt(roomContext || {}),
-        input: historyToSend.map((m) => ({
-          role: m.role,
-          content: m.role === "user" && m.image
-            ? [
+        input: historyToSend.map((m) => {
+          const imgList = m.images?.length ? m.images : m.image ? [m.image] : [];
+          if (m.role === "user" && imgList.length > 0) {
+            return {
+              role: m.role,
+              content: [
                 ...(m.content ? [{ type: "input_text", text: m.content }] : []),
-                { type: "input_image", image_url: m.image },
-              ]
-            : [{ type: m.role === "user" ? "input_text" : "output_text", text: m.content }],
-        })),
+                ...imgList.map((img) => ({ type: "input_image", image_url: img })),
+              ],
+            };
+          }
+          return {
+            role: m.role,
+            content: [{ type: m.role === "user" ? "input_text" : "output_text", text: m.content }],
+          };
+        }),
       }),
     });
 

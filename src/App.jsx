@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { RoomViewer3D } from "./RoomViewer3D";
 
 const baseColors = {
   creme: { name: "Crème chaud", light: "#FAF6F0", hex: "#F4F1EA", medium: "#E8DFD3", dark: "#D8CEC1" },
@@ -151,6 +152,7 @@ const roomPlanImages = {
   vinyle: ["/images/plan/vinyle-01.jpg"],
   cellier: ["https://8jyffbtqylmfilvg.public.blob.vercel-storage.com/plan/cellier-plan.webp"],
 };
+
 
 const materialsByRoom = {
   salon: [
@@ -722,7 +724,7 @@ function LinkAction({ value, onChange }) {
   );
 }
 
-function RepoImage({ src, alt, onMissingChange }) {
+function RepoImage({ src, alt, onMissingChange, objectFit = "cover" }) {
   const [missing, setMissing] = useState(false);
 
   useEffect(() => {
@@ -742,7 +744,7 @@ function RepoImage({ src, alt, onMissingChange }) {
     <img
       src={src}
       alt={alt}
-      className="h-full w-full object-cover"
+      className={`h-full w-full ${objectFit === "contain" ? "object-contain" : "object-cover"}`}
       loading="lazy"
       onLoad={() => {
         setMissing(false);
@@ -1094,7 +1096,7 @@ function PlanPreview({
               </a>
             </div>
           ) : (
-            <RepoImage src={currentSrc} alt={`Plan ${label}`} onMissingChange={(missing) => setMissingCards((prev) => ({ ...prev, [currentKey]: missing }))} />
+            <RepoImage src={currentSrc} alt={`Plan ${label}`} objectFit="contain" onMissingChange={(missing) => setMissingCards((prev) => ({ ...prev, [currentKey]: missing }))} />
           )
         ) : (
           <div className="grid h-full place-items-center bg-[#f8f5ef] p-4 text-center text-sm text-slate-500">Ajoute une image ou un PDF de plan.</div>
@@ -1562,7 +1564,7 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
   const [isLoading, setIsLoading] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState(null);
   const [generatingFor, setGeneratingFor] = useState(null);
-  const [pendingImage, setPendingImage] = useState(null);
+  const [pendingImages, setPendingImages] = useState([]);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -1574,19 +1576,21 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
   }, [messages]);
 
   const handleImagePick = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    readFileAsDataUrl(file).then((dataUrl) => setPendingImage(dataUrl));
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    Promise.all(files.map(readFileAsDataUrl)).then((dataUrls) => {
+      setPendingImages((prev) => [...prev, ...dataUrls]);
+    });
     e.target.value = "";
   };
 
   const sendMessage = async (text) => {
     const trimmed = (text || input).trim();
-    if ((!trimmed && !pendingImage) || isLoading) return;
+    if ((!trimmed && !pendingImages.length) || isLoading) return;
 
-    const userMsg = { id: `msg-${Date.now()}`, role: "user", content: trimmed, ...(pendingImage ? { image: pendingImage } : {}) };
+    const userMsg = { id: `msg-${Date.now()}`, role: "user", content: trimmed, ...(pendingImages.length > 0 ? { images: pendingImages } : {}) };
     const nextHistory = [...messages, userMsg];
-    setPendingImage(null);
+    setPendingImages([]);
     setChatHistory((prev) => ({ ...prev, [room]: nextHistory }));
     setInput("");
     setIsLoading(true);
@@ -1605,11 +1609,14 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: nextHistory.slice(-20).map(({ role, content, image }, i, arr) => ({
-            role,
-            content,
-            ...(image && i >= arr.length - 4 ? { image } : {}),
-          })),
+          messages: nextHistory.slice(-20).map(({ role, content, image, images }, i, arr) => {
+            const imgList = images?.length ? images : image ? [image] : [];
+            return {
+              role,
+              content,
+              ...(imgList.length > 0 && i >= arr.length - 4 ? { images: imgList } : {}),
+            };
+          }),
           roomContext: {
             label: aiContext.roomLabel,
             line: aiContext.line,
@@ -1729,8 +1736,12 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
                   ? "rounded-bl-sm bg-red-50 text-red-700 border border-red-100"
                   : "rounded-bl-sm bg-[#f9f7f3] border border-black/10 text-slate-800"
               }`}>
-                {msg.image ? (
-                  <img src={msg.image} alt="" className="mb-1 max-h-48 w-full rounded-lg object-cover" />
+                {(msg.images?.length > 0 || msg.image) ? (
+                  <div className="mb-1 flex flex-wrap gap-1">
+                    {(msg.images || [msg.image]).map((img, i) => (
+                      <img key={i} src={img} alt="" className="max-h-40 max-w-full rounded-lg object-contain" />
+                    ))}
+                  </div>
                 ) : null}
                 {msg.content ? <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p> : null}
                 {msg.generatedImage ? (
@@ -1791,16 +1802,29 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
       </div>
 
       <div className="border-t border-black/10 p-3">
-        {pendingImage ? (
-          <div className="mb-2 flex items-start gap-2">
-            <img src={pendingImage} alt="preview" className="h-16 w-16 rounded-lg object-cover border border-black/10" />
-            <button
-              type="button"
-              onClick={() => setPendingImage(null)}
-              className="text-xs text-slate-400 hover:text-slate-700"
-            >
-              ✕ Retirer
-            </button>
+        {pendingImages.length > 0 ? (
+          <div className="mb-2 flex flex-wrap items-end gap-2">
+            {pendingImages.map((img, i) => (
+              <div key={i} className="relative">
+                <img src={img} alt="preview" className="h-16 w-16 rounded-lg object-cover border border-black/10" />
+                <button
+                  type="button"
+                  onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
+                  className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-slate-900 text-[9px] text-white leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {pendingImages.length > 1 ? (
+              <button
+                type="button"
+                onClick={() => setPendingImages([])}
+                className="text-xs text-slate-400 hover:text-slate-700"
+              >
+                Tout retirer
+              </button>
+            ) : null}
           </div>
         ) : null}
         <div className="flex gap-2">
@@ -1808,6 +1832,7 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             className="hidden"
             onChange={handleImagePick}
           />
@@ -1816,7 +1841,7 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
             className="shrink-0 self-end rounded-md border border-black/15 bg-[#f9f7f3] px-3 py-2 text-sm text-slate-500 hover:bg-[#f0ebe0] disabled:opacity-40"
-            title="Joindre une image"
+            title="Joindre des photos"
           >
             📎
           </button>
@@ -1837,7 +1862,7 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
           <button
             type="button"
             onClick={() => sendMessage()}
-            disabled={(!input.trim() && !pendingImage) || isLoading}
+            disabled={(!input.trim() && !pendingImages.length) || isLoading}
             className="shrink-0 self-end rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
           >
             Envoyer
@@ -2195,6 +2220,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState("room");
   const [roomMode, setRoomMode] = useState("couleurs");
   const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [show3D, setShow3D] = useState(false);
   const [roomLists, setRoomLists] = useState(() => {
     try {
       const raw = localStorage.getItem(ROOM_LISTS_STORAGE_KEY);
@@ -2254,6 +2280,20 @@ export default function App() {
   const secondaryHex = getShade(preset.secondary, activeNuance.secondary);
   const accentHex = activeNuance.accent === "bois" ? baseColors.bois.hex : accents[activeNuance.accent]?.hex || accents[globalAccent].hex;
   const accentName = activeNuance.accent === "bois" ? "Chêne clair" : accents[activeNuance.accent]?.name || accents[globalAccent].name;
+
+  const roomPhotosFor3D = [
+    ...(materialsByRoom[room] || []).map((m, i) => ({
+      url: materialUploads[`${room}-material-${i}`] || m.src,
+      label: m.label || `Matériau ${i + 1}`,
+    })),
+    ...(extraMaterialImages[room] || []).map((entry, i) => ({
+      url: typeof entry === "string" ? entry : entry.src,
+      label: `Extra ${i + 1}`,
+    })),
+    ...[0, 1, 2].map((i) => ({ url: uploadedImages[`${room}-${i}`], label: `Inspiration ${i + 1}` })),
+    ...(aiInspirations[room] || []).map((url, i) => ({ url, label: `IA ${i + 1}` })),
+  ].filter((p) => p.url && !deletedImages[p.url]);
+
   const previewSecondaryHex = warmth < 40 ? baseColors.bleu.light : warmth > 70 ? baseColors.bois.light : secondaryHex;
   const previewAccentHex = warmth < 40 ? accents.sky.hex : warmth > 70 ? accents.butter.hex : accentHex;
   const roomImageMetadata = Object.entries(imageAnalysis)
@@ -2965,6 +3005,13 @@ export default function App() {
                   <Swatch title={baseColors[preset.secondary].name} subtitle="Secondaire" hex={secondaryHex} />
                   <Swatch title={accentName} subtitle="Accent" hex={accentHex} />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShow3D(true)}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-black/15 bg-white py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 active:scale-[.98]"
+                >
+                  <span>🎲</span> Voir en 3D
+                </button>
                 <label className="block text-sm">
                   Note de la pièce
                   <textarea
@@ -3096,6 +3143,16 @@ export default function App() {
         )}
 
         {lightboxSrc ? <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} /> : null}
+        {show3D ? (
+          <RoomViewer3D
+            dominant={dominantHex}
+            secondary={secondaryHex}
+            accent={accentHex}
+            roomLabel={preset.label}
+            availablePhotos={roomPhotosFor3D}
+            onClose={() => setShow3D(false)}
+          />
+        ) : null}
       </main>
     </div>
   );

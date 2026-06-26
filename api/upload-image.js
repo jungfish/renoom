@@ -2,7 +2,7 @@ import { put } from "@vercel/blob";
 import { allowCors, sendJson, parseJsonBody } from "./_openai.js";
 
 export const config = {
-  api: { bodyParser: { sizeLimit: "5mb" } },
+  api: { bodyParser: { sizeLimit: "15mb" } },
 };
 
 export default async function handler(req, res) {

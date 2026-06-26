@@ -273,8 +273,16 @@ async function imageSrcToDataUrl(src) {
 }
 
 function extFromDataUrl(dataUrl) {
-  const mime = dataUrl.match(/^data:image\/([^;]+)/)?.[1] || "jpg";
-  return mime === "jpeg" ? "jpg" : mime;
+  const mime = dataUrl.match(/^data:([^;]+)/)?.[1] || "image/jpeg";
+  if (mime === "application/pdf") return "pdf";
+  const ext = mime.split("/")[1] || "jpg";
+  return ext === "jpeg" ? "jpg" : ext;
+}
+
+function isPdfUrl(url) {
+  if (!url) return false;
+  const clean = url.split("?")[0];
+  return clean.endsWith(".pdf") || url.startsWith("data:application/pdf");
 }
 
 async function uploadToBlob(dataUrl, filename) {
@@ -486,7 +494,7 @@ function UploadDropzone({ onFile, compact = false }) {
   );
 }
 
-function AddImageButton({ onFile }) {
+function AddImageButton({ onFile, accept = "image/*" }) {
   const inputRef = useRef(null);
 
   return (
@@ -494,7 +502,7 @@ function AddImageButton({ onFile }) {
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={accept}
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -830,12 +838,14 @@ function PlanPreview({
     if (typeof data === "string") {
       const url = await uploadToBlob(data, `${currentKey}-${Date.now()}.${extFromDataUrl(data)}`);
       setPlanUploads((prev) => ({ ...prev, [currentKey]: url }));
-      const analysis = await analyzeImageForContext({
-        image: url,
-        context: `Plan ${label}, pièce ${label}`,
-        section: "plan",
-      });
-      if (analysis) setImageAnalysis((prev) => ({ ...prev, [currentKey]: analysis }));
+      if (!isPdfUrl(url)) {
+        const analysis = await analyzeImageForContext({
+          image: url,
+          context: `Plan ${label}, pièce ${label}`,
+          section: "plan",
+        });
+        if (analysis) setImageAnalysis((prev) => ({ ...prev, [currentKey]: analysis }));
+      }
     }
   };
 
@@ -847,12 +857,14 @@ function PlanPreview({
       const nextKey = `${room}-plan-extra-${nextIndex}`;
       const url = await uploadToBlob(data, `${nextKey}-${Date.now()}.${extFromDataUrl(data)}`);
       setExtraPlanImages((prev) => ({ ...prev, [room]: [...(prev[room] || []), url] }));
-      const analysis = await analyzeImageForContext({
-        image: url,
-        context: `Plan ajouté ${label}`,
-        section: "plan",
-      });
-      if (analysis) setImageAnalysis((prev) => ({ ...prev, [nextKey]: analysis }));
+      if (!isPdfUrl(url)) {
+        const analysis = await analyzeImageForContext({
+          image: url,
+          context: `Plan ajouté ${label}`,
+          section: "plan",
+        });
+        if (analysis) setImageAnalysis((prev) => ({ ...prev, [nextKey]: analysis }));
+      }
     }
   };
 
@@ -887,18 +899,33 @@ function PlanPreview({
               </button>
             </div>
           ) : null}
-          <AddImageButton onFile={handleAddImage} />
+          <AddImageButton onFile={handleAddImage} accept="image/*,application/pdf" />
         </div>
       </div>
       <div
         className="group relative h-64 bg-[#efe7de] sm:h-80 lg:h-[360px]"
-        style={{ cursor: currentSrc && !isMissing ? "zoom-in" : "default" }}
-        onClick={() => { if (currentSrc && !isMissing && onImageClick) onImageClick(currentSrc); }}
+        style={{ cursor: currentSrc && !isMissing && !isPdfUrl(currentSrc) ? "zoom-in" : "default" }}
+        onClick={() => { if (currentSrc && !isMissing && !isPdfUrl(currentSrc) && onImageClick) onImageClick(currentSrc); }}
       >
         {currentSrc ? (
-          <RepoImage src={currentSrc} alt={`Plan ${label}`} onMissingChange={(missing) => setMissingCards((prev) => ({ ...prev, [currentKey]: missing }))} />
+          isPdfUrl(currentSrc) ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#f8f5ef] p-4">
+              <div className="text-5xl">📄</div>
+              <a
+                href={currentSrc}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md border border-black/15 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Ouvrir le PDF
+              </a>
+            </div>
+          ) : (
+            <RepoImage src={currentSrc} alt={`Plan ${label}`} onMissingChange={(missing) => setMissingCards((prev) => ({ ...prev, [currentKey]: missing }))} />
+          )
         ) : (
-          <div className="grid h-full place-items-center bg-[#f8f5ef] p-4 text-center text-sm text-slate-500">Ajoute une image de plan.</div>
+          <div className="grid h-full place-items-center bg-[#f8f5ef] p-4 text-center text-sm text-slate-500">Ajoute une image ou un PDF de plan.</div>
         )}
         {currentSrc ? (
           <div
@@ -953,7 +980,11 @@ function PlanPreview({
                   onClick={() => setIndex(i)}
                   className={`h-14 w-20 shrink-0 overflow-hidden rounded border ${index === i ? "border-slate-900" : "border-black/15"}`}
                 >
-                  <img src={thumbSrc} alt={`Miniature plan ${i + 1}`} className="h-full w-full object-cover" />
+                  {isPdfUrl(thumbSrc) ? (
+                    <div className="flex h-full w-full items-center justify-center bg-stone-100 text-xl">📄</div>
+                  ) : (
+                    <img src={thumbSrc} alt={`Miniature plan ${i + 1}`} className="h-full w-full object-cover" />
+                  )}
                 </button>
               );
             })}
@@ -1299,6 +1330,357 @@ function MaterialsSection({
   );
 }
 
+function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages }) {
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [pendingPrompt, setPendingPrompt] = useState(null);
+  const [generatingFor, setGeneratingFor] = useState(null);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const messages = chatHistory[room] || [];
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const sendMessage = async (text) => {
+    const trimmed = (text || input).trim();
+    if (!trimmed || isLoading) return;
+
+    const userMsg = { id: `msg-${Date.now()}`, role: "user", content: trimmed };
+    const nextHistory = [...messages, userMsg];
+    setChatHistory((prev) => ({ ...prev, [room]: nextHistory }));
+    setInput("");
+    setIsLoading(true);
+
+    const imageMetadataSummary = (aiContext.roomImageMetadata || [])
+      .map((item) => {
+        const m = item.metadata;
+        return m ? [m.style, m.inspiration, ...(m.materials || [])].filter(Boolean).join(", ") : null;
+      })
+      .filter(Boolean)
+      .slice(0, 6)
+      .join("; ");
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: nextHistory.slice(-20).map(({ role, content }) => ({ role, content })),
+          roomContext: {
+            label: aiContext.roomLabel,
+            line: aiContext.line,
+            dominantName: aiContext.dominantName,
+            dominantHex: aiContext.dominantHex,
+            secondaryName: aiContext.secondaryName,
+            secondaryHex: aiContext.secondaryHex,
+            accentName: aiContext.accentName,
+            accentHex: aiContext.accentHex,
+            roomNote: aiContext.roomNote,
+            imageMetadataSummary,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur IA.");
+      setChatHistory((prev) => ({
+        ...prev,
+        [room]: [
+          ...nextHistory,
+          { id: `msg-${Date.now()}-a`, role: "assistant", content: data.content, imagePrompt: data.imagePrompt },
+        ],
+      }));
+    } catch (err) {
+      setChatHistory((prev) => ({
+        ...prev,
+        [room]: [...nextHistory, { id: `msg-${Date.now()}-e`, role: "assistant", content: err.message, error: true }],
+      }));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const generateFromPrompt = async (imageSrc, imagePrompt) => {
+    setGeneratingFor(imageSrc);
+    setPendingPrompt(null);
+    try {
+      const dataUrl = await imageSrcToDataUrl(imageSrc);
+      const res = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataUrl, prompt: imagePrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur génération.");
+      const url = await uploadToBlob(data.image, `chat-gen-${Date.now()}.webp`);
+      setChatHistory((prev) => ({
+        ...prev,
+        [room]: [
+          ...(prev[room] || []),
+          {
+            id: `msg-${Date.now()}-img`,
+            role: "assistant",
+            content: "Voici la modification proposée :",
+            generatedImage: url,
+          },
+        ],
+      }));
+    } catch (err) {
+      setChatHistory((prev) => ({
+        ...prev,
+        [room]: [
+          ...(prev[room] || []),
+          { id: `msg-${Date.now()}-e`, role: "assistant", content: `Erreur génération: ${err.message}`, error: true },
+        ],
+      }));
+    } finally {
+      setGeneratingFor(null);
+    }
+  };
+
+  const visibleImages = (roomImages || []).filter((img) => img.src && !isPdfUrl(img.src));
+
+  return (
+    <div className="rounded-xl border border-black/10 bg-white">
+      <div className="flex items-center justify-between border-b border-black/10 p-4">
+        <div>
+          <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Assistant</p>
+          <h3 className="type-h3">Chat IA — {aiContext.roomLabel}</h3>
+        </div>
+        {messages.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => setChatHistory((prev) => ({ ...prev, [room]: [] }))}
+            className="text-xs text-slate-400 hover:text-slate-600"
+          >
+            Effacer
+          </button>
+        ) : null}
+      </div>
+
+      <div className="h-[420px] overflow-y-auto space-y-3 p-4">
+        {messages.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-slate-400">
+            <span className="text-3xl">✦</span>
+            <p>Pose une question sur la décoration de cette pièce.</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {["Quelles couleurs pour les murs ?", "Comment choisir les matières ?", "Quelle ambiance lumineuse ?"].map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => sendMessage(q)}
+                  className="rounded-full border border-black/15 bg-[#f9f7f3] px-3 py-1.5 text-xs text-slate-600 hover:bg-[#fcf8d5]"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          messages.map((msg) => (
+            <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[85%] space-y-2 rounded-2xl px-4 py-3 text-sm ${
+                msg.role === "user"
+                  ? "rounded-br-sm bg-slate-900 text-white"
+                  : msg.error
+                  ? "rounded-bl-sm bg-red-50 text-red-700 border border-red-100"
+                  : "rounded-bl-sm bg-[#f9f7f3] border border-black/10 text-slate-800"
+              }`}>
+                <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                {msg.generatedImage ? (
+                  <img src={msg.generatedImage} alt="Image générée" className="mt-2 w-full rounded-lg" />
+                ) : null}
+                {msg.imagePrompt && visibleImages.length > 0 ? (
+                  <div className="mt-2">
+                    {pendingPrompt === msg.imagePrompt ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-slate-600">Choisir une image à modifier :</p>
+                        <div className="flex flex-wrap gap-2">
+                          {visibleImages.map((img) => (
+                            <button
+                              key={img.key}
+                              type="button"
+                              disabled={!!generatingFor}
+                              onClick={() => generateFromPrompt(img.src, msg.imagePrompt)}
+                              className="relative h-16 w-24 overflow-hidden rounded border border-black/15 hover:border-slate-900 disabled:opacity-50"
+                            >
+                              {generatingFor === img.src ? (
+                                <div className="absolute inset-0 flex items-center justify-center bg-white/80 text-xs">…</div>
+                              ) : null}
+                              <img src={img.src} alt="" className="h-full w-full object-cover" />
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPendingPrompt(null)}
+                          className="text-xs text-slate-400 hover:text-slate-600"
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPendingPrompt(msg.imagePrompt)}
+                        className="rounded-full border border-black/20 bg-[#fcf8d5] px-3 py-1 text-xs font-medium text-slate-700 hover:bg-[#f5efb0]"
+                      >
+                        🪄 Visualiser sur une image
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))
+        )}
+        {isLoading ? (
+          <div className="flex justify-start">
+            <div className="rounded-2xl rounded-bl-sm border border-black/10 bg-[#f9f7f3] px-4 py-3 text-sm text-slate-500">
+              <span className="animate-pulse">…</span>
+            </div>
+          </div>
+        ) : null}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="border-t border-black/10 p-3">
+        <div className="flex gap-2">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder="Pose une question… (Cmd+Entrée pour envoyer)"
+            rows={2}
+            className="min-w-0 flex-1 resize-none rounded-md border border-black/15 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-900"
+          />
+          <button
+            type="button"
+            onClick={() => sendMessage()}
+            disabled={!input.trim() || isLoading}
+            className="shrink-0 self-end rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+          >
+            Envoyer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists }) {
+  const [filter, setFilter] = useState("all");
+  const [hideDone, setHideDone] = useState(false);
+
+  const toggleItem = (roomKey, listKey, id) => {
+    setRoomLists((prev) => ({
+      ...prev,
+      [roomKey]: {
+        ...(prev[roomKey] || {}),
+        [listKey]: ((prev[roomKey] || {})[listKey] || []).map((item) => (item.id === id ? { ...item, done: !item.done } : item)),
+      },
+    }));
+  };
+
+  const totalPending = orderedActiveRooms.reduce((acc, key) => {
+    const list = roomLists[key] || {};
+    return acc + [...(list.shopping || []), ...(list.todos || [])].filter((i) => !i.done).length;
+  }, 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-black/10 bg-white p-4">
+        <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
+        <h2 className="type-h2">Tous les todos</h2>
+        {totalPending > 0 ? (
+          <p className="mt-1 text-sm text-slate-600">{totalPending} élément{totalPending > 1 ? "s" : ""} en attente dans toutes les pièces.</p>
+        ) : (
+          <p className="mt-1 text-sm text-slate-600">Tout est fait — rien en attente.</p>
+        )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {[{ key: "all", label: "Tout" }, { key: "todos", label: "À faire" }, { key: "shopping", label: "Courses" }].map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setFilter(key)}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${filter === key ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white"}`}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setHideDone((v) => !v)}
+            className={`ml-auto rounded-lg border px-3 py-1.5 text-sm ${hideDone ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white"}`}
+          >
+            {hideDone ? "Afficher terminés" : "Masquer terminés"}
+          </button>
+        </div>
+      </div>
+      {orderedActiveRooms.map((key) => {
+        const preset = allRoomPresets[key];
+        const list = roomLists[key] || {};
+        const shoppingItems = filter !== "todos" ? (list.shopping || []) : [];
+        const todoItems = filter !== "shopping" ? (list.todos || []) : [];
+        const allItems = [...shoppingItems.map((i) => ({ ...i, listKey: "shopping" })), ...todoItems.map((i) => ({ ...i, listKey: "todos" }))];
+        const visibleItems = hideDone ? allItems.filter((i) => !i.done) : allItems;
+        if (visibleItems.length === 0) return null;
+        return (
+          <div key={key} className="rounded-xl border border-black/10 bg-white p-4">
+            <h3 className="mb-3 font-medium text-slate-900">{preset?.label}</h3>
+            <ul className="space-y-1.5">
+              {[...visibleItems.filter((i) => !i.done), ...visibleItems.filter((i) => i.done)].map((item) => (
+                <li
+                  key={item.id}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleItem(key, item.listKey, item.id)}
+                    className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}
+                  >
+                    {item.done ? "✓" : ""}
+                  </button>
+                  <span className={`min-w-0 flex-1 text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>
+                    {renderItemText(item.text)}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-slate-400">{item.listKey === "shopping" ? "courses" : "à faire"}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function renderItemText(text) {
+  const urlRegex = /https?:\/\/[^\s]+/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    parts.push(
+      <a key={match.index} href={match[0]} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70 break-all">
+        {match[0]}
+      </a>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts.length > 0 ? parts : text;
+}
+
 function ListeSection({ room, label, roomLists, setRoomLists }) {
   const [shopInput, setShopInput] = useState("");
   const [todoInput, setTodoInput] = useState("");
@@ -1373,7 +1755,7 @@ function ListeSection({ room, label, roomLists, setRoomLists }) {
                 >
                   {item.done ? "✓" : ""}
                 </button>
-                <span className={`min-w-0 flex-1 text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.text}</span>
+                <span className={`min-w-0 flex-1 text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{renderItemText(item.text)}</span>
                 <button
                   type="button"
                   onClick={() => removeItem(listKey, item.id)}
@@ -1554,6 +1936,7 @@ export default function App() {
     }
   });
   const [draggingRoom, setDraggingRoom] = useState(null);
+  const [chatHistory, setChatHistory] = useState({});
 
   const customRoomPresets = Object.fromEntries(
     customRooms.map((customRoom) => [
@@ -1940,6 +2323,13 @@ export default function App() {
             </button>
             <button
               type="button"
+              onClick={() => { setViewMode("todos-global"); setMobileMenuOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              className={`rounded-md border px-3 py-2 text-left text-sm ${viewMode === "todos-global" ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-[#f9f7f3]"}`}
+            >
+              Tous les todos
+            </button>
+            <button
+              type="button"
               onClick={addRoom}
               className="rounded-md border border-black/15 bg-white px-3 py-2 text-left text-sm font-medium"
             >
@@ -2005,6 +2395,26 @@ export default function App() {
             >
               Palette
             </button>
+            {(() => {
+              const totalPending = orderedActiveRooms.reduce((acc, key) => {
+                const list = roomLists[key] || {};
+                return acc + [...(list.shopping || []), ...(list.todos || [])].filter((i) => !i.done).length;
+              }, 0);
+              return (
+                <button
+                  type="button"
+                  onClick={() => { setViewMode("todos-global"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                  className={`relative shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-sm ${
+                    viewMode === "todos-global" ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-[#f9f7f3]"
+                  }`}
+                >
+                  Todos
+                  {totalPending > 0 ? (
+                    <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-amber-900">{totalPending}</span>
+                  ) : null}
+                </button>
+              );
+            })()}
             <button
               type="button"
               onClick={addRoom}
@@ -2017,12 +2427,13 @@ export default function App() {
           </div>
         </section>
 
-        {viewMode !== "palette" ? (
+        {viewMode === "room" ? (
           <div className="flex gap-1 rounded-xl border border-black/10 bg-white p-1.5">
             {[
               { key: "couleurs", label: "Couleurs" },
               { key: "inspirations", label: "Inspirations" },
               { key: "liste", label: "Liste" },
+              { key: "chat", label: "Chat IA" },
             ].map(({ key, label }) => {
               const pending = key === "liste" ? roomPendingCount(room) : 0;
               return (
@@ -2044,7 +2455,14 @@ export default function App() {
           </div>
         ) : null}
 
-        {viewMode === "palette" ? (
+        {viewMode === "todos-global" ? (
+          <TodosGlobalView
+            orderedActiveRooms={orderedActiveRooms}
+            allRoomPresets={allRoomPresets}
+            roomLists={roomLists}
+            setRoomLists={setRoomLists}
+          />
+        ) : viewMode === "palette" ? (
           <>
             <div className="rounded-xl border border-black/10 bg-white p-4">
               <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
@@ -2295,12 +2713,26 @@ export default function App() {
               />
             </section>
           </>
-        ) : (
+        ) : roomMode === "liste" ? (
           <ListeSection
             room={room}
             label={preset.label}
             roomLists={roomLists}
             setRoomLists={setRoomLists}
+          />
+        ) : (
+          <ChatPanel
+            room={room}
+            aiContext={aiContext}
+            chatHistory={chatHistory}
+            setChatHistory={setChatHistory}
+            roomImages={[
+              ...(roomPlanImages[room] || []).map((src, i) => ({ src: planUploads[`${room}-plan-${i}`] || src, key: `${room}-plan-${i}` })),
+              ...(extraPlanImages[room] || []).map((src, i) => ({ src, key: `${room}-plan-extra-${i}` })),
+              ...(roomInspirationImages[room] || []).map((src, i) => ({ src: uploadedImages[`${room}-${i}`] || src, key: `${room}-${i}` })),
+              ...(materialsByRoom[room] || []).map((m, i) => ({ src: materialUploads[`${room}-material-${i}`] || m.src, key: `${room}-material-${i}` })),
+              ...(aiInspirations[room] || []).map((src, i) => ({ src, key: `${room}-ai-${i}` })),
+            ].filter((img) => img.src && !deletedImages[img.key])}
           />
         )}
 

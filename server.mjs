@@ -3,6 +3,8 @@ import { createServer } from "node:http";
 const PORT = Number(process.env.API_PORT || 5175);
 const MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
 const ANALYSIS_MODEL = process.env.OPENAI_ANALYSIS_MODEL || "gpt-4.1-mini";
+const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL || "gpt-4.1";
+const CHAT_IMAGE_PROMPT_MARKER = "|||IMAGE_PROMPT|||";
 const MAX_BODY_BYTES = 30 * 1024 * 1024;
 
 function sendJson(res, status, payload) {
@@ -74,7 +76,7 @@ createServer(async (req, res) => {
     return;
   }
 
-  if (req.method !== "POST" || !["/api/generate-image", "/api/analyze-image", "/api/upload-image"].includes(req.url)) {
+  if (req.method !== "POST" || !["/api/generate-image", "/api/analyze-image", "/api/upload-image", "/api/chat"].includes(req.url)) {
     sendJson(res, 404, { error: "Route inconnue." });
     return;
   }
@@ -106,6 +108,66 @@ createServer(async (req, res) => {
         contentType: mimeType,
       });
       sendJson(res, 200, { url: blob.url });
+      return;
+    }
+
+    if (req.url === "/api/chat") {
+      const { messages, roomContext } = body;
+      if (!messages?.length) {
+        sendJson(res, 400, { error: "Messages requis." });
+        return;
+      }
+      const ctx = roomContext || {};
+      const systemPrompt = [
+        "Tu es un assistant de design intérieur expert en décoration française contemporaine et rétro.",
+        "Tu aides l'utilisateur à prendre des décisions de design pour son appartement.",
+        "",
+        `Contexte de la pièce active — ${ctx.label || "pièce"}:`,
+        `Ligne directrice: ${ctx.line || ""}`,
+        `Palette: dominante ${ctx.dominantName || ""} (${ctx.dominantHex || ""}), secondaire ${ctx.secondaryName || ""} (${ctx.secondaryHex || ""}), accent ${ctx.accentName || ""} (${ctx.accentHex || ""})`,
+        ctx.roomNote ? `Notes utilisateur: ${ctx.roomNote}` : null,
+        ctx.imageMetadataSummary ? `Contexte visuel: ${ctx.imageMetadataSummary}` : null,
+        "",
+        "Règles:",
+        "- Réponds en français, de façon concise et praticable (3-6 phrases max par réponse)",
+        "- Reste dans l'univers rétro, coloré, doux — jamais d'accents rouges, pas de style minimaliste froid",
+        `- Si tu suggères une modification visuelle concrète et précise, termine ta réponse par exactement ce bloc sur une nouvelle ligne: ${CHAT_IMAGE_PROMPT_MARKER}{"prompt":"<instruction en anglais pour édition d'image>"}${CHAT_IMAGE_PROMPT_MARKER}`,
+        "- N'inclus ce bloc que si la suggestion est clairement visuelle et actionnable",
+      ].filter(Boolean).join("\n");
+
+      const historyToSend = messages.slice(-20);
+      const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: CHAT_MODEL,
+          system: systemPrompt,
+          input: historyToSend.map((m) => ({
+            role: m.role,
+            content: [{ type: m.role === "user" ? "input_text" : "output_text", text: m.content }],
+          })),
+        }),
+      });
+      const chatPayload = await openaiResponse.json();
+      if (!openaiResponse.ok) {
+        sendJson(res, openaiResponse.status, { error: chatPayload.error?.message || "Le chat IA a échoué." });
+        return;
+      }
+      const rawText = chatPayload.output_text || "";
+      const markerStart = rawText.indexOf(CHAT_IMAGE_PROMPT_MARKER);
+      let chatContent = rawText.trim();
+      let imagePrompt = null;
+      if (markerStart !== -1) {
+        chatContent = rawText.slice(0, markerStart).trim();
+        const afterFirst = rawText.slice(markerStart + CHAT_IMAGE_PROMPT_MARKER.length);
+        const markerEnd = afterFirst.indexOf(CHAT_IMAGE_PROMPT_MARKER);
+        const jsonPart = markerEnd !== -1 ? afterFirst.slice(0, markerEnd) : afterFirst;
+        try { imagePrompt = JSON.parse(jsonPart.trim()).prompt || null; } catch { /* ignore */ }
+      }
+      sendJson(res, 200, { content: chatContent, imagePrompt: imagePrompt || undefined });
       return;
     }
 

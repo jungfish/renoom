@@ -47,6 +47,9 @@ const ROOM_LISTS_STORAGE_KEY = "palette_room_lists_v1";
 const ROOM_DOCUMENTS_STORAGE_KEY = "palette_room_documents_v1";
 const ROOM_ORDER_STORAGE_KEY = "palette_room_order_v1";
 const PROJECT_ID_STORAGE_KEY = "palette_project_id_v1";
+const GENERAL_CONTEXT_STORAGE_KEY = "palette_general_context_v1";
+const GENERAL_RESOURCES_STORAGE_KEY = "palette_general_resources_v1";
+const CHAT_HISTORY_MAX = 50;
 const IMAGE_DB_NAME = "palette-appartement-images";
 const IMAGE_DB_STORE = "records";
 
@@ -1459,7 +1462,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
   const [missingCards, setMissingCards] = useState({});
   const [page, setPage] = useState(0);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const pageSize = 3;
+  const pageSize = 4;
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
 
   useEffect(() => {
@@ -1557,64 +1560,94 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
           <AddImageButton onFile={handleAddImage} />
         </div>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {visibleItems.map(({ src, cardKey, displayIndex: i }) => (
-          (() => {
-            const imageSrc = uploadedImages[cardKey] || src;
-            const linkValue = inspirationLinks[cardKey] || "";
-            const isMissing = !!missingCards[cardKey];
+      {(() => {
+        const [item0, item1, item2, item3] = visibleItems;
 
-            return (
-              <div key={cardKey} className="overflow-visible rounded-xl border border-black/10 bg-white">
-                <div
-                  className="group relative overflow-hidden rounded-t-xl"
-                  style={{ cursor: "zoom-in" }}
-                  onClick={() => { if (onImageClick) onImageClick(imageSrc); }}
+        const renderCard = (item, extraStyle = {}) => {
+          if (!item) return null;
+          const { src, cardKey, displayIndex: i } = item;
+          const imageSrc = uploadedImages[cardKey] || src;
+          const linkValue = inspirationLinks[cardKey] || "";
+          const isMissing = !!missingCards[cardKey];
+
+          return (
+            <div
+              key={cardKey}
+              className="group relative overflow-hidden rounded-xl bg-[#e8e4de]"
+              style={{ cursor: isMissing ? "default" : "zoom-in", ...extraStyle }}
+              onClick={() => { if (!isMissing && onImageClick) onImageClick(imageSrc); }}
+            >
+              <RepoImage src={imageSrc} alt={`${label} inspiration ${i + 1}`} objectFit="cover" onMissingChange={(missing) => handleMissingChange(cardKey, missing)} />
+              {isMissing ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#f8f5ef] p-3 text-center text-xs text-slate-500">
+                  Image manquante : ajoute une image avec le bouton +.
+                </div>
+              ) : null}
+              <div className="absolute inset-x-2 top-2 z-20 flex flex-wrap items-start justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" onClick={(e) => e.stopPropagation()}>
+                <AiImageEditor
+                  imageSrc={imageSrc}
+                  imageKind="inspiration"
+                  imageTitle={`${label} inspiration ${i + 1}`}
+                  aiContext={aiContext}
+                  imageMetadata={imageAnalysis[cardKey]}
+                  onApply={(image) => setUploadedImages((prev) => ({ ...prev, [cardKey]: image }))}
+                  onAddToInspirations={(image) => addAiInspiration(room, image)}
+                />
+                <LinkAction
+                  value={linkValue}
+                  onChange={(value) =>
+                    setInspirationLinks((prev) => ({
+                      ...prev,
+                      [cardKey]: value,
+                    }))
+                  }
+                />
+                <button
+                  type="button"
+                  title="Supprimer l'image"
+                  aria-label="Supprimer l'image"
+                  className="grid h-11 w-11 place-items-center rounded-md border border-black/15 bg-white/90 text-base font-bold text-slate-950 shadow-sm backdrop-blur hover:bg-white"
+                  onClick={() => setDeleteConfirm(cardKey)}
                 >
-                  <RepoImage src={imageSrc} alt={`${label} inspiration ${i + 1}`} objectFit="natural" onMissingChange={(missing) => handleMissingChange(cardKey, missing)} />
-                  <div className="absolute inset-x-2 top-2 z-20 flex flex-wrap items-start justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" onClick={(e) => e.stopPropagation()}>
-                    <AiImageEditor
-                      imageSrc={imageSrc}
-                      imageKind="inspiration"
-                      imageTitle={`${label} inspiration ${i + 1}`}
-                      aiContext={aiContext}
-                      imageMetadata={imageAnalysis[cardKey]}
-                      onApply={(image) => setUploadedImages((prev) => ({ ...prev, [cardKey]: image }))}
-                      onAddToInspirations={(image) => addAiInspiration(room, image)}
-                    />
-                    <LinkAction
-                      value={linkValue}
-                      onChange={(value) =>
-                        setInspirationLinks((prev) => ({
-                          ...prev,
-                          [cardKey]: value,
-                        }))
-                      }
-                    />
-                    <button
-                      type="button"
-                      title="Supprimer l'image"
-                      aria-label="Supprimer l'image"
-                      className="grid h-11 w-11 place-items-center rounded-md border border-black/15 bg-white/90 text-base font-bold text-slate-950 shadow-sm backdrop-blur hover:bg-white"
-                      onClick={() => setDeleteConfirm(cardKey)}
-                    >
-                      ×
-                    </button>
-                  </div>
+                  ×
+                </button>
+              </div>
+              {linkValue ? (
+                <div className="absolute bottom-2 left-2 z-10 opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                  <a href={linkValue} target="_blank" rel="noreferrer" className="rounded-md border border-white/30 bg-black/50 px-2.5 py-1 text-xs text-white backdrop-blur hover:bg-black/70">
+                    Voir l'objet
+                  </a>
                 </div>
-                <div className="space-y-2 p-3">
-                  {isMissing ? <div className="text-xs text-slate-500">Image manquante: ajoute une image avec le bouton +.</div> : null}
-                  {linkValue ? (
-                    <a href={linkValue} target="_blank" rel="noreferrer" className="text-xs underline underline-offset-2">
-                      Voir l'objet
-                    </a>
-                  ) : null}
-                </div>
+              ) : null}
+            </div>
+          );
+        };
+
+        if (!item1) {
+          return renderCard(item0, { aspectRatio: "16/9" });
+        }
+
+        const hasBottom = !!(item2 || item3);
+
+        return (
+          <div
+            className="grid gap-3"
+            style={{
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gridTemplateAreas: hasBottom ? '"hero hero tall" "bottom bottom tall"' : '"hero hero tall"',
+            }}
+          >
+            {renderCard(item0, { gridArea: "hero", aspectRatio: "16/9" })}
+            {renderCard(item1, { gridArea: "tall" })}
+            {hasBottom ? (
+              <div style={{ gridArea: "bottom", display: "grid", gridTemplateColumns: item3 ? "1fr 1fr" : "1fr", gap: "12px" }}>
+                {renderCard(item2, { aspectRatio: "4/3" })}
+                {renderCard(item3, { aspectRatio: "4/3" })}
+              </div>
+            ) : null}
           </div>
-            );
-          })()
-        ))}
-      </div>
+        );
+      })()}
       {deleteConfirm !== null && createPortal(
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)}>
           <div className="mx-4 w-full max-w-sm rounded-xl border border-black/10 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -2049,6 +2082,208 @@ function MaterialsSection({
   );
 }
 
+function GeneralPaletteSection({ orderedActiveRooms, allRoomPresets, getRoomColors, onNavigateToRoom }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-black/10 bg-white p-4">
+        <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
+        <h2 className="type-h2">Palette de l'appartement</h2>
+        <p className="mt-1 text-sm text-slate-600">Toutes les pièces et leurs couleurs. Cliquer pour accéder à une pièce.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {orderedActiveRooms.map((key) => {
+          const p = allRoomPresets[key];
+          const colors = getRoomColors(key);
+          if (!colors || !p) return null;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onNavigateToRoom(key)}
+              className="group rounded-xl border border-black/10 bg-white p-4 text-left transition-all hover:border-slate-400/40 hover:shadow-md"
+            >
+              <div className="mb-3 h-2 w-full rounded-full" style={{ backgroundColor: colors.dominant.hex }} />
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <div className="font-medium text-slate-900">{p.label}</div>
+                <span className="shrink-0 text-slate-300 transition-colors group-hover:text-slate-500">→</span>
+              </div>
+              <div className="flex gap-2">
+                {[
+                  { ...colors.dominant, sublabel: "Dom." },
+                  { ...colors.secondary, sublabel: "Sec." },
+                  { ...colors.accent, sublabel: "Acc." },
+                ].map(({ hex, sublabel }) => (
+                  <div key={sublabel} className="min-w-0 flex-1">
+                    <div className="mb-1 h-7 rounded border border-black/10" style={{ backgroundColor: hex }} />
+                    <div className="truncate text-[10px] text-slate-400">{sublabel}</div>
+                    <div className="truncate font-mono text-[10px] text-slate-600">{hex}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 line-clamp-1 text-xs text-slate-400">{p.line}</p>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function GeneralContextSection({ generalContext, setGeneralContext }) {
+  return (
+    <div className="rounded-xl border border-black/10 bg-white p-4">
+      <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Appartement</p>
+      <h2 className="type-h2">Contexte & goûts de design</h2>
+      <p className="mt-1 mb-3 text-sm text-slate-600">
+        Style général, contraintes, coups de cœur, choses à éviter…
+        Ce texte est transmis à l'IA dans chaque conversation pièce.
+      </p>
+      <textarea
+        className="min-h-36 w-full rounded-md border border-black/15 bg-white p-3 text-sm focus:outline-none focus:ring-1 focus:ring-black/30"
+        placeholder="Ex : Style rétro années 70, coloré mais doux. On aime le bois clair, les plantes, les textiles en lin. On évite le minimalisme froid et les accents rouges. Budget peinture prioritaire…"
+        value={generalContext}
+        onChange={(e) => setGeneralContext(e.target.value)}
+      />
+      <p className="mt-1 text-right text-[10px] text-slate-400">{generalContext.length}/400 recommandés</p>
+    </div>
+  );
+}
+
+function GeneralResourcesSection({ generalResources, setGeneralResources }) {
+  const [urlInput, setUrlInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    const url = urlInput.trim();
+    if (!url) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const preview = await fetchLinkPreview(url);
+      setGeneralResources((prev) => [
+        { id: `res-${Date.now()}`, url: preview.url || url, title: preview.title || url, description: preview.description || null, image: preview.image || null },
+        ...prev,
+      ]);
+      setUrlInput("");
+    } catch {
+      setError("Impossible de charger ce lien.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-black/10 bg-white p-4">
+      <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Appartement</p>
+      <h2 className="type-h2">Ressources</h2>
+      <p className="mt-1 mb-3 text-sm text-slate-600">
+        Pinterest, boutiques, blogs design — références valables pour tout l'appartement.
+      </p>
+      <form onSubmit={handleAdd} className="mb-4 flex gap-2">
+        <input
+          type="url"
+          value={urlInput}
+          onChange={(e) => { setUrlInput(e.target.value); setError(null); }}
+          placeholder="https://pinterest.fr/…"
+          className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black/30"
+          disabled={isLoading}
+        />
+        <button
+          type="submit"
+          disabled={isLoading || !urlInput.trim()}
+          className="rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+        >
+          {isLoading ? "…" : "Ajouter"}
+        </button>
+      </form>
+      {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
+      {generalResources.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {generalResources.map((resource) => {
+            const hostname = (() => {
+              try { return new URL(resource.url).hostname.replace(/^www\./, ""); } catch { return resource.url; }
+            })();
+            return (
+              <div key={resource.id} className="group relative overflow-hidden rounded-xl border border-black/10 bg-white">
+                {resource.image ? (
+                  <div className="h-36 overflow-hidden bg-slate-100">
+                    <img src={resource.image} alt={resource.title} className="h-full w-full object-cover" loading="lazy" />
+                  </div>
+                ) : (
+                  <div className="flex h-20 items-center justify-center bg-[#f9f7f3] text-2xl">🔗</div>
+                )}
+                <div className="p-3">
+                  <p className="mb-0.5 text-[10px] text-slate-400">{hostname}</p>
+                  <a
+                    href={resource.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="line-clamp-2 text-sm font-medium text-slate-900 hover:underline"
+                  >
+                    {resource.title}
+                  </a>
+                  {resource.description && (
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-500">{resource.description}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGeneralResources((prev) => prev.filter((r) => r.id !== resource.id))}
+                  aria-label="Supprimer"
+                  className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-slate-500 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-600"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-400">Aucune ressource ajoutée.</p>
+      )}
+    </div>
+  );
+}
+
+function GeneralView({
+  orderedActiveRooms, allRoomPresets, getRoomColors,
+  generalContext, setGeneralContext,
+  roomLists, setRoomLists,
+  generalResources, setGeneralResources,
+  onNavigateToRoom,
+}) {
+  return (
+    <div className="space-y-6">
+      <GeneralPaletteSection
+        orderedActiveRooms={orderedActiveRooms}
+        allRoomPresets={allRoomPresets}
+        getRoomColors={getRoomColors}
+        onNavigateToRoom={onNavigateToRoom}
+      />
+      <GeneralContextSection
+        generalContext={generalContext}
+        setGeneralContext={setGeneralContext}
+      />
+      <div className="rounded-xl border border-black/10 bg-white p-4">
+        <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Appartement</p>
+        <h2 className="type-h2 mb-4">Todos globaux</h2>
+        <ListeSection
+          room="general"
+          label="Appartement"
+          roomLists={roomLists}
+          setRoomLists={setRoomLists}
+        />
+      </div>
+      <GeneralResourcesSection
+        generalResources={generalResources}
+        setGeneralResources={setGeneralResources}
+      />
+    </div>
+  );
+}
+
 function renderMessageContent(content) {
   const tokenRegex = /\*\*([^*]+)\*\*|\*([^*]+)\*|\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
   const lines = content.split('\n');
@@ -2084,7 +2319,7 @@ function renderMessageContent(content) {
   });
 }
 
-function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages }) {
+function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes }) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState(null);
@@ -2153,17 +2388,53 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages })
             accentHex: aiContext.accentHex,
             roomNote: aiContext.roomNote,
             imageMetadataSummary,
+            generalContext: aiContext.generalContext,
+            allRoomsSummary: aiContext.allRoomsSummary,
+            shoppingItems: aiContext.shoppingItems,
+            materialSummary: aiContext.materialSummary,
           },
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur IA.");
+
+      const assistantMsg = {
+        id: `msg-${Date.now()}-a`,
+        role: "assistant",
+        content: data.content || "",
+        imagePrompt: data.imagePrompt,
+      };
+
+      if (data.toolCalls?.length) {
+        const notices = [];
+        for (const call of data.toolCalls) {
+          if (call.name === "add_to_shopping_list" && setRoomLists) {
+            const newItems = (call.args.items || []).map((text) => ({
+              id: `shopping-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              text,
+              done: false,
+            }));
+            setRoomLists((prev) => ({
+              ...prev,
+              [room]: {
+                ...(prev[room] || {}),
+                shopping: [...((prev[room] || {}).shopping || []), ...newItems],
+              },
+            }));
+            notices.push(`${newItems.length} article${newItems.length > 1 ? "s" : ""} ajouté${newItems.length > 1 ? "s" : ""} à ta liste.`);
+          } else if (call.name === "save_room_note" && setRoomNotes) {
+            setRoomNotes((prev) => ({ ...prev, [room]: call.args.note }));
+            notices.push("Note de pièce mise à jour.");
+          }
+        }
+        if (notices.length) {
+          assistantMsg.content = (assistantMsg.content ? assistantMsg.content + "\n\n" : "") + `_${notices.join(" ")}_`;
+        }
+      }
+
       setChatHistory((prev) => ({
         ...prev,
-        [room]: [
-          ...nextHistory,
-          { id: `msg-${Date.now()}-a`, role: "assistant", content: data.content, imagePrompt: data.imagePrompt },
-        ],
+        [room]: [...nextHistory, assistantMsg],
       }));
     } catch (err) {
       setChatHistory((prev) => ({
@@ -3037,6 +3308,13 @@ export default function App() {
   });
   const [draggingRoom, setDraggingRoom] = useState(null);
   const [chatHistory, setChatHistory] = useState({});
+  const [generalContext, setGeneralContext] = useState(
+    () => localStorage.getItem(GENERAL_CONTEXT_STORAGE_KEY) || ""
+  );
+  const [generalResources, setGeneralResources] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(GENERAL_RESOURCES_STORAGE_KEY) || "[]"); }
+    catch { return []; }
+  });
 
   const customRoomPresets = Object.fromEntries(
     customRooms.map((customRoom) => [
@@ -3103,6 +3381,24 @@ export default function App() {
       kind: key.includes("-plan-") ? "plan" : key.includes("-material-") ? "matériau" : "inspiration",
       metadata,
     }));
+  const allRoomsSummary = orderedActiveRooms.map((key) => {
+    const p = allRoomPresets[key];
+    const nuance = roomNuances[key] || INITIAL_ROOM_NUANCES[key] || {};
+    const dHex = getShade(nuance.dominantColor || p?.dominant || "creme", nuance.dominant || "moyen");
+    return p ? `${p.label}: ${dHex}` : null;
+  }).filter(Boolean).join(" | ");
+
+  const aiShoppingItems = (roomLists[room]?.shopping || [])
+    .filter((i) => !i.done).slice(0, 5).map((i) => i.text);
+
+  const aiMaterialSummary = [
+    ...(materialsByRoom[room] || []).map((m) => `${m.label}: ${m.value}`),
+    ...(extraMaterialImages[room] || []).map((_, i) => {
+      const meta = extraMaterialMeta[`${room}-extra-material-${i}`] || {};
+      return meta.label || null;
+    }).filter(Boolean),
+  ].slice(0, 5);
+
   const aiContext = {
     roomLabel: preset.label,
     line: preset.line,
@@ -3114,6 +3410,10 @@ export default function App() {
     accentHex,
     roomNote: roomNotes[room] || "",
     roomImageMetadata,
+    generalContext: generalContext.slice(0, 400),
+    allRoomsSummary,
+    shoppingItems: aiShoppingItems,
+    materialSummary: aiMaterialSummary,
   };
 
   const updateRoomNuance = (key, value) => {
@@ -3206,6 +3506,8 @@ export default function App() {
       roomLists,
       roomDocuments,
       roomOrder,
+      generalContext,
+      generalResources,
     };
 
     await storeLargeValue(PROJECT_STATE_STORAGE_KEY, projectState);
@@ -3270,6 +3572,8 @@ export default function App() {
     if (saved.roomDocuments) setRoomDocuments(saved.roomDocuments);
     if (saved.roomOrder) setRoomOrder(saved.roomOrder);
     if (saved.savedAt) setLastSavedAt(saved.savedAt);
+    if (typeof saved.generalContext === "string") setGeneralContext(saved.generalContext);
+    if (Array.isArray(saved.generalResources)) setGeneralResources(saved.generalResources);
   };
 
   useEffect(() => {
@@ -3322,6 +3626,7 @@ export default function App() {
     planUploads, planLinks, extraPlanImages, extraMaterialImages, extraMaterialMeta,
     aiInspirations, imageAnalysis, deletedImages,
     roomNuances, roomNotes, roomLists, roomDocuments, roomOrder,
+    generalContext, generalResources, chatHistory,
   ]);
 
   useEffect(() => {
@@ -3371,6 +3676,8 @@ export default function App() {
         if (saved.roomDocuments) setRoomDocuments(prev => Object.keys(prev).length ? { ...saved.roomDocuments, ...prev } : saved.roomDocuments);
         if (saved.roomOrder) setRoomOrder(saved.roomOrder);
         if (saved.savedAt) setLastSavedAt(saved.savedAt);
+        if (typeof saved.generalContext === "string") setGeneralContext(saved.generalContext);
+        if (Array.isArray(saved.generalResources)) setGeneralResources(saved.generalResources);
       })
       .catch(() => {});
 
@@ -3465,6 +3772,14 @@ export default function App() {
   }, [roomOrder]);
 
   useEffect(() => {
+    try { localStorage.setItem(GENERAL_CONTEXT_STORAGE_KEY, generalContext); } catch {}
+  }, [generalContext]);
+
+  useEffect(() => {
+    safelyStore(GENERAL_RESOURCES_STORAGE_KEY, generalResources);
+  }, [generalResources]);
+
+  useEffect(() => {
     setRoomMode(lastRoomModeRef.current[room] || "inspirations");
   }, [room]);
 
@@ -3522,6 +3837,14 @@ export default function App() {
         </div>
         {mobileMenuOpen ? (
           <div className="mt-2 grid max-h-[60vh] gap-2 overflow-y-auto rounded-lg border border-black/10 bg-white p-2 shadow-lg">
+            <button
+              type="button"
+              onClick={() => { setViewMode("general"); setMobileMenuOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              className={`rounded-md border px-3 py-2 text-left text-sm font-medium ${viewMode === "general" ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-[#f9f7f3]"}`}
+            >
+              Général
+            </button>
+            <div className="my-1 h-px bg-black/10" />
             {orderedActiveRooms.map((key) => {
               const pending = roomPendingCount(key);
               return (
@@ -3619,6 +3942,16 @@ export default function App() {
 
         <section className="sticky top-2 z-30 hidden rounded-xl border border-black/10 bg-white/95 p-3 backdrop-blur sm:block md:top-4 md:p-4">
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => { setViewMode("general"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-medium ${
+                viewMode === "general" ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-[#f9f7f3]"
+              }`}
+            >
+              Général
+            </button>
+            <div className="mx-1 h-6 w-px shrink-0 bg-black/10" />
             {orderedActiveRooms.map((key) => {
               const pending = roomPendingCount(key);
               return (
@@ -3712,7 +4045,20 @@ export default function App() {
           </div>
         ) : null}
 
-        {viewMode === "todos-global" ? (
+        {viewMode === "general" ? (
+          <GeneralView
+            orderedActiveRooms={orderedActiveRooms}
+            allRoomPresets={allRoomPresets}
+            getRoomColors={getRoomColors}
+            generalContext={generalContext}
+            setGeneralContext={setGeneralContext}
+            roomLists={roomLists}
+            setRoomLists={setRoomLists}
+            generalResources={generalResources}
+            setGeneralResources={setGeneralResources}
+            onNavigateToRoom={(key) => { setRoom(key); setViewMode("room"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+          />
+        ) : viewMode === "todos-global" ? (
           <TodosGlobalView
             orderedActiveRooms={orderedActiveRooms}
             allRoomPresets={allRoomPresets}
@@ -4025,6 +4371,8 @@ export default function App() {
             aiContext={aiContext}
             chatHistory={chatHistory}
             setChatHistory={setChatHistory}
+            setRoomLists={setRoomLists}
+            setRoomNotes={setRoomNotes}
             roomImages={[
               ...(roomPlanImages[room] || []).map((src, i) => ({ src: planUploads[`${room}-plan-${i}`] || src, key: `${room}-plan-${i}` })),
               ...(extraPlanImages[room] || []).map((src, i) => ({ src, key: `${room}-plan-extra-${i}` })),

@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@supabase/supabase-js";
 import { RoomViewer3D } from "./RoomViewer3D";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || "",
@@ -1171,6 +1174,51 @@ function Lightbox({ src, onClose }) {
   );
 }
 
+function PdfThumbnail({ url, className }) {
+  const canvasRef = useRef(null);
+  const [rendered, setRendered] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!url) return;
+    let cancelled = false;
+
+    pdfjsLib
+      .getDocument({ url })
+      .promise.then((pdf) => pdf.getPage(1))
+      .then((page) => {
+        if (cancelled) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const viewport = page.getViewport({ scale: 0.3 });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        return page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      })
+      .then(() => {
+        if (!cancelled) setRendered(true);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  if (failed) {
+    return <div className={`flex items-center justify-center bg-stone-100 text-xl ${className || ""}`}>📄</div>;
+  }
+
+  return (
+    <div className={`overflow-hidden bg-stone-100 ${className || ""}`}>
+      {!rendered && <div className="flex h-full w-full items-center justify-center text-xl">📄</div>}
+      <canvas ref={canvasRef} style={{ display: rendered ? "block" : "none", width: "100%", height: "100%" }} />
+    </div>
+  );
+}
+
 function PlanPreview({
   room,
   label,
@@ -1194,6 +1242,7 @@ function PlanPreview({
   ].filter((item) => !deletedImages[item.key]);
   const [missingCards, setMissingCards] = useState({});
   const [index, setIndex] = useState(0);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   useEffect(() => {
     setIndex(0);
@@ -1334,12 +1383,7 @@ function PlanPreview({
               title="Supprimer l'image"
               aria-label="Supprimer l'image"
               className="grid h-11 w-11 place-items-center rounded-md border border-black/15 bg-white/90 text-base font-bold text-slate-950 shadow-sm backdrop-blur hover:bg-white"
-              onClick={() => {
-                setDeletedImages((prev) => ({ ...prev, [currentKey]: true }));
-                setPlanUploads((prev) => removeObjectKey(prev, currentKey));
-                setPlanLinks((prev) => removeObjectKey(prev, currentKey));
-                setImageAnalysis((prev) => removeObjectKey(prev, currentKey));
-              }}
+              onClick={() => setDeleteConfirm(currentKey)}
             >
               ×
             </button>
@@ -1360,7 +1404,7 @@ function PlanPreview({
                   className={`h-14 w-20 shrink-0 overflow-hidden rounded border ${index === i ? "border-slate-900" : "border-black/15"}`}
                 >
                   {isPdfUrl(thumbSrc) ? (
-                    <div className="flex h-full w-full items-center justify-center bg-stone-100 text-xl">📄</div>
+                    <PdfThumbnail url={thumbSrc} className="h-full w-full" />
                   ) : (
                     <img src={thumbSrc} alt={`Miniature plan ${i + 1}`} className="h-full w-full object-cover" />
                   )}
@@ -1376,6 +1420,33 @@ function PlanPreview({
           </a>
         ) : null}
       </div>
+      {deleteConfirm !== null && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)}>
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-black/10 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-2 text-base font-semibold text-slate-900">Supprimer l'image ?</h2>
+            <p className="mb-5 text-sm text-slate-500">Cette action est irréversible.</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setDeleteConfirm(null)} className="rounded-md border border-black/15 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeletedImages((prev) => ({ ...prev, [deleteConfirm]: true }));
+                  setPlanUploads((prev) => removeObjectKey(prev, deleteConfirm));
+                  setPlanLinks((prev) => removeObjectKey(prev, deleteConfirm));
+                  setImageAnalysis((prev) => removeObjectKey(prev, deleteConfirm));
+                  setDeleteConfirm(null);
+                }}
+                className="rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -1387,6 +1458,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
   ].filter((item) => !deletedImages[item.cardKey]);
   const [missingCards, setMissingCards] = useState({});
   const [page, setPage] = useState(0);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const pageSize = 3;
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
 
@@ -1524,12 +1596,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
                       title="Supprimer l'image"
                       aria-label="Supprimer l'image"
                       className="grid h-11 w-11 place-items-center rounded-md border border-black/15 bg-white/90 text-base font-bold text-slate-950 shadow-sm backdrop-blur hover:bg-white"
-                      onClick={() => {
-                        setDeletedImages((prev) => ({ ...prev, [cardKey]: true }));
-                        setUploadedImages((prev) => removeObjectKey(prev, cardKey));
-                        setInspirationLinks((prev) => removeObjectKey(prev, cardKey));
-                        setImageAnalysis((prev) => removeObjectKey(prev, cardKey));
-                      }}
+                      onClick={() => setDeleteConfirm(cardKey)}
                     >
                       ×
                     </button>
@@ -1548,6 +1615,33 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
           })()
         ))}
       </div>
+      {deleteConfirm !== null && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)}>
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-black/10 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-2 text-base font-semibold text-slate-900">Supprimer l'image ?</h2>
+            <p className="mb-5 text-sm text-slate-500">Cette action est irréversible.</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setDeleteConfirm(null)} className="rounded-md border border-black/15 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeletedImages((prev) => ({ ...prev, [deleteConfirm]: true }));
+                  setUploadedImages((prev) => removeObjectKey(prev, deleteConfirm));
+                  setInspirationLinks((prev) => removeObjectKey(prev, deleteConfirm));
+                  setImageAnalysis((prev) => removeObjectKey(prev, deleteConfirm));
+                  setDeleteConfirm(null);
+                }}
+                className="rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -1708,6 +1802,7 @@ function MaterialsSection({
   const [missingCards, setMissingCards] = useState({});
   const [page, setPage] = useState(0);
   const [editingCard, setEditingCard] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const pageSize = 3;
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
 
@@ -1871,13 +1966,7 @@ function MaterialsSection({
                     title="Supprimer"
                     aria-label="Supprimer"
                     className="grid h-11 w-11 place-items-center rounded-md border border-black/15 bg-white/90 text-base font-bold text-slate-950 shadow-sm backdrop-blur hover:bg-white"
-                    onClick={() => {
-                      setDeletedImages((prev) => ({ ...prev, [cardKey]: true }));
-                      setMaterialUploads((prev) => removeObjectKey(prev, cardKey));
-                      setMaterialLinks((prev) => removeObjectKey(prev, cardKey));
-                      setImageAnalysis((prev) => removeObjectKey(prev, cardKey));
-                      setExtraMaterialMeta((prev) => removeObjectKey(prev, cardKey));
-                    }}
+                    onClick={() => setDeleteConfirm(cardKey)}
                   >
                     ×
                   </button>
@@ -1928,6 +2017,34 @@ function MaterialsSection({
           />
         );
       })()}
+      {deleteConfirm !== null && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)}>
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-black/10 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-2 text-base font-semibold text-slate-900">Supprimer l'image ?</h2>
+            <p className="mb-5 text-sm text-slate-500">Cette action est irréversible.</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setDeleteConfirm(null)} className="rounded-md border border-black/15 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeletedImages((prev) => ({ ...prev, [deleteConfirm]: true }));
+                  setMaterialUploads((prev) => removeObjectKey(prev, deleteConfirm));
+                  setMaterialLinks((prev) => removeObjectKey(prev, deleteConfirm));
+                  setImageAnalysis((prev) => removeObjectKey(prev, deleteConfirm));
+                  setExtraMaterialMeta((prev) => removeObjectKey(prev, deleteConfirm));
+                  setDeleteConfirm(null);
+                }}
+                className="rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -2491,7 +2608,11 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments }) {
         <ul className="space-y-1.5">
           {docs.map((doc) => (
             <li key={doc.id} className="flex items-center gap-3 rounded-lg border border-black/10 bg-white px-3 py-2">
-              <span className="text-xl leading-none">{docIcon(doc.type)}</span>
+              {doc.type?.includes("pdf") ? (
+                <PdfThumbnail url={doc.url} className="h-12 w-9 shrink-0 rounded" />
+              ) : (
+                <span className="text-xl leading-none">{docIcon(doc.type)}</span>
+              )}
               <div className="min-w-0 flex-1">
                 <a
                   href={doc.url}

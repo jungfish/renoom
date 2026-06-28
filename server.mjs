@@ -459,6 +459,7 @@ createServer(async (req, res) => {
         `Palette: dominante ${ctx.dominantName || ""} (${ctx.dominantHex || ""}), secondaire ${ctx.secondaryName || ""} (${ctx.secondaryHex || ""}), accent ${ctx.accentName || ""} (${ctx.accentHex || ""})`,
         ctx.roomNote ? `Notes: ${ctx.roomNote}` : null,
         ctx.imageMetadataSummary ? `Contexte visuel: ${ctx.imageMetadataSummary}` : null,
+        ctx.todoItems?.length ? `Todos de la pièce: ${ctx.todoItems.join(", ")}` : null,
         ctx.shoppingItems?.length ? `En liste de courses: ${ctx.shoppingItems.join(", ")}` : null,
         ctx.materialSummary?.length ? `Matériaux choisis: ${ctx.materialSummary.join("; ")}` : null,
         ctx.allRoomsSummary ? `Autres pièces: ${ctx.allRoomsSummary}` : null,

@@ -2154,15 +2154,32 @@ function ListeSection({ room, label, roomLists, setRoomLists }) {
     }));
   };
 
-  const addLinkItem = (listKey) => {
+  const addLinkItem = async (listKey) => {
     const { label: lbl, url } = linkInput[listKey];
     if (!lbl.trim() || !url.trim()) return;
     const id = `${listKey}-${Date.now()}`;
+    setLinkInput((prev) => ({ ...prev, [listKey]: { label: "", url: "" } }));
+    setLinkMode((prev) => ({ ...prev, [listKey]: false }));
     setRoomLists((prev) => ({
       ...prev,
       [room]: { ...(prev[room] || {}), [listKey]: [...((prev[room] || {})[listKey] || []), { id, text: lbl.trim(), url: url.trim(), done: false }] },
     }));
-    setLinkInput((prev) => ({ ...prev, [listKey]: { label: "", url: "" } }));
+    try {
+      const preview = await fetchLinkPreview(url.trim());
+      if (preview.image) {
+        setRoomLists((prev) => ({
+          ...prev,
+          [room]: {
+            ...(prev[room] || {}),
+            [listKey]: ((prev[room] || {})[listKey] || []).map((item) =>
+              item.id === id ? { ...item, image: preview.image, previewTitle: preview.title } : item
+            ),
+          },
+        }));
+      }
+    } catch {
+      // pas de preview, pas grave
+    }
   };
 
   const renderList = (listKey, items, input, setInput, title, eyebrow, placeholder) => {
@@ -2252,6 +2269,13 @@ function ListeSection({ room, label, roomLists, setRoomLists }) {
                 >
                   {item.done ? "✓" : ""}
                 </button>
+                {item.image && (
+                  <img
+                    src={item.image}
+                    alt={item.previewTitle || item.text}
+                    className="h-10 w-10 shrink-0 rounded-md object-cover border border-black/10"
+                  />
+                )}
                 <span className={`min-w-0 flex-1 text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{renderItemText(item.text, item.url)}</span>
                 <button
                   type="button"

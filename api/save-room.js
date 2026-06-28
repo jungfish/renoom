@@ -47,6 +47,15 @@ export default async function handler(req, res) {
       const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
       if (!member) { sendJson(res, 403, { error: "Accès refusé." }); return; }
 
+      // Replace complet : delete all then insert
+      const { error: deleteError } = await supabase
+        .from("room_items")
+        .delete()
+        .eq("project_id", projectId)
+        .eq("room_key", roomKey)
+        .eq("list_key", listKey);
+      if (deleteError) throw new Error(deleteError.message);
+
       if (items.length > 0) {
         const rows = items.map((item, idx) => ({
           id: item.id,
@@ -59,15 +68,9 @@ export default async function handler(req, res) {
           image: item.image && item.image.startsWith("data:") ? null : (item.image || null),
           preview_title: item.previewTitle || null,
           position: idx,
-          updated_at: new Date().toISOString(),
         }));
-        const { error: upsertError } = await supabase.from("room_items").upsert(rows, { onConflict: "id" });
-        if (upsertError) throw new Error(upsertError.message);
-        const { error: deleteError } = await supabase.from("room_items").delete().eq("project_id", projectId).eq("room_key", roomKey).eq("list_key", listKey).not("id", "in", `(${items.map((i) => `'${i.id}'`).join(",")})`);
-        if (deleteError) throw new Error(deleteError.message);
-      } else {
-        const { error: deleteError } = await supabase.from("room_items").delete().eq("project_id", projectId).eq("room_key", roomKey).eq("list_key", listKey);
-        if (deleteError) throw new Error(deleteError.message);
+        const { error: insertError } = await supabase.from("room_items").insert(rows);
+        if (insertError) throw new Error(insertError.message);
       }
       sendJson(res, 200, { ok: true });
       return;

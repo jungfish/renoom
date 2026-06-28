@@ -44,9 +44,7 @@ export default async function handler(req, res) {
     // Pour les nouveaux projets, on set owner_id ; pour les existants, RLS vérifie les droits via token
     const upsertData = {
       id: projectId,
-      state,
       updated_at: new Date().toISOString(),
-      // Dual-write config columns (Phase 4)
       active_room:       state.room       || null,
       global_accent:     state.globalAccent || null,
       warmth:            typeof state.warmth === "number" ? state.warmth : null,

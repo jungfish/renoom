@@ -38,7 +38,7 @@ export default async function handler(req, res) {
 
     const { data, error } = await supabaseUser
       .from("projects")
-      .select("state, name, invite_code, owner_id")
+      .select("name, invite_code, owner_id, active_room, global_accent, warmth, general_context, custom_rooms, hidden_rooms, room_order, general_resources")
       .eq("id", id)
       .maybeSingle();
 
@@ -100,9 +100,20 @@ export default async function handler(req, res) {
       });
     }
 
+    const projectConfig = {
+      room:             data.active_room       || null,
+      globalAccent:     data.global_accent     || null,
+      warmth:           data.warmth            ?? null,
+      generalContext:   data.general_context   || "",
+      customRooms:      data.custom_rooms      || [],
+      hiddenRooms:      data.hidden_rooms      || [],
+      roomOrder:        data.room_order        || null,
+      generalResources: data.general_resources || [],
+    };
+
     res.setHeader("Cache-Control", "no-store");
     sendJson(res, 200, {
-      state: data.state,
+      projectConfig,
       name: data.name,
       inviteCode: data.invite_code,
       isOwner: data.owner_id === user.id,

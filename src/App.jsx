@@ -2655,6 +2655,7 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
         generalContext: aiContext.generalContext,
         allRoomsSummary: aiContext.allRoomsSummary,
         shoppingItems: aiContext.shoppingItems,
+        todoItems: aiContext.todoItems,
         materialSummary: aiContext.materialSummary,
       },
     });
@@ -3981,6 +3982,9 @@ export default function App() {
   const aiShoppingItems = (roomLists[room]?.shopping || [])
     .filter((i) => !i.done).slice(0, 5).map((i) => i.text);
 
+  const aiTodoItems = (roomLists[room]?.todos || [])
+    .filter((i) => !i.done).slice(0, 8).map((i) => i.text);
+
   const aiMaterialSummary = [
     ...(materialsByRoom[room] || []).map((m) => `${m.label}: ${m.value}`),
     ...(extraMaterialImages[room] || []).map((_, i) => {
@@ -4005,6 +4009,7 @@ export default function App() {
     generalContext: generalContext.slice(0, 400),
     allRoomsSummary,
     shoppingItems: aiShoppingItems,
+    todoItems: aiTodoItems,
     materialSummary: aiMaterialSummary,
   };
 
@@ -4216,15 +4221,20 @@ export default function App() {
   };
 
   const hydrateState = (saved) => {
-    if (saved.room) setRoom(saved.room);
-    if (saved.globalAccent) setGlobalAccent(saved.globalAccent);
-    if (typeof saved.warmth === "number") setWarmth(saved.warmth);
-    if (Array.isArray(saved.customRooms)) setCustomRooms(saved.customRooms);
-    if (Array.isArray(saved.hiddenRooms)) setHiddenRooms(saved.hiddenRooms);
-    // Utiliser room_media normalisé seulement s'il contient des données réelles (non-vides)
-    const hasRealMedia = saved.roomMediaNormalized &&
-      Object.values(saved.roomMediaNormalized).some((v) => v && Object.keys(v).length > 0);
-    const media = hasRealMedia ? saved.roomMediaNormalized : saved;
+    // Scalaires projet — priorité projectConfig (load-project normalisé) puis blob (snapshot restore / localStorage)
+    const cfg = saved.projectConfig || saved;
+    if (cfg.room) setRoom(cfg.room);
+    if (cfg.globalAccent) setGlobalAccent(cfg.globalAccent);
+    if (typeof cfg.warmth === "number") setWarmth(cfg.warmth);
+    if (Array.isArray(cfg.customRooms)) setCustomRooms(cfg.customRooms);
+    if (Array.isArray(cfg.hiddenRooms)) setHiddenRooms(cfg.hiddenRooms);
+    if (cfg.roomOrder) setRoomOrder(cfg.roomOrder);
+    if (typeof cfg.generalContext === "string") setGeneralContext(cfg.generalContext);
+    if (Array.isArray(cfg.generalResources)) setGeneralResources(cfg.generalResources);
+    if (cfg.savedAt) setLastSavedAt(cfg.savedAt);
+
+    // Médias — source normalisée (room_media) ou blob (snapshot restore)
+    const media = saved.roomMediaNormalized || saved;
     if (media.uploadedImages      && Object.keys(media.uploadedImages).length)      setUploadedImages(media.uploadedImages);
     if (media.inspirationLinks    && Object.keys(media.inspirationLinks).length)    setInspirationLinks(media.inspirationLinks);
     if (media.materialUploads     && Object.keys(media.materialUploads).length)     setMaterialUploads(media.materialUploads);
@@ -4238,11 +4248,16 @@ export default function App() {
     if (media.instagramItems      && Object.keys(media.instagramItems).length)      setInstagramItems(media.instagramItems);
     if (media.imageAnalysis       && Object.keys(media.imageAnalysis).length)       setImageAnalysis(media.imageAnalysis);
     if (media.deletedImages       && Object.keys(media.deletedImages).length)       setDeletedImages(media.deletedImages);
+
+    // Nuances — source normalisée ou blob (snapshot)
     if (saved.roomNuancesNormalized) setRoomNuances(saved.roomNuancesNormalized);
     else if (saved.roomNuances) setRoomNuances(saved.roomNuances);
+
+    // Notes — source normalisée ou blob (snapshot)
     if (saved.roomNotesNormalized) setRoomNotes(saved.roomNotesNormalized);
     else if (saved.roomNotes) setRoomNotes(saved.roomNotes);
-    // Préférer les données normalisées (roomItems) si disponibles
+
+    // Listes (todos + shopping) — source normalisée ou blob (snapshot)
     if (Array.isArray(saved.roomItems) && saved.roomItems.length > 0) {
       const built = {};
       for (const item of saved.roomItems) {
@@ -4261,13 +4276,12 @@ export default function App() {
     } else if (saved.roomLists) {
       setRoomLists(saved.roomLists);
     }
+
+    // Documents — source normalisée ou blob (snapshot)
     if (saved.roomDocumentsNormalized) setRoomDocuments(saved.roomDocumentsNormalized);
     else if (saved.roomDocuments) setRoomDocuments(saved.roomDocuments);
-    if (saved.roomOrder) setRoomOrder(saved.roomOrder);
-    if (saved.savedAt) setLastSavedAt(saved.savedAt);
-    if (typeof saved.generalContext === "string") setGeneralContext(saved.generalContext);
-    if (Array.isArray(saved.generalResources)) setGeneralResources(saved.generalResources);
-    // Préférer les messages normalisés si disponibles
+
+    // Chat — source normalisée ou blob (snapshot)
     if (Array.isArray(saved.chatMessages) && saved.chatMessages.length > 0) {
       const built = {};
       for (const m of saved.chatMessages) {
@@ -4287,16 +4301,9 @@ export default function App() {
     setLoadingFromUrl(true);
     authedFetch(`/api/load-project?id=${encodeURIComponent(idToLoad)}&t=${Date.now()}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then(({ state, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }) => {
-        if (state) {
-          const extra = {};
-          if (roomItems?.length) extra.roomItems = roomItems;
-          if (chatMessages?.length) extra.chatMessages = chatMessages;
-          if (roomNotesNormalized) extra.roomNotesNormalized = roomNotesNormalized;
-          if (roomDocumentsNormalized) extra.roomDocumentsNormalized = roomDocumentsNormalized;
-          if (roomNuancesNormalized) extra.roomNuancesNormalized = roomNuancesNormalized;
-          if (roomMediaNormalized) extra.roomMediaNormalized = roomMediaNormalized;
-          hydrateState(Object.keys(extra).length ? { ...state, ...extra } : state);
+      .then(({ projectConfig, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }) => {
+        if (projectConfig) {
+          hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized });
           setProjectId(idToLoad);
           localStorage.setItem(PROJECT_ID_STORAGE_KEY, idToLoad);
         }
@@ -4377,13 +4384,18 @@ export default function App() {
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "projects", filter: `id=eq.${projectId}` },
-        (payload) => {
-          const remoteState = payload.new?.state;
-          if (!remoteState) return;
+        () => {
+          if (isApplyingRemoteUpdate.current) return;
           isApplyingRemoteUpdate.current = true;
-          const { room: _ignoredRoom, ...remoteContent } = remoteState;
-          hydrateState(remoteContent);
-          setTimeout(() => { isApplyingRemoteUpdate.current = false; }, 200);
+          authedFetch(`/api/load-project?id=${encodeURIComponent(projectId)}&t=${Date.now()}`, { cache: "no-store" })
+            .then((r) => r.json())
+            .then(({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }) => {
+              if (projectConfig) {
+                hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized });
+              }
+            })
+            .catch(() => {})
+            .finally(() => { setTimeout(() => { isApplyingRemoteUpdate.current = false; }, 200); });
         }
       )
       .subscribe();

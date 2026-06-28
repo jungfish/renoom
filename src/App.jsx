@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { createClient } from "@supabase/supabase-js";
 import { RoomViewer3D } from "./RoomViewer3D";
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL || "",
+  import.meta.env.VITE_SUPABASE_ANON_KEY || ""
+);
 
 const baseColors = {
   creme: { name: "Crème chaud", light: "#FAF6F0", hex: "#F4F1EA", medium: "#E8DFD3", dark: "#D8CEC1" },
@@ -2280,6 +2286,8 @@ export default function App() {
   const [warmth, setWarmth] = useState(60);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [projectId, setProjectId] = useState(() => localStorage.getItem(PROJECT_ID_STORAGE_KEY) || null);
+  const isApplyingRemoteUpdate = useRef(false);
+  const autoSaveTimerRef = useRef(null);
   const [isSavingToServer, setIsSavingToServer] = useState(false);
   const [loadingFromUrl, setLoadingFromUrl] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -2688,6 +2696,40 @@ export default function App() {
       .catch(() => {})
       .finally(() => setLoadingFromUrl(false));
   }, []);
+
+  // Realtime subscription — receive updates from other users on the same project
+  useEffect(() => {
+    if (!projectId || !import.meta.env.VITE_SUPABASE_URL) return;
+    const channel = supabase
+      .channel(`project-${projectId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "projects", filter: `id=eq.${projectId}` },
+        (payload) => {
+          const remoteState = payload.new?.state;
+          if (!remoteState) return;
+          isApplyingRemoteUpdate.current = true;
+          hydrateState(remoteState);
+          setTimeout(() => { isApplyingRemoteUpdate.current = false; }, 200);
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-save debounce — silently push changes to Supabase for real-time sharing
+  useEffect(() => {
+    if (!projectId || isApplyingRemoteUpdate.current) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => { saveProject(); }, 5000);
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  }, [ // eslint-disable-line react-hooks/exhaustive-deps
+    projectId, room, globalAccent, warmth, customRooms, hiddenRooms,
+    uploadedImages, inspirationLinks, materialUploads, materialLinks,
+    planUploads, planLinks, extraPlanImages, extraMaterialImages,
+    aiInspirations, imageAnalysis, deletedImages,
+    roomNuances, roomNotes, roomLists, roomDocuments, roomOrder,
+  ]);
 
   useEffect(() => {
     let isMounted = true;

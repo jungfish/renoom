@@ -29,12 +29,13 @@ export default async function handler(req, res) {
   const blobUrl = `https://${storeId}.public.blob.vercel-storage.com/projects/${id}.json`;
 
   try {
-    const response = await fetch(blobUrl);
+    const response = await fetch(`${blobUrl}?t=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) {
       sendJson(res, 404, { error: "Projet introuvable." });
       return;
     }
     const state = await response.json();
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     sendJson(res, 200, { state });
   } catch (err) {
     sendJson(res, 500, { error: err.message || "Erreur lors du chargement." });

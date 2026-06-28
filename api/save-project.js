@@ -59,17 +59,23 @@ export default async function handler(req, res) {
 
     if (isNewProject) {
       upsertData.owner_id = user.id;
+    } else {
+      // Vérification explicite de membership (remplace la vérification RLS)
+      const { data: member } = await supabaseAdmin
+        .from("project_members")
+        .select("role")
+        .eq("project_id", projectId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!member) {
+        sendJson(res, 403, { error: "Accès refusé." });
+        return;
+      }
     }
 
-    // Utiliser le token utilisateur pour que RLS s'applique sur les projets existants
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabaseUser = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY,
-      { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } }
-    );
-
-    const { error: upsertError } = await supabaseUser
+    // Utiliser supabaseAdmin pour contourner le bug INSERT WITH CHECK sur upsert
+    // (sans owner_id dans le payload, Postgres évalue owner_id = NULL ≠ auth.uid())
+    const { error: upsertError } = await supabaseAdmin
       .from("projects")
       .upsert(upsertData, { onConflict: "id" });
 
@@ -83,6 +89,14 @@ export default async function handler(req, res) {
         role: "owner",
       }, { onConflict: "project_id,user_id" });
     }
+
+    // Client user pour les writes soumis à RLS (room_media, room_nuances)
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabaseUser = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY,
+      { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } }
+    );
 
     // Dual-write room_media (Phase 5) — fire-and-forget
     const mediaData = {

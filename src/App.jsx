@@ -2517,6 +2517,7 @@ function GeneralView({
   roomLists, setRoomLists,
   generalResources, setGeneralResources,
   onNavigateToRoom,
+  projectId, saveRoomItemsFn,
 }) {
   return (
     <div className="space-y-6">
@@ -2539,7 +2540,7 @@ function GeneralView({
           roomLists={roomLists}
           setRoomLists={setRoomLists}
           projectId={projectId}
-          saveRoomItemsFn={saveRoomItemsToServer}
+          saveRoomItemsFn={saveRoomItemsFn}
         />
       </div>
       <GeneralResourcesSection
@@ -4959,6 +4960,8 @@ export default function App() {
             generalResources={generalResources}
             setGeneralResources={setGeneralResources}
             onNavigateToRoom={(key) => { setRoom(key); setViewMode("room"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+            projectId={projectId}
+            saveRoomItemsFn={saveRoomItemsToServer}
           />
         ) : viewMode === "todos-global" ? (
           <TodosGlobalView

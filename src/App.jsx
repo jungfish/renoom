@@ -2684,7 +2684,12 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
                               className="relative h-16 w-24 overflow-hidden rounded border border-black/15 hover:border-slate-900 disabled:opacity-50"
                             >
                               {generatingFor === img.src ? (
-                                <div className="absolute inset-0 flex items-center justify-center bg-white/80 text-xs">…</div>
+                                <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+                                  <svg className="animate-spin h-5 w-5 text-slate-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 12 0 12 12h-4z" />
+                                  </svg>
+                                </div>
                               ) : null}
                               <img src={img.src} alt="" className="h-full w-full object-cover" />
                             </button>
@@ -2720,6 +2725,19 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
           <div className="flex justify-start">
             <div className="rounded-2xl rounded-bl-sm border border-black/10 bg-[#f9f7f3] px-4 py-3 text-sm text-slate-500">
               <span className="animate-pulse">…</span>
+            </div>
+          </div>
+        ) : null}
+        {generatingFor ? (
+          <div className="flex justify-start">
+            <div className="rounded-2xl rounded-bl-sm border border-black/10 bg-[#f9f7f3] px-4 py-3 text-sm text-slate-500">
+              <div className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 12 0 12 12h-4z" />
+                </svg>
+                <span>Génération de l'image en cours…</span>
+              </div>
             </div>
           </div>
         ) : null}

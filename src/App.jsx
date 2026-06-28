@@ -1140,9 +1140,16 @@ function AiImageEditor({ imageSrc, imageKind, imageTitle, aiContext, imageMetada
   );
 }
 
-function Lightbox({ src, onClose }) {
+function Lightbox({ images, index: initialIndex, onClose }) {
+  const [index, setIndex] = useState(initialIndex);
+  const total = images.length;
+
   useEffect(() => {
-    const onKeyDown = (e) => { if (e.key === "Escape") onClose(); };
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft") setIndex((p) => Math.max(0, p - 1));
+      else if (e.key === "ArrowRight") setIndex((p) => Math.min(total - 1, p + 1));
+    };
     document.addEventListener("keydown", onKeyDown);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -1150,7 +1157,8 @@ function Lightbox({ src, onClose }) {
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = prev;
     };
-  }, [onClose]);
+  }, [onClose, total]);
+
   return createPortal(
     <div
       className="fixed inset-0 z-[200] flex cursor-zoom-out items-center justify-center bg-black/90 p-4"
@@ -1166,12 +1174,39 @@ function Lightbox({ src, onClose }) {
       >
         ×
       </button>
+      {total > 1 && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setIndex((p) => Math.max(0, p - 1)); }}
+          disabled={index === 0}
+          className="absolute left-4 top-1/2 z-10 -translate-y-1/2 grid h-12 w-12 place-items-center rounded-full bg-white/20 text-3xl text-white hover:bg-white/30 disabled:opacity-30"
+          aria-label="Précédent"
+        >
+          ‹
+        </button>
+      )}
+      {total > 1 && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setIndex((p) => Math.min(total - 1, p + 1)); }}
+          disabled={index >= total - 1}
+          className="absolute right-4 top-1/2 z-10 -translate-y-1/2 grid h-12 w-12 place-items-center rounded-full bg-white/20 text-3xl text-white hover:bg-white/30 disabled:opacity-30"
+          aria-label="Suivant"
+        >
+          ›
+        </button>
+      )}
       <img
-        src={src}
+        src={images[index]}
         alt="Vue agrandie"
         className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       />
+      {total > 1 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-sm text-white">
+          {index + 1} / {total}
+        </div>
+      )}
     </div>,
     document.body,
   );
@@ -1331,7 +1366,13 @@ function PlanPreview({
       <div
         className="group relative h-64 bg-[#efe7de] sm:h-80 lg:h-[360px]"
         style={{ cursor: currentSrc && !isMissing && !isPdfUrl(currentSrc) ? "zoom-in" : "default" }}
-        onClick={() => { if (currentSrc && !isMissing && !isPdfUrl(currentSrc) && onImageClick) onImageClick(currentSrc); }}
+        onClick={() => {
+          if (currentSrc && !isMissing && !isPdfUrl(currentSrc) && onImageClick) {
+            const imageList = items.map((item) => planUploads[item.key] || item.src).filter((s) => s && !isPdfUrl(s));
+            const clickedIdx = imageList.findIndex((s) => s === currentSrc);
+            onImageClick(imageList, Math.max(0, clickedIdx));
+          }
+        }}
       >
         {currentSrc ? (
           isPdfUrl(currentSrc) ? (
@@ -1357,6 +1398,26 @@ function PlanPreview({
           )
         ) : (
           <div className="grid h-full place-items-center bg-[#f8f5ef] p-4 text-center text-sm text-slate-500">Ajoute une image ou un PDF de plan.</div>
+        )}
+        {pageCount > 1 && index > 0 && !isPdfUrl(currentSrc) && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIndex((p) => Math.max(0, p - 1)); }}
+            className="absolute left-2 top-1/2 z-20 -translate-y-1/2 grid h-10 w-10 place-items-center rounded-full bg-white/80 text-2xl text-slate-800 shadow-md backdrop-blur hover:bg-white"
+            aria-label="Précédent"
+          >
+            ‹
+          </button>
+        )}
+        {pageCount > 1 && index < pageCount - 1 && !isPdfUrl(currentSrc) && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIndex((p) => Math.min(pageCount - 1, p + 1)); }}
+            className="absolute right-2 top-1/2 z-20 -translate-y-1/2 grid h-10 w-10 place-items-center rounded-full bg-white/80 text-2xl text-slate-800 shadow-md backdrop-blur hover:bg-white"
+            aria-label="Suivant"
+          >
+            ›
+          </button>
         )}
         {currentSrc ? (
           <div
@@ -1575,7 +1636,13 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
               key={cardKey}
               className="group relative overflow-hidden rounded-xl bg-[#e8e4de]"
               style={{ cursor: isMissing ? "default" : "zoom-in", ...extraStyle }}
-              onClick={() => { if (!isMissing && onImageClick) onImageClick(imageSrc); }}
+              onClick={() => {
+                if (!isMissing && onImageClick) {
+                  const imageList = items.map((it) => uploadedImages[it.cardKey] || it.src).filter(Boolean);
+                  const clickedIdx = items.findIndex((it) => it.cardKey === cardKey);
+                  onImageClick(imageList, Math.max(0, clickedIdx));
+                }
+              }}
             >
               <RepoImage src={imageSrc} alt={`${label} inspiration ${i + 1}`} objectFit="cover" onMissingChange={(missing) => handleMissingChange(cardKey, missing)} />
               {isMissing ? (
@@ -1938,7 +2005,10 @@ function MaterialsSection({
                   if (isLinkPreview) {
                     window.open(item.linkPreview.url, "_blank", "noreferrer");
                   } else if (onImageClick && imageSrc) {
-                    onImageClick(imageSrc);
+                    const nonLinkItems = items.filter(({ item: it }) => !it.linkPreview);
+                    const imageList = nonLinkItems.map(({ item: it, cardKey: ck }) => materialUploads[ck] || it.src).filter(Boolean);
+                    const clickedIdx = nonLinkItems.findIndex(({ cardKey: ck }) => ck === cardKey);
+                    onImageClick(imageList, Math.max(0, clickedIdx));
                   }
                 }}
                 style={{ cursor: isLinkPreview ? "pointer" : "zoom-in" }}
@@ -2364,83 +2434,138 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
       .slice(0, 6)
       .join("; ");
 
+    const requestBody = JSON.stringify({
+      messages: nextHistory.slice(-20).map(({ role, content, image, images }, i, arr) => {
+        const imgList = images?.length ? images : image ? [image] : [];
+        return {
+          role,
+          content,
+          ...(imgList.length > 0 && i >= arr.length - 4 ? { images: imgList } : {}),
+        };
+      }),
+      roomContext: {
+        label: aiContext.roomLabel,
+        line: aiContext.line,
+        dominantName: aiContext.dominantName,
+        dominantHex: aiContext.dominantHex,
+        secondaryName: aiContext.secondaryName,
+        secondaryHex: aiContext.secondaryHex,
+        accentName: aiContext.accentName,
+        accentHex: aiContext.accentHex,
+        roomNote: aiContext.roomNote,
+        imageMetadataSummary,
+        generalContext: aiContext.generalContext,
+        allRoomsSummary: aiContext.allRoomsSummary,
+        shoppingItems: aiContext.shoppingItems,
+        materialSummary: aiContext.materialSummary,
+      },
+    });
+
+    const applyToolCalls = (toolCalls, msg) => {
+      const notices = [];
+      for (const call of toolCalls) {
+        if (call.name === "add_to_shopping_list" && setRoomLists) {
+          const newItems = (call.args.items || []).map((itemText) => ({
+            id: `shopping-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            text: itemText,
+            done: false,
+          }));
+          setRoomLists((prev) => ({
+            ...prev,
+            [room]: { ...(prev[room] || {}), shopping: [...((prev[room] || {}).shopping || []), ...newItems] },
+          }));
+          notices.push(`${newItems.length} article${newItems.length > 1 ? "s" : ""} ajouté${newItems.length > 1 ? "s" : ""} à ta liste.`);
+        } else if (call.name === "save_room_note" && setRoomNotes) {
+          setRoomNotes((prev) => ({ ...prev, [room]: call.args.note }));
+          notices.push("Note de pièce mise à jour.");
+        }
+      }
+      if (notices.length) {
+        msg.content = (msg.content ? msg.content + "\n\n" : "") + `_${notices.join(" ")}_`;
+      }
+    };
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: nextHistory.slice(-20).map(({ role, content, image, images }, i, arr) => {
-            const imgList = images?.length ? images : image ? [image] : [];
-            return {
-              role,
-              content,
-              ...(imgList.length > 0 && i >= arr.length - 4 ? { images: imgList } : {}),
-            };
-          }),
-          roomContext: {
-            label: aiContext.roomLabel,
-            line: aiContext.line,
-            dominantName: aiContext.dominantName,
-            dominantHex: aiContext.dominantHex,
-            secondaryName: aiContext.secondaryName,
-            secondaryHex: aiContext.secondaryHex,
-            accentName: aiContext.accentName,
-            accentHex: aiContext.accentHex,
-            roomNote: aiContext.roomNote,
-            imageMetadataSummary,
-            generalContext: aiContext.generalContext,
-            allRoomsSummary: aiContext.allRoomsSummary,
-            shoppingItems: aiContext.shoppingItems,
-            materialSummary: aiContext.materialSummary,
-          },
-        }),
+        body: requestBody,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erreur IA.");
 
-      const assistantMsg = {
-        id: `msg-${Date.now()}-a`,
-        role: "assistant",
-        content: data.content || "",
-        imagePrompt: data.imagePrompt,
-      };
+      const isSSE = res.headers.get("content-type")?.includes("text/event-stream");
 
-      if (data.toolCalls?.length) {
-        const notices = [];
-        for (const call of data.toolCalls) {
-          if (call.name === "add_to_shopping_list" && setRoomLists) {
-            const newItems = (call.args.items || []).map((text) => ({
-              id: `shopping-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              text,
-              done: false,
-            }));
-            setRoomLists((prev) => ({
-              ...prev,
-              [room]: {
-                ...(prev[room] || {}),
-                shopping: [...((prev[room] || {}).shopping || []), ...newItems],
-              },
-            }));
-            notices.push(`${newItems.length} article${newItems.length > 1 ? "s" : ""} ajouté${newItems.length > 1 ? "s" : ""} à ta liste.`);
-          } else if (call.name === "save_room_note" && setRoomNotes) {
-            setRoomNotes((prev) => ({ ...prev, [room]: call.args.note }));
-            notices.push("Note de pièce mise à jour.");
-          }
-        }
-        if (notices.length) {
-          assistantMsg.content = (assistantMsg.content ? assistantMsg.content + "\n\n" : "") + `_${notices.join(" ")}_`;
-        }
+      if (!isSSE) {
+        // Fallback to non-streaming JSON response
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erreur IA.");
+        const assistantMsg = { id: `msg-${Date.now()}-a`, role: "assistant", content: data.content || "", imagePrompt: data.imagePrompt };
+        if (data.toolCalls?.length) applyToolCalls(data.toolCalls, assistantMsg);
+        setChatHistory((prev) => ({ ...prev, [room]: [...nextHistory, assistantMsg] }));
+        return;
       }
 
+      // SSE streaming path
+      const placeholderId = `msg-${Date.now()}-a`;
       setChatHistory((prev) => ({
         ...prev,
-        [room]: [...nextHistory, assistantMsg],
+        [room]: [...nextHistory, { id: placeholderId, role: "assistant", content: "" }],
       }));
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let currentEvent = "";
+      let streamedText = "";
+      const pendingToolCalls = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            try {
+              const parsed = JSON.parse(line.slice(6));
+              if (currentEvent === "delta" && parsed.text) {
+                streamedText += parsed.text;
+                setChatHistory((prev) => ({
+                  ...prev,
+                  [room]: (prev[room] || []).map((m) =>
+                    m.id === placeholderId ? { ...m, content: streamedText } : m
+                  ),
+                }));
+              } else if (currentEvent === "tool_call") {
+                pendingToolCalls.push(parsed);
+              } else if (currentEvent === "error") {
+                throw new Error(parsed.error || "Erreur IA.");
+              } else if (currentEvent === "done") {
+                const finalMsg = { id: placeholderId, role: "assistant", content: streamedText, imagePrompt: parsed.imagePrompt };
+                const nonImageCalls = pendingToolCalls.filter((c) => c.name !== "generate_image");
+                if (nonImageCalls.length) applyToolCalls(nonImageCalls, finalMsg);
+                const imageCalls = pendingToolCalls.filter((c) => c.name === "generate_image");
+                if (imageCalls[0]?.args?.prompt) finalMsg.imagePrompt = imageCalls[0].args.prompt;
+                setChatHistory((prev) => ({
+                  ...prev,
+                  [room]: (prev[room] || []).map((m) => m.id === placeholderId ? finalMsg : m),
+                }));
+              }
+            } catch (parseErr) {
+              if (currentEvent === "error") throw parseErr;
+            }
+          }
+        }
+      }
     } catch (err) {
-      setChatHistory((prev) => ({
-        ...prev,
-        [room]: [...nextHistory, { id: `msg-${Date.now()}-e`, role: "assistant", content: err.message, error: true }],
-      }));
+      setChatHistory((prev) => {
+        const current = prev[room] || [];
+        const withoutPlaceholder = current.filter((m) => !m.id?.endsWith("-a") || m.content);
+        return { ...prev, [room]: [...(withoutPlaceholder.length < current.length ? withoutPlaceholder : nextHistory), { id: `msg-${Date.now()}-e`, role: "assistant", content: err.message, error: true }] };
+      });
     } finally {
       setIsLoading(false);
     }
@@ -3280,7 +3405,7 @@ export default function App() {
     lastRoomModeRef.current[room] = mode;
     setRoomMode(mode);
   };
-  const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
   const [show3D, setShow3D] = useState(false);
   const [roomLists, setRoomLists] = useState(() => {
     try {
@@ -3508,6 +3633,12 @@ export default function App() {
       roomOrder,
       generalContext,
       generalResources,
+      chatHistory: Object.fromEntries(
+        Object.entries(chatHistory).map(([k, msgs]) => [
+          k,
+          (msgs || []).slice(-CHAT_HISTORY_MAX).map(({ images, image, ...rest }) => rest),
+        ])
+      ),
     };
 
     await storeLargeValue(PROJECT_STATE_STORAGE_KEY, projectState);
@@ -3574,6 +3705,7 @@ export default function App() {
     if (saved.savedAt) setLastSavedAt(saved.savedAt);
     if (typeof saved.generalContext === "string") setGeneralContext(saved.generalContext);
     if (Array.isArray(saved.generalResources)) setGeneralResources(saved.generalResources);
+    if (saved.chatHistory && typeof saved.chatHistory === "object") setChatHistory(saved.chatHistory);
   };
 
   useEffect(() => {
@@ -3678,6 +3810,7 @@ export default function App() {
         if (saved.savedAt) setLastSavedAt(saved.savedAt);
         if (typeof saved.generalContext === "string") setGeneralContext(saved.generalContext);
         if (Array.isArray(saved.generalResources)) setGeneralResources(saved.generalResources);
+        if (saved.chatHistory && typeof saved.chatHistory === "object") setChatHistory(saved.chatHistory);
       })
       .catch(() => {});
 
@@ -4310,7 +4443,7 @@ export default function App() {
               setImageAnalysis={setImageAnalysis}
               deletedImages={deletedImages}
               setDeletedImages={setDeletedImages}
-              onImageClick={setLightboxSrc}
+              onImageClick={(images, idx) => setLightbox({ images, index: idx ?? 0 })}
             />
             <section className="rounded-xl border border-black/10 bg-white p-4">
               <Inspirations
@@ -4327,7 +4460,7 @@ export default function App() {
                 setImageAnalysis={setImageAnalysis}
                 deletedImages={deletedImages}
                 setDeletedImages={setDeletedImages}
-                onImageClick={setLightboxSrc}
+                onImageClick={(images, idx) => setLightbox({ images, index: idx ?? 0 })}
               />
             </section>
             <section className="rounded-xl border border-black/10 bg-white p-4">
@@ -4347,7 +4480,7 @@ export default function App() {
                 setImageAnalysis={setImageAnalysis}
                 deletedImages={deletedImages}
                 setDeletedImages={setDeletedImages}
-                onImageClick={setLightboxSrc}
+                onImageClick={(images, idx) => setLightbox({ images, index: idx ?? 0 })}
               />
             </section>
           </>
@@ -4383,7 +4516,7 @@ export default function App() {
           />
         )}
 
-        {lightboxSrc ? <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} /> : null}
+        {lightbox ? <Lightbox images={lightbox.images} index={lightbox.index} onClose={() => setLightbox(null)} /> : null}
         {show3D ? (
           <RoomViewer3D
             dominant={dominantHex}

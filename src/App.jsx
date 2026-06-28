@@ -2676,7 +2676,7 @@ export default function App() {
     const urlId = new URLSearchParams(window.location.search).get("p");
     if (!urlId) return;
     setLoadingFromUrl(true);
-    fetch(`/api/load-project?id=${encodeURIComponent(urlId)}`)
+    fetch(`/api/load-project?id=${encodeURIComponent(urlId)}&t=${Date.now()}`, { cache: "no-store" })
       .then((r) => r.json())
       .then(({ state }) => {
         if (state) {

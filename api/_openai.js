@@ -10,11 +10,12 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mimeType });
 }
 
-export function allowCors(res) {
+export function allowCors(res, req) {
+  const origin = req?.headers?.origin || "*";
   res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 }
 
 export function sendJson(res, status, payload) {

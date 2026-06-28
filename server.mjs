@@ -45,10 +45,35 @@ function sendJson(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
   });
   res.end(JSON.stringify(payload));
+}
+
+function getSupabaseHeaders(req, useServiceRole = false) {
+  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const authHeader = req.headers["authorization"] || "";
+  const userToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const key = useServiceRole ? (SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY) : SUPABASE_ANON_KEY;
+  const bearer = useServiceRole ? key : (userToken || SUPABASE_ANON_KEY);
+  return { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${bearer}`, "Content-Type": "application/json" };
+}
+
+async function getAuthUser(req) {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const authHeader = req.headers["authorization"] || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { "apikey": SUPABASE_SERVICE_ROLE_KEY, "Authorization": `Bearer ${token}` },
+    });
+    const data = await r.json();
+    return data?.id ? data : null;
+  } catch { return null; }
 }
 
 function readJson(req) {
@@ -115,35 +140,55 @@ createServer(async (req, res) => {
     if (req.url.startsWith("/api/load-project")) {
       const urlObj = new URL(req.url, "http://localhost");
       const id = urlObj.searchParams.get("id");
-      if (!id || !/^[a-z0-9]{6,16}$/.test(id)) {
-        sendJson(res, 400, { error: "ID invalide." });
-        return;
-      }
+      if (!id || !/^[a-z0-9]{6,16}$/.test(id)) { sendJson(res, 400, { error: "ID invalide." }); return; }
       const SUPABASE_URL = process.env.SUPABASE_URL;
-      const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        sendJson(res, 500, { error: "Configuration Supabase manquante." });
-        return;
-      }
+      if (!SUPABASE_URL) { sendJson(res, 500, { error: "Configuration Supabase manquante." }); return; }
+      const user = await getAuthUser(req);
+      if (!user) { sendJson(res, 401, { error: "Authentification requise." }); return; }
       try {
+        // Utiliser service role pour local dev (contourne RLS)
         const sbRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/projects?id=eq.${encodeURIComponent(id)}&select=state`,
-          { headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` } }
+          `${SUPABASE_URL}/rest/v1/projects?id=eq.${encodeURIComponent(id)}&select=state,name,invite_code,owner_id`,
+          { headers: getSupabaseHeaders(req, true) }
         );
         if (!sbRes.ok) { sendJson(res, 404, { error: "Projet introuvable." }); return; }
         const rows = await sbRes.json();
         if (!rows.length) { sendJson(res, 404, { error: "Projet introuvable." }); return; }
-        sendJson(res, 200, { state: rows[0].state });
-      } catch (error) {
-        sendJson(res, 500, { error: error.message });
-      }
+        const row = rows[0];
+        sendJson(res, 200, {
+          state: row.state,
+          name: row.name,
+          inviteCode: row.invite_code,
+          isOwner: row.owner_id === user.id,
+        });
+      } catch (err) { sendJson(res, 500, { error: err.message }); }
       return;
     }
+
+    if (req.url.startsWith("/api/list-snapshots")) {
+      const urlObj = new URL(req.url, "http://localhost");
+      const projectId = urlObj.searchParams.get("projectId");
+      if (!projectId) { sendJson(res, 400, { error: "projectId requis." }); return; }
+      const user = await getAuthUser(req);
+      if (!user) { sendJson(res, 401, { error: "Authentification requise." }); return; }
+      const SUPABASE_URL = process.env.SUPABASE_URL;
+      try {
+        const sbRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/project_snapshots?project_id=eq.${encodeURIComponent(projectId)}&select=id,saved_at,user_id,label&order=saved_at.desc&limit=10`,
+          { headers: getSupabaseHeaders(req, true) }
+        );
+        const rows = await sbRes.json();
+        sendJson(res, 200, { snapshots: (rows || []).map(s => ({ id: s.id, savedAt: s.saved_at, label: s.label, authorName: s.user_id === user.id ? "Moi" : "Autre" })) });
+      } catch (err) { sendJson(res, 500, { error: err.message }); }
+      return;
+    }
+
     sendJson(res, 404, { error: "Route inconnue." });
     return;
   }
 
-  if (req.method !== "POST" || !["/api/generate-image", "/api/analyze-image", "/api/upload-image", "/api/chat", "/api/save-project"].includes(req.url)) {
+  const POST_ROUTES = ["/api/generate-image", "/api/analyze-image", "/api/upload-image", "/api/chat", "/api/save-project", "/api/join-project", "/api/restore-snapshot"];
+  if (req.method !== "POST" || !POST_ROUTES.includes(req.url)) {
     sendJson(res, 404, { error: "Route inconnue." });
     return;
   }
@@ -157,24 +202,73 @@ createServer(async (req, res) => {
     const body = await readJson(req);
 
     if (req.url === "/api/save-project") {
-      const { state, id } = body;
+      const { state, id, snapshot, snapshotLabel } = body;
       if (!state) { sendJson(res, 400, { error: "state requis." }); return; }
+      const user = await getAuthUser(req);
+      if (!user) { sendJson(res, 401, { error: "Authentification requise." }); return; }
       const SUPABASE_URL = process.env.SUPABASE_URL;
-      const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) { sendJson(res, 500, { error: "Configuration Supabase manquante." }); return; }
+      if (!SUPABASE_URL) { sendJson(res, 500, { error: "Configuration Supabase manquante." }); return; }
       const projectId = id || Math.random().toString(36).slice(2, 10);
+      const isNew = !id;
+      const upsertData = { id: projectId, state, updated_at: new Date().toISOString() };
+      if (isNew) upsertData.owner_id = user.id;
       const sbRes = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
         method: "POST",
-        headers: {
-          "apikey": SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-          "Content-Type": "application/json",
-          "Prefer": "resolution=merge-duplicates",
-        },
-        body: JSON.stringify({ id: projectId, state, updated_at: new Date().toISOString() }),
+        headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify(upsertData),
       });
       if (!sbRes.ok) { sendJson(res, 500, { error: await sbRes.text() }); return; }
+      if (isNew) {
+        await fetch(`${SUPABASE_URL}/rest/v1/project_members`, {
+          method: "POST",
+          headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" },
+          body: JSON.stringify({ project_id: projectId, user_id: user.id, role: "owner" }),
+        });
+      }
+      if (snapshot) {
+        // Snapshot via RPC
+        await fetch(`${SUPABASE_URL}/rest/v1/rpc/save_snapshot`, {
+          method: "POST",
+          headers: getSupabaseHeaders(req, true),
+          body: JSON.stringify({ p_project_id: projectId, p_user_id: user.id, p_state: state, p_label: snapshotLabel || "Sauvegarde" }),
+        });
+      }
       sendJson(res, 200, { id: projectId });
+      return;
+    }
+
+    if (req.url === "/api/join-project") {
+      const { inviteCode } = body;
+      const user = await getAuthUser(req);
+      if (!user) { sendJson(res, 401, { error: "Authentification requise." }); return; }
+      const SUPABASE_URL = process.env.SUPABASE_URL;
+      const projRes = await fetch(`${SUPABASE_URL}/rest/v1/projects?invite_code=eq.${encodeURIComponent(inviteCode)}&select=id,owner_id`, { headers: getSupabaseHeaders(req, true) });
+      const projs = await projRes.json();
+      if (!projs?.length) { sendJson(res, 404, { error: "Code invalide." }); return; }
+      const project = projs[0];
+      await fetch(`${SUPABASE_URL}/rest/v1/project_members`, {
+        method: "POST",
+        headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify({ project_id: project.id, user_id: user.id, role: "editor" }),
+      });
+      sendJson(res, 200, { projectId: project.id });
+      return;
+    }
+
+    if (req.url === "/api/restore-snapshot") {
+      const { projectId, snapshotId } = body;
+      const user = await getAuthUser(req);
+      if (!user) { sendJson(res, 401, { error: "Authentification requise." }); return; }
+      const SUPABASE_URL = process.env.SUPABASE_URL;
+      const snapRes = await fetch(`${SUPABASE_URL}/rest/v1/project_snapshots?id=eq.${snapshotId}&project_id=eq.${encodeURIComponent(projectId)}&select=state,label`, { headers: getSupabaseHeaders(req, true) });
+      const snaps = await snapRes.json();
+      if (!snaps?.length) { sendJson(res, 404, { error: "Snapshot introuvable." }); return; }
+      await fetch(`${SUPABASE_URL}/rest/v1/projects?id=eq.${encodeURIComponent(projectId)}`, {
+        method: "PATCH",
+        headers: getSupabaseHeaders(req, true),
+        body: JSON.stringify({ state: snaps[0].state, updated_at: new Date().toISOString() }),
+      });
+      sendJson(res, 200, { state: snaps[0].state });
       return;
     }
 

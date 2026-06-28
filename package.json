@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "api": "node server.mjs",
+    "api": "node --env-file=.env.local server.mjs",
+    "dev:full": "node --env-file=.env.local server.mjs & vite",
     "build": "vite build",
     "preview": "vite preview"
   },

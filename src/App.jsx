@@ -1,15 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { createClient } from "@supabase/supabase-js";
 import { RoomViewer3D } from "./RoomViewer3D";
+import { supabase } from "./supabaseClient";
+import { useAuth } from "./useAuth";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || "",
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ""
-);
 
 const baseColors = {
   creme: { name: "Crème chaud", light: "#FAF6F0", hex: "#F4F1EA", medium: "#E8DFD3", dark: "#D8CEC1" },
@@ -49,6 +45,7 @@ const ROOM_ORDER_STORAGE_KEY = "palette_room_order_v1";
 const PROJECT_ID_STORAGE_KEY = "palette_project_id_v1";
 const GENERAL_CONTEXT_STORAGE_KEY = "palette_general_context_v1";
 const GENERAL_RESOURCES_STORAGE_KEY = "palette_general_resources_v1";
+const INSTAGRAM_STORAGE_KEY = "palette_instagram_v1";
 const CHAT_HISTORY_MAX = 50;
 const IMAGE_DB_NAME = "palette-appartement-images";
 const IMAGE_DB_STORE = "records";
@@ -383,6 +380,16 @@ async function fetchLinkPreview(url) {
   return res.json();
 }
 
+function parseInstagramUrl(url) {
+  const match = url.match(/instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)/);
+  if (!match) return null;
+  const rawType = match[1];
+  const shortcode = match[2];
+  const type = rawType === "p" ? "post" : "reel";
+  const embedUrl = `https://www.instagram.com/${rawType}/${shortcode}/embed/`;
+  return { type, shortcode, embedUrl, originalUrl: url };
+}
+
 function normalizeImageMetadata(metadata, fallbackType = "reference") {
   if (!metadata) return null;
   if (typeof metadata === "string") {
@@ -605,7 +612,7 @@ function AddImageButton({ onFile, accept = "image/*" }) {
   );
 }
 
-function AddUrlButton({ onUrl }) {
+function AddUrlButton({ onUrl, onInstagram }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
   const [loading, setLoading] = useState(false);
@@ -624,13 +631,25 @@ function AddUrlButton({ onUrl }) {
     e.preventDefault();
     const url = value.trim();
     if (!url) return;
+
     setLoading(true);
     setError(null);
     try {
+      if (onInstagram) {
+        const igData = parseInstagramUrl(url);
+        if (igData) {
+          const preview = await fetchLinkPreview(url);
+          const titleLower = `${preview?.title || ""} ${preview?.description || ""}`.toLowerCase();
+          const type = titleLower.includes("reel") ? "reel" : igData.type;
+          onInstagram({ ...igData, type, thumbnailUrl: preview?.image || null });
+          setOpen(false);
+          setValue("");
+          return;
+        }
+      }
       const imageUrl = await extractImageFromUrl(url);
       if (!imageUrl) {
         setError("Aucune image trouvée à cette adresse.");
-        setLoading(false);
         return;
       }
       await onUrl(imageUrl);
@@ -653,7 +672,7 @@ function AddUrlButton({ onUrl }) {
               type="url"
               value={value}
               onChange={(e) => { setValue(e.target.value); setError(null); }}
-              placeholder="Lien Pinterest…"
+              placeholder={onInstagram ? "Lien Pinterest ou Instagram…" : "Lien Pinterest…"}
               className="h-9 w-52 rounded-lg border border-black/20 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-black/30"
               disabled={loading}
             />
@@ -685,7 +704,7 @@ function AddUrlButton({ onUrl }) {
   return (
     <button
       type="button"
-      title="Ajouter via un lien (Pinterest, etc.)"
+      title="Ajouter via un lien (Pinterest, Instagram…)"
       aria-label="Ajouter une image via un lien"
       onClick={() => setOpen(true)}
       className="grid h-11 w-11 place-items-center rounded-full border border-black/15 bg-white shadow-sm hover:bg-[#fcf8d5]"
@@ -1212,6 +1231,64 @@ function Lightbox({ images, index: initialIndex, onClose }) {
   );
 }
 
+function InstagramModal({ item, onClose }) {
+  useEffect(() => {
+    const onKeyDown = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  const isReel = item.type === "reel";
+  const width = isReel ? 340 : 400;
+  const height = isReel ? 600 : 480;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="relative" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute -right-4 -top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-white text-lg text-slate-700 shadow-lg hover:bg-slate-100"
+          aria-label="Fermer"
+        >
+          ×
+        </button>
+        <iframe
+          src={item.embedUrl}
+          width={width}
+          height={height}
+          frameBorder="0"
+          scrolling="no"
+          allowTransparency={true}
+          className="rounded-2xl shadow-2xl"
+          title={`Instagram ${item.type}`}
+        />
+        <div className="mt-2 text-center">
+          <a
+            href={item.originalUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-white/50 hover:text-white/80"
+          >
+            Ouvrir sur Instagram ↗
+          </a>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function PdfThumbnail({ url, className }) {
   const canvasRef = useRef(null);
   const [rendered, setRendered] = useState(false);
@@ -1515,12 +1592,14 @@ function PlanPreview({
   );
 }
 
-function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirationLinks, setInspirationLinks, aiContext, aiInspirations, addAiInspiration, imageAnalysis, setImageAnalysis, deletedImages, setDeletedImages, onImageClick }) {
+function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirationLinks, setInspirationLinks, aiContext, aiInspirations, addAiInspiration, imageAnalysis, setImageAnalysis, deletedImages, setDeletedImages, onImageClick, instagramItems, setInstagramItems }) {
   const items = [
     ...(roomInspirationImages[room] || []).map((src, i) => ({ src, cardKey: `${room}-${i}`, index: i })),
     ...(aiInspirations[room] || []).map((src, i) => ({ src, cardKey: `${room}-ai-${i}`, index: i })),
+    ...(instagramItems[room] || []).map((ig) => ({ ...ig, cardKey: `${room}-ig-${ig.id}`, itemType: "instagram" })),
   ].filter((item) => !deletedImages[item.cardKey]);
   const [missingCards, setMissingCards] = useState({});
+  const [instagramModal, setInstagramModal] = useState(null);
   const [page, setPage] = useState(0);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const pageSize = 4;
@@ -1582,6 +1661,14 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
     if (analysis) setImageAnalysis((prev) => ({ ...prev, [nextKey]: analysis }));
   };
 
+  const handleAddInstagram = (igData) => {
+    const id = `${Date.now()}`;
+    setInstagramItems((prev) => ({
+      ...prev,
+      [room]: [...(prev[room] || []), { id, ...igData }],
+    }));
+  };
+
   const visibleItems = items
     .slice(page * pageSize, page * pageSize + pageSize)
     .map((item, offset) => ({ ...item, displayIndex: page * pageSize + offset }));
@@ -1617,7 +1704,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
               </button>
             </div>
           ) : null}
-          <AddUrlButton onUrl={handleAddImageFromUrl} />
+          <AddUrlButton onUrl={handleAddImageFromUrl} onInstagram={handleAddInstagram} />
           <AddImageButton onFile={handleAddImage} />
         </div>
       </div>
@@ -1627,6 +1714,59 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
         const renderCard = (item, extraStyle = {}) => {
           if (!item) return null;
           const { src, cardKey, displayIndex: i } = item;
+
+          if (item.itemType === "instagram") {
+            const isReel = item.type === "reel";
+            const hasThumbnail = !!item.thumbnailUrl;
+            return (
+              <div
+                key={cardKey}
+                className="group relative overflow-hidden rounded-xl cursor-pointer"
+                style={extraStyle}
+                onClick={() => setInstagramModal(item)}
+              >
+                {hasThumbnail ? (
+                  <img src={item.thumbnailUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400" />
+                )}
+                <div className={`absolute inset-0 flex flex-col items-end justify-end p-2.5 ${hasThumbnail ? "bg-gradient-to-t from-black/60 via-transparent to-transparent" : ""}`}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-white backdrop-blur-sm">
+                      {isReel ? "Reel" : "Carrousel"}
+                    </span>
+                    {isReel ? (
+                      <div className="grid h-7 w-7 place-items-center rounded-full bg-white/20 backdrop-blur-sm">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    ) : (
+                      <div className="grid h-7 w-7 place-items-center rounded-full bg-white/20 backdrop-blur-sm">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                          <rect x="3" y="3" width="7" height="7" rx="1" />
+                          <rect x="14" y="3" width="7" height="7" rx="1" />
+                          <rect x="3" y="14" width="7" height="7" rx="1" />
+                          <rect x="14" y="14" width="7" height="7" rx="1" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="absolute inset-x-2 top-2 z-20 flex items-start justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    title="Supprimer"
+                    className="grid h-11 w-11 place-items-center rounded-md border border-white/30 bg-black/40 text-base font-bold text-white backdrop-blur hover:bg-black/60"
+                    onClick={() => setDeleteConfirm(cardKey)}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
           const imageSrc = uploadedImages[cardKey] || src;
           const linkValue = inspirationLinks[cardKey] || "";
           const isMissing = !!missingCards[cardKey];
@@ -1727,10 +1867,17 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
               <button
                 type="button"
                 onClick={() => {
-                  setDeletedImages((prev) => ({ ...prev, [deleteConfirm]: true }));
-                  setUploadedImages((prev) => removeObjectKey(prev, deleteConfirm));
-                  setInspirationLinks((prev) => removeObjectKey(prev, deleteConfirm));
-                  setImageAnalysis((prev) => removeObjectKey(prev, deleteConfirm));
+                  if (deleteConfirm.startsWith(`${room}-ig-`)) {
+                    setInstagramItems((prev) => ({
+                      ...prev,
+                      [room]: (prev[room] || []).filter((ig) => `${room}-ig-${ig.id}` !== deleteConfirm),
+                    }));
+                  } else {
+                    setDeletedImages((prev) => ({ ...prev, [deleteConfirm]: true }));
+                    setUploadedImages((prev) => removeObjectKey(prev, deleteConfirm));
+                    setInspirationLinks((prev) => removeObjectKey(prev, deleteConfirm));
+                    setImageAnalysis((prev) => removeObjectKey(prev, deleteConfirm));
+                  }
                   setDeleteConfirm(null);
                 }}
                 className="rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600"
@@ -1742,12 +1889,14 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
         </div>,
         document.body
       )}
+      {instagramModal ? <InstagramModal item={instagramModal} onClose={() => setInstagramModal(null)} /> : null}
     </div>
   );
 }
 
 function EditMaterialModal({ cardKey, isLink, currentMeta, onSave, onClose }) {
   const [label, setLabel] = useState(currentMeta.label || "");
+  const [category, setCategory] = useState(currentMeta.category || "");
   const [uploading, setUploading] = useState(false);
   const [customImage, setCustomImage] = useState(currentMeta.customImage || "");
   const fileInputRef = useRef(null);
@@ -1769,6 +1918,7 @@ function EditMaterialModal({ cardKey, isLink, currentMeta, onSave, onClose }) {
   const handleSave = () => {
     const meta = {};
     if (label.trim()) meta.label = label.trim();
+    if (category) meta.category = category;
     if (customImage) meta.customImage = customImage;
     onSave(meta);
   };
@@ -1784,6 +1934,25 @@ function EditMaterialModal({ cardKey, isLink, currentMeta, onSave, onClose }) {
       >
         <h3 className="mb-4 text-base font-semibold">Modifier la carte</h3>
         <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Surface</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full rounded-lg border border-black/15 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/20"
+            >
+              <option value="">— Choisir une surface —</option>
+              <option>Sol</option>
+              <option>Mur</option>
+              <option>Plafond</option>
+              <option>Crédence</option>
+              <option>Plan de travail</option>
+              <option>Menuiserie</option>
+              <option>Textile</option>
+              <option>Mobilier</option>
+              <option>Autre</option>
+            </select>
+          </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">
               {isLink ? "Titre" : "Nom du matériau"}
@@ -3268,12 +3437,232 @@ function ListeSection({ room, label, roomLists, setRoomLists }) {
   );
 }
 
+// ─── Écran de connexion SSO ──────────────────────────────────────────────────
+
+function LoginScreen({ onSignIn }) {
+  return (
+    <div className="min-h-screen bg-[#FAF6F0] flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 text-center">
+          <p className="font-sans text-xs font-semibold uppercase tracking-[0.25em] text-slate-400 mb-3">Palette appartement</p>
+          <h1 className="text-2xl font-semibold text-slate-900 leading-tight">Bienvenue</h1>
+          <p className="mt-2 text-sm text-slate-500">Connectez-vous pour accéder à votre espace de design.</p>
+        </div>
+        <button
+          onClick={onSignIn}
+          className="w-full flex items-center justify-center gap-3 rounded-xl border border-black/12 bg-white px-5 py-3.5 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 active:bg-slate-100 transition-colors"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          Continuer avec Google
+        </button>
+        <p className="mt-6 text-center text-xs text-slate-400">Accès réservé aux membres du projet.</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Écran rejoindre ou créer un appartement ─────────────────────────────────
+
+function JoinOrCreateScreen({ user, onJoin, onCreateNew, signOut }) {
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleJoin = async () => {
+    const cleaned = code.trim().toLowerCase();
+    if (!cleaned) return;
+    setLoading(true);
+    setError("");
+    try {
+      const result = await onJoin(cleaned);
+      if (!result?.ok) setError(result?.error || "Code invalide.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#FAF6F0] flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-sm space-y-4">
+        <div className="mb-6 text-center">
+          <p className="font-sans text-xs font-semibold uppercase tracking-[0.25em] text-slate-400 mb-3">Palette appartement</p>
+          <h1 className="text-2xl font-semibold text-slate-900">Quel appartement ?</h1>
+          <p className="mt-2 text-sm text-slate-500">Rejoignez un projet existant ou créez le vôtre.</p>
+        </div>
+
+        {/* Rejoindre par code */}
+        <div className="rounded-xl border border-black/10 bg-white p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-700">Rejoindre avec un code</h2>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+              placeholder="abc123"
+              maxLength={12}
+              className="flex-1 rounded-lg border border-black/15 bg-[#fafaf8] px-3 py-2 text-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+            />
+            <button
+              onClick={handleJoin}
+              disabled={loading || !code.trim()}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+            >
+              {loading ? "…" : "Rejoindre"}
+            </button>
+          </div>
+          {error ? <p className="text-xs text-red-500">{error}</p> : null}
+        </div>
+
+        {/* Créer un nouveau projet */}
+        <div className="rounded-xl border border-black/10 bg-white p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-700">Nouveau projet</h2>
+          <button
+            onClick={onCreateNew}
+            className="w-full rounded-lg border border-black/15 bg-[#fafaf8] px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+          >
+            + Créer un appartement vide
+          </button>
+        </div>
+
+        <button onClick={signOut} className="w-full text-center text-xs text-slate-400 hover:text-slate-600 py-2">
+          Se déconnecter ({user?.email})
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modale point de sauvegarde ──────────────────────────────────────────────
+
+function SnapshotModal({ onConfirm, onCancel, saving }) {
+  const defaultLabel = `Sauvegarde du ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`;
+  const [label, setLabel] = useState(defaultLabel);
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <h2 className="text-base font-semibold text-slate-900 mb-1">Point de sauvegarde</h2>
+        <p className="text-sm text-slate-500 mb-4">Nommez ce point pour le retrouver facilement dans l'historique.</p>
+        <input
+          type="text"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onConfirm(label)}
+          className="w-full rounded-xl border border-black/15 bg-[#fafaf8] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 mb-4"
+          autoFocus
+        />
+        <div className="flex gap-2 justify-end">
+          <button onClick={onCancel} className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:text-slate-800 transition-colors">
+            Annuler
+          </button>
+          <button
+            onClick={() => onConfirm(label)}
+            disabled={saving || !label.trim()}
+            className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Sauvegarde…" : "Créer"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Panneau historique des snapshots ────────────────────────────────────────
+
+function SnapshotHistoryPanel({ snapshots, loading, onRestore, onClose, restoringId }) {
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-start justify-end">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative h-full w-full max-w-sm bg-white shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-black/10 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Historique</h2>
+            <p className="text-xs text-slate-400 mt-0.5">10 derniers points de sauvegarde</p>
+          </div>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-slate-700" />
+            </div>
+          ) : snapshots.length === 0 ? (
+            <div className="text-center py-16 text-sm text-slate-400">
+              <p className="text-2xl mb-3">📭</p>
+              Aucun point de sauvegarde encore créé.
+            </div>
+          ) : (
+            snapshots.map((snap) => (
+              <div key={snap.id} className="rounded-xl border border-black/10 bg-[#fafaf8] p-4 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">{snap.label || "Sauvegarde"}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {new Date(snap.savedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}
+                    {snap.authorName ? ` · ${snap.authorName}` : ""}
+                  </p>
+                </div>
+                <button
+                  onClick={() => onRestore(snap.id)}
+                  disabled={restoringId === snap.id}
+                  className="shrink-0 rounded-lg border border-black/12 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                >
+                  {restoringId === snap.id ? "…" : "Restaurer"}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function App() {
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  const { user, session, loading: authLoading, signInWithGoogle, signOut } = useAuth();
+
+  // ── État snapshot / historique ────────────────────────────────────────────
+  const [showSnapshotModal, setShowSnapshotModal] = useState(false);
+  const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
+  const [showSnapshotHistory, setShowSnapshotHistory] = useState(false);
+  const [snapshots, setSnapshots] = useState([]);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+  const [restoringSnapshotId, setRestoringSnapshotId] = useState(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [inviteCode, setInviteCode] = useState(null);
+  const [copyInviteSuccess, setCopyInviteSuccess] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef(null);
+
+  // ── Projet ────────────────────────────────────────────────────────────────
   const [room, setRoom] = useState("salon");
   const [globalAccent, setGlobalAccent] = useState("butter");
   const [warmth, setWarmth] = useState(60);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [projectId, setProjectId] = useState(() => localStorage.getItem(PROJECT_ID_STORAGE_KEY) || null);
+  const [projectId, setProjectId] = useState(() => {
+    const urlId = new URLSearchParams(window.location.search).get("p");
+    if (urlId) {
+      localStorage.setItem(PROJECT_ID_STORAGE_KEY, urlId);
+      return urlId;
+    }
+    return localStorage.getItem(PROJECT_ID_STORAGE_KEY) || null;
+  });
   const isApplyingRemoteUpdate = useRef(false);
   const autoSaveTimerRef = useRef(null);
   const [isSavingToServer, setIsSavingToServer] = useState(false);
@@ -3383,6 +3772,14 @@ export default function App() {
     }
   });
   const [aiInspirationsLoaded, setAiInspirationsLoaded] = useState(false);
+  const [instagramItems, setInstagramItems] = useState(() => {
+    try {
+      const raw = localStorage.getItem(INSTAGRAM_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
   const [imageAnalysis, setImageAnalysis] = useState(() => {
     try {
       const raw = localStorage.getItem(IMAGE_ANALYSIS_STORAGE_KEY);
@@ -3537,10 +3934,12 @@ export default function App() {
   const aiMaterialSummary = [
     ...(materialsByRoom[room] || []).map((m) => `${m.label}: ${m.value}`),
     ...(extraMaterialImages[room] || []).map((_, i) => {
-      const meta = extraMaterialMeta[`${room}-extra-material-${i}`] || {};
-      return meta.label || null;
+      const cardKey = `${room}-material-extra-${i}`;
+      const meta = extraMaterialMeta[cardKey] || {};
+      const surface = meta.category || meta.label;
+      return surface || null;
     }).filter(Boolean),
-  ].slice(0, 5);
+  ];
 
   const aiContext = {
     roomLabel: preset.label,
@@ -3605,6 +4004,7 @@ export default function App() {
     setExtraPlanImages((prev) => removeRoomData(prev, room));
     setExtraMaterialImages((prev) => removeRoomData(prev, room));
     setAiInspirations((prev) => removeRoomData(prev, room));
+    setInstagramItems((prev) => removeRoomData(prev, room));
     setImageAnalysis((prev) => removeRoomData(prev, room));
     setDeletedImages((prev) => removeRoomData(prev, room));
     setRoomNuances((prev) => removeRoomData(prev, room));
@@ -3622,7 +4022,19 @@ export default function App() {
     }));
   };
 
-  const saveProject = async () => {
+  const authedFetch = (url, options = {}) => {
+    const token = session?.access_token;
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+  };
+
+  // snapshot=true uniquement via le bouton "Point de sauvegarde", pas l'auto-save
+  const saveProject = async ({ snapshot = false, snapshotLabel = "" } = {}) => {
     const savedAt = new Date().toISOString();
     const projectState = {
       version: 1,
@@ -3642,6 +4054,7 @@ export default function App() {
       extraMaterialImages,
       extraMaterialMeta,
       aiInspirations,
+      instagramItems,
       imageAnalysis,
       deletedImages,
       roomNuances,
@@ -3674,16 +4087,17 @@ export default function App() {
     safelyStore(MATERIAL_EXTRA_STORAGE_KEY, extraMaterialImages);
     safelyStore(IMAGE_ANALYSIS_STORAGE_KEY, imageAnalysis);
     safelyStore(DELETED_IMAGES_STORAGE_KEY, deletedImages);
+    safelyStore(INSTAGRAM_STORAGE_KEY, instagramItems);
     localStorage.setItem(LAST_SAVE_STORAGE_KEY, savedAt);
     setLastSavedAt(savedAt);
 
     try {
       setIsSavingToServer(true);
       const existingId = projectId || localStorage.getItem(PROJECT_ID_STORAGE_KEY);
-      const res = await fetch("/api/save-project", {
+      const res = await authedFetch("/api/save-project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: projectState, id: existingId }),
+        body: JSON.stringify({ state: projectState, id: existingId, snapshot, snapshotLabel }),
       });
       const { id } = await res.json();
       if (id) {
@@ -3713,6 +4127,7 @@ export default function App() {
     if (saved.extraMaterialImages) setExtraMaterialImages(saved.extraMaterialImages);
     if (saved.extraMaterialMeta) setExtraMaterialMeta(saved.extraMaterialMeta);
     if (saved.aiInspirations) setAiInspirations(saved.aiInspirations);
+    if (saved.instagramItems) setInstagramItems(saved.instagramItems);
     if (saved.imageAnalysis) setImageAnalysis(saved.imageAnalysis);
     if (saved.deletedImages) setDeletedImages(saved.deletedImages);
     if (saved.roomNuances) setRoomNuances(saved.roomNuances);
@@ -3728,20 +4143,85 @@ export default function App() {
 
   useEffect(() => {
     const urlId = new URLSearchParams(window.location.search).get("p");
-    if (!urlId) return;
+    const idToLoad = urlId || projectId;
+    if (!idToLoad || !session) return;
     setLoadingFromUrl(true);
-    fetch(`/api/load-project?id=${encodeURIComponent(urlId)}&t=${Date.now()}`, { cache: "no-store" })
+    authedFetch(`/api/load-project?id=${encodeURIComponent(idToLoad)}&t=${Date.now()}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then(({ state }) => {
+      .then(({ state, isOwner: owner, inviteCode: code }) => {
         if (state) {
           hydrateState(state);
-          setProjectId(urlId);
-          localStorage.setItem(PROJECT_ID_STORAGE_KEY, urlId);
+          setProjectId(idToLoad);
+          localStorage.setItem(PROJECT_ID_STORAGE_KEY, idToLoad);
         }
+        if (typeof owner === "boolean") setIsOwner(owner);
+        if (code) setInviteCode(code);
       })
       .catch(() => {})
       .finally(() => setLoadingFromUrl(false));
-  }, []);
+  }, [session]);
+
+  // Charger la liste des snapshots quand le panneau s'ouvre
+  useEffect(() => {
+    if (!showSnapshotHistory || !projectId || !session) return;
+    setLoadingSnapshots(true);
+    authedFetch(`/api/list-snapshots?projectId=${encodeURIComponent(projectId)}`)
+      .then((r) => r.json())
+      .then(({ snapshots: list }) => setSnapshots(list || []))
+      .catch(() => {})
+      .finally(() => setLoadingSnapshots(false));
+  }, [showSnapshotHistory]);
+
+  const handleRestoreSnapshot = async (snapshotId) => {
+    if (!window.confirm("Restaurer ce point ? Les changements non-sauvegardés seront perdus.")) return;
+    setRestoringSnapshotId(snapshotId);
+    try {
+      const res = await authedFetch("/api/restore-snapshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, snapshotId }),
+      });
+      const { state } = await res.json();
+      if (state) {
+        hydrateState(state);
+        setShowSnapshotHistory(false);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setRestoringSnapshotId(null);
+    }
+  };
+
+  const handleCreateSnapshot = async (label) => {
+    setIsSavingSnapshot(true);
+    await saveProject({ snapshot: true, snapshotLabel: label });
+    setIsSavingSnapshot(false);
+    setShowSnapshotModal(false);
+  };
+
+  const handleJoinProject = async (inviteCode) => {
+    const res = await authedFetch("/api/join-project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inviteCode }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: data.error };
+    if (data.projectId) {
+      setProjectId(data.projectId);
+      localStorage.setItem(PROJECT_ID_STORAGE_KEY, data.projectId);
+      window.history.replaceState({}, "", `/?p=${data.projectId}`);
+      // Charger le projet
+      const loaded = await authedFetch(`/api/load-project?id=${data.projectId}`).then((r) => r.json());
+      if (loaded.state) {
+        hydrateState(loaded.state);
+        if (typeof loaded.isOwner === "boolean") setIsOwner(loaded.isOwner);
+        if (loaded.inviteCode) setInviteCode(loaded.inviteCode);
+      }
+    }
+    return { ok: true };
+  };
 
   // Realtime subscription — receive updates from other users on the same project
   useEffect(() => {
@@ -3774,7 +4254,7 @@ export default function App() {
     projectId, room, globalAccent, warmth, customRooms, hiddenRooms,
     uploadedImages, inspirationLinks, materialUploads, materialLinks,
     planUploads, planLinks, extraPlanImages, extraMaterialImages, extraMaterialMeta,
-    aiInspirations, imageAnalysis, deletedImages,
+    aiInspirations, instagramItems, imageAnalysis, deletedImages,
     roomNuances, roomNotes, roomLists, roomDocuments, roomOrder,
     generalContext, generalResources, chatHistory,
   ]);
@@ -3844,6 +4324,15 @@ export default function App() {
   }, [orderedActiveRooms, room]);
 
   useEffect(() => {
+    if (!showUserMenu) return;
+    const handler = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setShowUserMenu(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showUserMenu]);
+
+  useEffect(() => {
     safelyStore(CUSTOM_ROOMS_STORAGE_KEY, customRooms);
   }, [customRooms]);
 
@@ -3911,6 +4400,10 @@ export default function App() {
   }, [deletedImages]);
 
   useEffect(() => {
+    safelyStore(INSTAGRAM_STORAGE_KEY, instagramItems);
+  }, [instagramItems]);
+
+  useEffect(() => {
     safelyStore(ROOM_LISTS_STORAGE_KEY, roomLists);
   }, [roomLists]);
 
@@ -3952,8 +4445,39 @@ export default function App() {
     return [...(list.shopping || []), ...(list.todos || [])].filter((item) => !item.done).length;
   };
 
+  // ── Guards auth ──────────────────────────────────────────────────────────
+  if (authLoading) return <div className="min-h-screen bg-[#FAF6F0]" />;
+  if (!user) return <LoginScreen onSignIn={signInWithGoogle} />;
+  if (!projectId) {
+    return (
+      <JoinOrCreateScreen
+        user={user}
+        onJoin={handleJoinProject}
+        onCreateNew={() => saveProject()}
+        signOut={signOut}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-creme text-slate-800">
+      {/* Modales */}
+      {showSnapshotModal && (
+        <SnapshotModal
+          onConfirm={handleCreateSnapshot}
+          onCancel={() => setShowSnapshotModal(false)}
+          saving={isSavingSnapshot}
+        />
+      )}
+      {showSnapshotHistory && (
+        <SnapshotHistoryPanel
+          snapshots={snapshots}
+          loading={loadingSnapshots}
+          onRestore={handleRestoreSnapshot}
+          onClose={() => setShowSnapshotHistory(false)}
+          restoringId={restoringSnapshotId}
+        />
+      )}
       {loadingFromUrl ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm">
           <div className="rounded-xl border border-black/10 bg-white p-8 text-center shadow-lg">
@@ -3976,14 +4500,23 @@ export default function App() {
           </button>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium">{preset.label}</div>
-            {lastSavedAt ? <div className="truncate text-[11px] text-slate-500">Sauvé: {new Date(lastSavedAt).toLocaleString("fr-FR")}</div> : null}
+            {lastSavedAt ? <div className="truncate text-[11px] text-slate-500">Auto-sauvé {new Date(lastSavedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</div> : null}
           </div>
           <button
             type="button"
-            onClick={saveProject}
-            className="rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm"
+            onClick={() => setShowSnapshotHistory(true)}
+            className="grid h-9 w-9 place-items-center rounded-md border border-black/15 bg-white text-slate-500 shadow-sm hover:bg-slate-50"
+            title="Historique"
           >
-            Enregistrer
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSnapshotModal(true)}
+            className="rounded-md border border-black/15 bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm"
+            title="Créer un point de sauvegarde"
+          >
+            📌
           </button>
         </div>
         {mobileMenuOpen ? (
@@ -4064,28 +4597,63 @@ export default function App() {
               <h1 className="type-h1">Univers rétro, coloré, doux</h1>
               <p className="mt-2 text-sm text-slate-600">Projet de Violette et Matthieu Jungfer pour Botzaris.</p>
             </div>
-            <div className="hidden w-full flex-col items-start gap-1 sm:flex sm:w-auto sm:items-end">
-              <button
-                type="button"
-                onClick={saveProject}
-                disabled={isSavingToServer}
-                className="w-full rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-700 disabled:opacity-60 sm:w-auto"
-              >
-                {isSavingToServer ? "Enregistrement…" : "Enregistrer"}
-              </button>
-              {lastSavedAt ? <span className="text-xs text-slate-500">Sauvé: {new Date(lastSavedAt).toLocaleString("fr-FR")}</span> : null}
-              {projectId ? (
+            <div className="hidden w-full flex-col items-end gap-2 sm:flex sm:w-auto">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/?p=${projectId}`);
-                    setCopySuccess(true);
-                    setTimeout(() => setCopySuccess(false), 2000);
-                  }}
-                  className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-700"
+                  onClick={() => setShowSnapshotHistory(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-black/12 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm hover:bg-slate-50 transition-colors"
                 >
-                  {copySuccess ? "Lien copié !" : "Copier le lien de partage"}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  Historique
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSnapshotModal(true)}
+                  disabled={isSavingSnapshot}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-700 disabled:opacity-60 transition-colors"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  {isSavingSnapshot ? "Sauvegarde…" : "Point de sauvegarde"}
+                </button>
+                <div className="relative" ref={userMenuRef}>
+                  <button type="button" onClick={() => setShowUserMenu((v) => !v)} className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30">
+                    {user?.user_metadata?.avatar_url ? (
+                      <img
+                        src={user.user_metadata.avatar_url}
+                        alt=""
+                        className="h-9 w-9 rounded-full border-2 border-white shadow-sm ring-1 ring-black/10"
+                        onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }}
+                      />
+                    ) : null}
+                    <div style={{ display: user?.user_metadata?.avatar_url ? "none" : "flex" }} className="h-9 w-9 rounded-full bg-slate-200 border border-black/10 items-center justify-center text-sm font-semibold text-slate-600">
+                      {(user?.email || "?")[0].toUpperCase()}
+                    </div>
+                  </button>
+                  {showUserMenu && (
+                  <div className="absolute right-0 top-full mt-1.5 z-50 w-52 rounded-xl border border-black/10 bg-white shadow-xl overflow-hidden">
+                    <div className="px-3 py-2.5 border-b border-black/8">
+                      <p className="text-xs font-medium text-slate-800 truncate">{user?.user_metadata?.full_name || "Utilisateur"}</p>
+                      <p className="text-[11px] text-slate-400 truncate mt-0.5">{user?.email}</p>
+                    </div>
+                    {isOwner && inviteCode && (
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(inviteCode); setCopyInviteSuccess(true); setTimeout(() => setCopyInviteSuccess(false), 2000); }}
+                        className="w-full px-3 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Code d'invitation</p>
+                        <p className="text-sm font-mono text-slate-900 mt-0.5">{copyInviteSuccess ? "✓ Copié !" : inviteCode}</p>
+                      </button>
+                    )}
+                    <button onClick={signOut} className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50 transition-colors border-t border-black/8">
+                      Se déconnecter
+                    </button>
+                  </div>
+                  )}
+                </div>
+              </div>
+              {lastSavedAt ? (
+                <span className="text-[11px] text-slate-400">Auto-sauvé à {new Date(lastSavedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
               ) : null}
             </div>
           </div>
@@ -4479,6 +5047,8 @@ export default function App() {
                 deletedImages={deletedImages}
                 setDeletedImages={setDeletedImages}
                 onImageClick={(images, idx) => setLightbox({ images, index: idx ?? 0 })}
+                instagramItems={instagramItems}
+                setInstagramItems={setInstagramItems}
               />
             </section>
             <section className="rounded-xl border border-black/10 bg-white p-4">

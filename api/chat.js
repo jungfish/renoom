@@ -21,6 +21,7 @@ function buildSystemPrompt(ctx) {
     "Règles:",
     "- Réponds en français, de façon concise et praticable (3-6 phrases max par réponse)",
     "- Reste dans l'univers rétro, coloré, doux — jamais d'accents rouges, pas de style minimaliste froid",
+    "- Si l'utilisateur demande des produits, des références ou des liens d'achat, utilise la recherche web pour trouver des résultats réels et inclus des URLs directes",
     "- Si tu suggères une modification visuelle concrète et précise, termine ta réponse par exactement ce bloc sur une nouvelle ligne:",
     `  ${IMAGE_PROMPT_MARKER}{"prompt":"<instruction en anglais pour édition d'image, 2-3 phrases, précise les couleurs hex et le style rétro>"}${IMAGE_PROMPT_MARKER}`,
     "- N'inclus ce bloc que si la suggestion est clairement visuelle et actionnable — pas pour des conseils généraux",
@@ -82,6 +83,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: CHAT_MODEL,
+        tools: [{ type: "web_search_preview" }],
         instructions: buildSystemPrompt(roomContext || {}),
         input: historyToSend.map((m) => {
           const imgList = m.images?.length ? m.images : m.image ? [m.image] : [];

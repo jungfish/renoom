@@ -125,15 +125,15 @@ const roomPresets = {
 };
 
 const INITIAL_ROOM_NUANCES = {
-  bureau: { dominant: "moyen", secondary: "moyen", accent: "olive" },
-  sdb: { dominant: "clair", secondary: "clair", accent: "bois" },
-  salon: { dominant: "moyen", secondary: "moyen", accent: "bois" },
-  cuisine: { dominant: "moyen", secondary: "moyen", accent: "butter" },
-  entree: { dominant: "moyen", secondary: "moyen", accent: "butter" },
-  parents: { dominant: "soutenu", secondary: "moyen", accent: "bois" },
-  enfant: { dominant: "moyen", secondary: "clair", accent: "butter" },
-  vinyle: { dominant: "moyen", secondary: "moyen", accent: "olive" },
-  cellier: { dominant: "soutenu", secondary: "moyen", accent: "butter" },
+  bureau: { dominant: "moyen", secondary: "moyen", accent: "olive", dominantColor: "bleu", secondaryColor: "bois" },
+  sdb: { dominant: "clair", secondary: "clair", accent: "bois", dominantColor: "creme", secondaryColor: "bleu" },
+  salon: { dominant: "moyen", secondary: "moyen", accent: "bois", dominantColor: "bleu", secondaryColor: "creme" },
+  cuisine: { dominant: "moyen", secondary: "moyen", accent: "butter", dominantColor: "bleu", secondaryColor: "bois" },
+  entree: { dominant: "moyen", secondary: "moyen", accent: "butter", dominantColor: "vert", secondaryColor: "bois" },
+  parents: { dominant: "soutenu", secondary: "moyen", accent: "bois", dominantColor: "vert", secondaryColor: "creme" },
+  enfant: { dominant: "moyen", secondary: "clair", accent: "butter", dominantColor: "vert", secondaryColor: "bleu" },
+  vinyle: { dominant: "moyen", secondary: "moyen", accent: "olive", dominantColor: "creme", secondaryColor: "bois" },
+  cellier: { dominant: "soutenu", secondary: "moyen", accent: "butter", dominantColor: "vert", secondaryColor: "creme" },
 };
 
 const roomInspirationImages = {
@@ -308,6 +308,39 @@ async function uploadToBlob(dataUrl, filename) {
     return url;
   } catch {
     return dataUrl;
+  }
+}
+
+async function uploadUrlToBlob(sourceUrl, filename) {
+  try {
+    const res = await fetch("/api/upload-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceUrl, filename }),
+    });
+    if (!res.ok) throw new Error();
+    const { url } = await res.json();
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+async function extractImageFromUrl(url) {
+  const isPinterest = /pinterest\.(com|fr|co\.uk|de|es|it|jp)|pin\.it/i.test(url);
+  const isDirectImage = /\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(url);
+  if (isDirectImage && !isPinterest) return url;
+  try {
+    const res = await fetch("/api/fetch-link-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.image || null;
+  } catch {
+    return null;
   }
 }
 
@@ -540,6 +573,99 @@ function AddImageButton({ onFile, accept = "image/*" }) {
         +
       </button>
     </>
+  );
+}
+
+function AddUrlButton({ onUrl }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (open) {
+      setValue("");
+      setError(null);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const url = value.trim();
+    if (!url) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const imageUrl = await extractImageFromUrl(url);
+      if (!imageUrl) {
+        setError("Aucune image trouvée à cette adresse.");
+        setLoading(false);
+        return;
+      }
+      await onUrl(imageUrl);
+      setOpen(false);
+      setValue("");
+    } catch {
+      setError("Erreur lors du chargement de l'image.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (open) {
+    return (
+      <form onSubmit={handleSubmit} className="flex items-center gap-1">
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1">
+            <input
+              ref={inputRef}
+              type="url"
+              value={value}
+              onChange={(e) => { setValue(e.target.value); setError(null); }}
+              placeholder="Lien Pinterest…"
+              className="h-9 w-52 rounded-lg border border-black/20 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-black/30"
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              disabled={loading || !value.trim()}
+              className="grid h-9 w-9 place-items-center rounded-lg border border-black/15 bg-white text-sm shadow-sm hover:bg-[#fcf8d5] disabled:opacity-40"
+              title="Ajouter"
+            >
+              {loading ? (
+                <span className="block h-3 w-3 animate-spin rounded-full border-2 border-black/20 border-t-black/60" />
+              ) : "✓"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="grid h-9 w-9 place-items-center rounded-lg border border-black/15 bg-white text-sm shadow-sm hover:bg-red-50"
+              title="Annuler"
+            >
+              ✕
+            </button>
+          </div>
+          {error && <p className="mt-0.5 text-[10px] text-red-500">{error}</p>}
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      title="Ajouter via un lien (Pinterest, etc.)"
+      aria-label="Ajouter une image via un lien"
+      onClick={() => setOpen(true)}
+      className="grid h-11 w-11 place-items-center rounded-full border border-black/15 bg-white shadow-sm hover:bg-[#fcf8d5]"
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+      </svg>
+    </button>
   );
 }
 
@@ -1244,6 +1370,22 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
     }
   };
 
+  const handleAddImageFromUrl = async (imageUrl) => {
+    const nextIndex = (aiInspirations[room] || []).length;
+    const nextKey = `${room}-ai-${nextIndex}`;
+    const ext = imageUrl.split("?")[0].split(".").pop()?.toLowerCase() || "jpg";
+    const safeExt = ["jpg", "jpeg", "png", "webp", "gif", "avif"].includes(ext) ? ext : "jpg";
+    const url = await uploadUrlToBlob(imageUrl, `${nextKey}-${Date.now()}.${safeExt}`);
+    if (!url) return;
+    addAiInspiration(room, url);
+    const analysis = await analyzeImageForContext({
+      image: url,
+      context: `Inspiration ajoutée ${label}`,
+      section: "inspiration",
+    });
+    if (analysis) setImageAnalysis((prev) => ({ ...prev, [nextKey]: analysis }));
+  };
+
   const visibleItems = items
     .slice(page * pageSize, page * pageSize + pageSize)
     .map((item, offset) => ({ ...item, displayIndex: page * pageSize + offset }));
@@ -1279,6 +1421,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
               </button>
             </div>
           ) : null}
+          <AddUrlButton onUrl={handleAddImageFromUrl} />
           <AddImageButton onFile={handleAddImage} />
         </div>
       </div>
@@ -2551,8 +2694,10 @@ export default function App() {
 
   const preset = allRoomPresets[room] || allRoomPresets[orderedActiveRooms[0]] || roomPresets.salon;
   const activeNuance = roomNuances[room] || INITIAL_ROOM_NUANCES[room] || { dominant: "moyen", secondary: "moyen", accent: globalAccent };
-  const dominantHex = getShade(preset.dominant, activeNuance.dominant);
-  const secondaryHex = getShade(preset.secondary, activeNuance.secondary);
+  const activeDominantColor = activeNuance.dominantColor || preset.dominant;
+  const activeSecondaryColor = activeNuance.secondaryColor || preset.secondary;
+  const dominantHex = getShade(activeDominantColor, activeNuance.dominant);
+  const secondaryHex = getShade(activeSecondaryColor, activeNuance.secondary);
   const accentHex = activeNuance.accent === "bois" ? baseColors.bois.hex : accents[activeNuance.accent]?.hex || accents[globalAccent].hex;
   const accentName = activeNuance.accent === "bois" ? "Chêne clair" : accents[activeNuance.accent]?.name || accents[globalAccent].name;
 
@@ -2581,9 +2726,9 @@ export default function App() {
   const aiContext = {
     roomLabel: preset.label,
     line: preset.line,
-    dominantName: baseColors[preset.dominant].name,
+    dominantName: baseColors[activeDominantColor].name,
     dominantHex,
-    secondaryName: baseColors[preset.secondary].name,
+    secondaryName: baseColors[activeSecondaryColor].name,
     secondaryHex,
     accentName,
     accentHex,
@@ -2940,11 +3085,13 @@ export default function App() {
     const p = allRoomPresets[roomKey];
     if (!p) return null;
     const nuance = roomNuances[roomKey] || INITIAL_ROOM_NUANCES[roomKey] || { dominant: "moyen", secondary: "moyen", accent: globalAccent };
-    const dHex = getShade(p.dominant, nuance.dominant);
-    const sHex = getShade(p.secondary, nuance.secondary);
+    const dColor = nuance.dominantColor || p.dominant;
+    const sColor = nuance.secondaryColor || p.secondary;
+    const dHex = getShade(dColor, nuance.dominant);
+    const sHex = getShade(sColor, nuance.secondary);
     const aHex = nuance.accent === "bois" ? baseColors.bois.hex : accents[nuance.accent]?.hex || accents[globalAccent].hex;
     const aName = nuance.accent === "bois" ? "Chêne clair" : accents[nuance.accent]?.name || accents[globalAccent].name;
-    return { dominant: { name: baseColors[p.dominant].name, hex: dHex }, secondary: { name: baseColors[p.secondary].name, hex: sHex }, accent: { name: aName, hex: aHex } };
+    return { dominant: { name: baseColors[dColor].name, hex: dHex }, secondary: { name: baseColors[sColor].name, hex: sHex }, accent: { name: aName, hex: aHex } };
   };
 
   const roomPendingCount = (key) => {
@@ -3275,52 +3422,74 @@ export default function App() {
                   ) : null}
                 </div>
                 <p className="text-sm text-slate-700">{preset.line}</p>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <label className="text-sm">
-                    Nuance dominante
-                    <select
-                      className="mt-1 w-full rounded-md border border-black/15 bg-white p-2"
-                      value={activeNuance.dominant}
-                      onChange={(e) => updateRoomNuance("dominant", e.target.value)}
-                    >
-                      <option value="clair">Clair</option>
-                      <option value="moyen">Moyen</option>
-                      <option value="soutenu">Soutenu</option>
-                      <option value="fonce">Foncé</option>
-                    </select>
-                  </label>
-                  <label className="text-sm">
-                    Nuance secondaire
-                    <select
-                      className="mt-1 w-full rounded-md border border-black/15 bg-white p-2"
-                      value={activeNuance.secondary}
-                      onChange={(e) => updateRoomNuance("secondary", e.target.value)}
-                    >
-                      <option value="clair">Clair</option>
-                      <option value="moyen">Moyen</option>
-                      <option value="soutenu">Soutenu</option>
-                      <option value="fonce">Foncé</option>
-                    </select>
-                  </label>
-                  <label className="text-sm">
-                    Accent pièce
-                    <select
-                      className="mt-1 w-full rounded-md border border-black/15 bg-white p-2"
-                      value={activeNuance.accent}
-                      onChange={(e) => updateRoomNuance("accent", e.target.value)}
-                    >
-                      <option value="bois">Chêne clair</option>
-                      {Object.entries(accents).map(([key, value]) => (
-                        <option key={key} value={key}>
-                          {value.name}
-                        </option>
+                <div className="space-y-4">
+                  {[
+                    { role: "dominantColor", nuanceRole: "dominant", label: "Couleur dominante" },
+                    { role: "secondaryColor", nuanceRole: "secondary", label: "Couleur secondaire" },
+                  ].map(({ role, nuanceRole, label }) => {
+                    const selectedColor = activeNuance[role] || (role === "dominantColor" ? preset.dominant : preset.secondary);
+                    const selectedNuance = activeNuance[nuanceRole];
+                    return (
+                      <div key={role}>
+                        <p className="mb-1.5 text-sm font-medium text-slate-700">{label}</p>
+                        <div className="flex gap-2">
+                          {Object.entries(baseColors).map(([key, color]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => updateRoomNuance(role, key)}
+                              title={color.name}
+                              className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                                selectedColor === key ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                              }`}
+                            >
+                              <span className="block h-6 w-full rounded-md" style={{ backgroundColor: color.hex }} />
+                              <span className="text-[10px] leading-tight text-slate-500">{color.name.split(" ")[0]}</span>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex gap-1.5">
+                          {[["clair", "Clair"], ["moyen", "Moyen"], ["soutenu", "Soutenu"], ["fonce", "Foncé"]].map(([val, lbl]) => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => updateRoomNuance(nuanceRole, val)}
+                              className={`flex-1 rounded-md border py-1 text-xs font-medium transition-all ${
+                                selectedNuance === val
+                                  ? "border-slate-900 bg-slate-900 text-white"
+                                  : "border-black/15 bg-white text-slate-600 hover:border-black/30"
+                              }`}
+                            >
+                              {lbl}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div>
+                    <p className="mb-1.5 text-sm font-medium text-slate-700">Accent pièce</p>
+                    <div className="flex gap-2">
+                      {[["bois", "Chêne clair", baseColors.bois.hex], ...Object.entries(accents).map(([k, v]) => [k, v.name, v.hex])].map(([key, name, hex]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => updateRoomNuance("accent", key)}
+                          title={name}
+                          className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                            activeNuance.accent === key ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                          }`}
+                        >
+                          <span className="block h-6 w-full rounded-md" style={{ backgroundColor: hex }} />
+                          <span className="text-[10px] leading-tight text-slate-500">{name.split(" ")[0]}</span>
+                        </button>
                       ))}
-                    </select>
-                  </label>
+                    </div>
+                  </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <Swatch title={baseColors[preset.dominant].name} subtitle="Dominante" hex={dominantHex} />
-                  <Swatch title={baseColors[preset.secondary].name} subtitle="Secondaire" hex={secondaryHex} />
+                  <Swatch title={baseColors[activeDominantColor].name} subtitle="Dominante" hex={dominantHex} />
+                  <Swatch title={baseColors[activeSecondaryColor].name} subtitle="Secondaire" hex={secondaryHex} />
                   <Swatch title={accentName} subtitle="Accent" hex={accentHex} />
                 </div>
                 <button

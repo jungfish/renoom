@@ -2420,7 +2420,13 @@ export default function App() {
     }
   });
   const [viewMode, setViewMode] = useState("room");
-  const [roomMode, setRoomMode] = useState("couleurs");
+  const [roomMode, setRoomMode] = useState("inspirations");
+  const lastRoomModeRef = useRef({});
+
+  const handleSetRoomMode = (mode) => {
+    lastRoomModeRef.current[room] = mode;
+    setRoomMode(mode);
+  };
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [show3D, setShow3D] = useState(false);
   const [roomLists, setRoomLists] = useState(() => {
@@ -2867,7 +2873,7 @@ export default function App() {
   }, [roomOrder]);
 
   useEffect(() => {
-    setRoomMode("couleurs");
+    setRoomMode(lastRoomModeRef.current[room] || "inspirations");
   }, [room]);
 
   const getRoomColors = (roomKey) => {
@@ -3081,8 +3087,8 @@ export default function App() {
         {viewMode === "room" ? (
           <div className="flex gap-1 rounded-xl border border-black/10 bg-white p-1.5">
             {[
-              { key: "couleurs", label: "Couleurs" },
               { key: "inspirations", label: "Inspirations" },
+              { key: "couleurs", label: "Couleurs" },
               { key: "liste", label: "Liste" },
               { key: "chat", label: "Chat IA" },
             ].map(({ key, label }) => {
@@ -3091,7 +3097,7 @@ export default function App() {
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setRoomMode(key)}
+                  onClick={() => handleSetRoomMode(key)}
                   className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                     roomMode === key ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
                   }`}

@@ -1796,7 +1796,7 @@ function MaterialsSection({
           <AddMaterialButton onFile={handleAddImage} onLink={handleAddLink} />
         </div>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {visibleItems.map(({ item, cardKey, displayIndex: index, isExtra }) => {
           const isLinkPreview = !!item.linkPreview;
           const imageSrc = materialUploads[cardKey] || item.src;
@@ -1805,7 +1805,7 @@ function MaterialsSection({
           return (
             <div key={cardKey} className="overflow-visible rounded-xl border border-black/10 bg-white">
               <div
-                className="group relative h-52 overflow-hidden rounded-t-xl sm:h-48"
+                className={`group relative overflow-hidden rounded-t-xl${isLinkPreview ? " h-52 sm:h-48" : ""}`}
                 onClick={() => {
                   if (isLinkPreview) {
                     window.open(item.linkPreview.url, "_blank", "noreferrer");
@@ -1826,6 +1826,7 @@ function MaterialsSection({
                     src={imageSrc}
                     alt={`${item.label} ${item.value}`}
                     onMissingChange={(missing) => handleMissingChange(cardKey, missing)}
+                    objectFit="natural"
                   />
                 )}
                 <div

@@ -3885,6 +3885,8 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
   const [filter, setFilter] = useState("all");
   const [hideDone, setHideDone] = useState(true);
   const [groupBy, setGroupBy] = useState("room"); // "room" | "week"
+  const [roomInputs, setRoomInputs] = useState({}); // { [roomKey]: string }
+  const [roomInputOpen, setRoomInputOpen] = useState({}); // { [roomKey]: bool }
 
   const toggleItem = (roomKey, listKey, id) => {
     setRoomLists((prev) => {
@@ -3893,6 +3895,29 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
       if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, roomKey, listKey, updatedList);
       return next;
     });
+  };
+
+  const deleteItem = (roomKey, listKey, id) => {
+    setRoomLists((prev) => {
+      const updatedList = ((prev[roomKey] || {})[listKey] || []).filter((item) => item.id !== id);
+      const next = { ...prev, [roomKey]: { ...(prev[roomKey] || {}), [listKey]: updatedList } };
+      if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, roomKey, listKey, updatedList);
+      return next;
+    });
+  };
+
+  const addItemToRoom = (roomKey, listKey, text) => {
+    if (!text.trim()) return;
+    const id = `${listKey}-${Date.now()}`;
+    const newItem = { id, text: text.trim(), done: false };
+    setRoomLists((prev) => {
+      const currentItems = ((prev[roomKey] || {})[listKey] || []);
+      const newItems = [...currentItems, newItem];
+      if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, roomKey, listKey, newItems);
+      return { ...prev, [roomKey]: { ...(prev[roomKey] || {}), [listKey]: newItems } };
+    });
+    setRoomInputs((prev) => ({ ...prev, [roomKey]: "" }));
+    setRoomInputOpen((prev) => ({ ...prev, [roomKey]: false }));
   };
 
   // Collect all items across all rooms
@@ -3979,6 +4004,11 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
         {groupBy === "room" && (
           <span className="text-[11px] text-slate-400">{item.listKey === "shopping" ? "courses" : "à faire"}</span>
         )}
+        <button type="button" onClick={() => deleteItem(item.roomKey, item.listKey, item.id)}
+          className="ml-1 grid h-5 w-5 shrink-0 place-items-center rounded text-slate-300 hover:bg-red-50 hover:text-red-400 transition-colors"
+          title="Supprimer">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     </li>
   );
@@ -4033,12 +4063,49 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
         const todos = filter !== "shopping" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey: key })) : [];
         const allItems = [...shopping, ...todos];
         const visible = hideDone ? allItems.filter((i) => !i.done) : allItems;
-        if (visible.length === 0) return null;
         const sorted = [...visible.filter((i) => !i.done), ...visible.filter((i) => i.done)];
+        const isOpen = roomInputOpen[key] || false;
+        const inputVal = roomInputs[key] || "";
+        const addListKey = filter === "shopping" ? "shopping" : "todos";
         return (
           <div key={key} className="rounded-xl border border-black/10 bg-white p-4">
-            <h3 className="mb-3 font-medium text-slate-900">{preset?.label}</h3>
-            <ul className="space-y-1.5">{sorted.map((item) => renderItemRow(item, false))}</ul>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-medium text-slate-900">{preset?.label}</h3>
+              {!isOpen && (
+                <button type="button"
+                  onClick={() => setRoomInputOpen((prev) => ({ ...prev, [key]: true }))}
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Ajouter
+                </button>
+              )}
+            </div>
+            {sorted.length > 0 && (
+              <ul className="mb-2 space-y-1.5">{sorted.map((item) => renderItemRow(item, false))}</ul>
+            )}
+            {isOpen ? (
+              <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); addItemToRoom(key, addListKey, inputVal); }}>
+                <input
+                  type="text"
+                  autoFocus
+                  value={inputVal}
+                  onChange={(e) => setRoomInputs((prev) => ({ ...prev, [key]: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === "Escape") { setRoomInputOpen((prev) => ({ ...prev, [key]: false })); setRoomInputs((prev) => ({ ...prev, [key]: "" })); } }}
+                  placeholder={addListKey === "shopping" ? "Ajouter aux courses…" : "Ajouter une tâche…"}
+                  className="min-w-0 flex-1 rounded-md border border-black/15 bg-slate-50 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none" />
+                <button type="submit"
+                  className="shrink-0 rounded-md border border-black/15 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white">
+                  Ajouter
+                </button>
+                <button type="button"
+                  onClick={() => { setRoomInputOpen((prev) => ({ ...prev, [key]: false })); setRoomInputs((prev) => ({ ...prev, [key]: "" })); }}
+                  className="shrink-0 rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-50">
+                  Annuler
+                </button>
+              </form>
+            ) : sorted.length === 0 ? (
+              <p className="text-sm text-slate-400 italic">Aucun élément — cliquez sur Ajouter pour commencer.</p>
+            ) : null}
           </div>
         );
       })}

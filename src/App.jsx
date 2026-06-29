@@ -61,6 +61,7 @@ const rooms = [
   "enfant",
   "bureau",
   "sdb",
+  "sanitaires",
   "vinyle",
   "cellier",
 ];
@@ -128,6 +129,13 @@ const roomPresets = {
     secondary: "creme",
     line: "Cellier : pièce parfaite pour un décor plus éditorial et des motifs discrets.",
     notes: ["Le jaune beurre est très juste pour donner une lumière vintage."],
+  },
+  sanitaires: {
+    label: "Sanitaires",
+    dominant: "clair",
+    secondary: "clair",
+    line: "Sanitaires : fonctionnel et soigné, avec des matières qui résistent bien à l'humidité.",
+    notes: ["Le carrelage de métro blanc reste la valeur sûre."],
   },
 };
 
@@ -4825,6 +4833,8 @@ export default function App() {
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [confirmRemoveMember, setConfirmRemoveMember] = useState(null);
   const [userProjectCount, setUserProjectCount] = useState(1);
+  const [showProjectPicker, setShowProjectPicker] = useState(false);
+  const [userProjects, setUserProjects] = useState([]);
   const [showOnboarding, setShowOnboarding] = useState(null); // null=detecting, true=show, false=skip
   const [roomLists, setRoomLists] = useState(() => {
     try {
@@ -5475,6 +5485,15 @@ export default function App() {
       .then(({ count }) => { if (count !== null) setUserProjectCount(count); });
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const loadUserProjects = async () => {
+    if (!user?.id || !import.meta.env.VITE_SUPABASE_URL) return;
+    const { data } = await supabase
+      .from("project_members")
+      .select("project_id, role, projects(id, name)")
+      .eq("user_id", user.id);
+    if (data) setUserProjects(data.map(r => ({ id: r.projects.id, name: r.projects.name, role: r.role })));
+  };
+
   // Détecter si l'utilisateur est nouveau (pas encore de projets) → afficher l'onboarding
   useEffect(() => {
     if (!user?.id || projectId || !import.meta.env.VITE_SUPABASE_URL) return;
@@ -5732,6 +5751,35 @@ export default function App() {
           user={user}
           session={session}
           onComplete={(id) => {
+            // Vider l'état et le localStorage pour ne pas polluer le nouveau projet
+            [
+              UPLOAD_STORAGE_KEY, LINK_STORAGE_KEY, MATERIAL_UPLOAD_STORAGE_KEY,
+              MATERIAL_LINK_STORAGE_KEY, PLAN_UPLOAD_STORAGE_KEY, PLAN_LINK_STORAGE_KEY,
+              PLAN_EXTRA_STORAGE_KEY, MATERIAL_EXTRA_STORAGE_KEY, MATERIAL_META_STORAGE_KEY,
+              AI_INSPIRATIONS_STORAGE_KEY, IMAGE_ANALYSIS_STORAGE_KEY, DELETED_IMAGES_STORAGE_KEY,
+              INSTAGRAM_STORAGE_KEY, ROOM_LISTS_STORAGE_KEY, ROOM_DOCUMENTS_STORAGE_KEY,
+              ROOM_NUANCES_STORAGE_KEY, ROOM_NOTES_STORAGE_KEY, PROJECT_STATE_STORAGE_KEY,
+              HIDDEN_ROOMS_STORAGE_KEY, CUSTOM_ROOMS_STORAGE_KEY,
+            ].forEach(k => localStorage.removeItem(k));
+            setUploadedImages({});
+            setInspirationLinks({});
+            setMaterialUploads({});
+            setMaterialLinks({});
+            setPlanUploads({});
+            setPlanLinks({});
+            setExtraPlanImages({});
+            setExtraMaterialImages({});
+            setExtraMaterialMeta({});
+            setAiInspirations({});
+            setInstagramItems({});
+            setImageAnalysis({});
+            setDeletedImages({});
+            setRoomNuances({});
+            setRoomNotes({});
+            setRoomLists({});
+            setRoomDocuments({});
+            setHiddenRooms([]);
+            setCustomRooms([]);
             setProjectId(id);
             localStorage.setItem(PROJECT_ID_STORAGE_KEY, id);
             window.history.replaceState({}, "", `/?p=${id}`);

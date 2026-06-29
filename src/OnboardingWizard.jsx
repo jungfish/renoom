@@ -3,10 +3,14 @@ import { supabase } from "./supabaseClient";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
-const ALL_ROOMS = ["salon","cuisine","entree","parents","enfant","bureau","sdb","vinyle","cellier"];
+// ALL_ROOMS = tous les rooms connus par App.jsx (pour le calcul de hiddenRooms)
+const ALL_ROOMS = ["salon","cuisine","entree","parents","enfant","bureau","sdb","sanitaires","vinyle","cellier"];
+// WIZARD_ROOMS = rooms proposés dans l'UI du wizard (sans vinyle/cellier)
+const WIZARD_ROOMS = ["salon","cuisine","entree","parents","enfant","bureau","sdb","sanitaires"];
 const ROOM_LABELS = {
   salon:"Salon", cuisine:"Cuisine", entree:"Entrée", parents:"Chambre parents",
-  enfant:"Chambre enfant", bureau:"Bureau", sdb:"Salle de bain", vinyle:"Coin vinyle", cellier:"Cellier",
+  enfant:"Chambre enfant", bureau:"Bureau", sdb:"Salle de bain", sanitaires:"Sanitaires",
+  vinyle:"Coin vinyle", cellier:"Cellier",
 };
 const DEFAULT_SELECTED = ["salon","cuisine","entree","parents","sdb"];
 const WIZARD_STORAGE_KEY = "renoom_onboarding_state";
@@ -428,10 +432,10 @@ function StepWelcome({ firstName, onStart, onHaveCode, signOut }) {
     <div className="flex flex-col items-center text-center gap-6">
       <div className="flex items-center gap-2 mb-1">
         <svg width="28" height="28" viewBox="0 0 34 34" fill="none">
-          <rect x="1" y="1" width="14" height="14" rx="3" fill="#27313c"/>
-          <rect x="19" y="1" width="14" height="14" rx="3" fill="#27313c" opacity="0.3"/>
-          <rect x="1" y="19" width="14" height="14" rx="3" fill="#27313c" opacity="0.3"/>
-          <rect x="19" y="19" width="14" height="14" rx="3" fill="#27313c"/>
+          <rect x="0" y="0" width="15" height="15" rx="3" fill="#b8c9d0"/>
+          <rect x="19" y="0" width="15" height="15" rx="3" fill="#A8B5A2"/>
+          <rect x="0" y="19" width="15" height="15" rx="3" fill="#D0AA6C"/>
+          <rect x="19" y="19" width="15" height="15" rx="3" fill="#FAF6F0" stroke="rgba(0,0,0,0.12)" strokeWidth="1"/>
         </svg>
         <span className="font-['Sora'] font-semibold text-base text-slate-800">Renoom</span>
       </div>
@@ -544,7 +548,7 @@ function StepRooms({ selectedRooms, setSelectedRooms, onNext, onBack }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {ALL_ROOMS.map(key => {
+        {WIZARD_ROOMS.map(key => {
           const sel = selectedRooms.includes(key);
           return (
             <button

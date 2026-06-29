@@ -4393,7 +4393,7 @@ function LoginScreen({ onSignIn }) {
             <div className="h-2.5 w-2.5 rounded-full bg-black/15" />
             <div className="h-2.5 w-2.5 rounded-full bg-black/15" />
             <div className="h-2.5 w-2.5 rounded-full bg-black/15" />
-            <div className="mx-auto rounded-md bg-black/8 px-8 py-0.5 text-[9px] text-slate-400">palette.app</div>
+            <div className="mx-auto rounded-md bg-black/8 px-8 py-0.5 text-[9px] text-slate-400">renoom.io</div>
           </div>
           {/* Animated slide content */}
           <div className="relative overflow-hidden" style={{ height: 320 }}>
@@ -6561,7 +6561,7 @@ export default function App() {
           </button>
           {isChatOpen ? (
             <div className="fixed inset-0 z-50 flex items-start justify-end">
-              <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setIsChatOpen(false)} />
+              <div className="absolute inset-0" onClick={() => setIsChatOpen(false)} />
               <div className="relative h-full w-full max-w-sm bg-white shadow-2xl flex flex-col">
                 <ChatPanel
                   room={room}

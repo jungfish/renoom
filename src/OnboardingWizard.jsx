@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
-const PINTEREST_CLIENT_ID = import.meta.env.VITE_PINTEREST_CLIENT_ID ?? "";
 
 const ALL_ROOMS = ["salon","cuisine","entree","parents","enfant","bureau","sdb","sanitaires","vinyle","cellier"];
 const WIZARD_ROOMS = ["salon","cuisine","entree","parents","enfant","bureau","sdb","sanitaires"];
@@ -31,12 +30,7 @@ function fileToDataUrl(file) {
 }
 
 export function OnboardingWizard({ user, session, onComplete, onJoinProject, onSkip, signOut }) {
-  const isPinterestReturn = (() => {
-    const p = new URLSearchParams(window.location.search);
-    return !!(p.get("code") && p.get("state") === "pinterest_wizard");
-  })();
-
-  const [step, setStep] = useState(() => isPinterestReturn ? "inspo" : "welcome");
+  const [step, setStep] = useState("welcome");
   const [direction, setDirection] = useState(1);
 
   // Create path state
@@ -48,17 +42,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
   const [inspoUrlAdded, setInspoUrlAdded] = useState([]);
   const [loadingMessage, setLoadingMessage] = useState("Création de votre projet…");
 
-  // Pinterest state
-  const [pinterestPhase, setPinterestPhase] = useState(isPinterestReturn ? "loading" : null);
-  const [pinterestToken, setPinterestToken] = useState(null);
-  const [pinterestBoards, setPinterestBoards] = useState([]);
-  const [selectedBoardIds, setSelectedBoardIds] = useState([]);
-
   // Join path state
-  const [joinCode, setJoinCode] = useState(() => {
-    if (isPinterestReturn) return "";
-    return new URLSearchParams(window.location.search).get("invite") || "";
-  });
+  const [joinCode, setJoinCode] = useState(() => new URLSearchParams(window.location.search).get("invite") || "");
   const [joinError, setJoinError] = useState("");
 
   // Post-creation state
@@ -81,55 +66,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
     setStep(nextStep);
   };
 
-  // ── Pinterest OAuth ──────────────────────────────────────────────────────
-
-  const exchangePinterestCode = async (code, redirectUri) => {
-    try {
-      const token = sessionRef.current?.access_token;
-      const res = await fetch(`${API_BASE}/pinterest-oauth`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ code, redirectUri }),
-      });
-      if (!res.ok) throw new Error("Pinterest auth failed");
-      const { accessToken, boards } = await res.json();
-      setPinterestToken(accessToken);
-      setPinterestBoards(boards || []);
-      setPinterestPhase("selecting");
-    } catch {
-      setPinterestPhase(null);
-    }
-  };
-
-  // Detect Pinterest return from OAuth redirect
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const state = params.get("state");
-    if (code && state === "pinterest_wizard") {
-      const saved = JSON.parse(localStorage.getItem(WIZARD_STORAGE_KEY) || "{}");
-      const origin = `${window.location.protocol}//${window.location.host}`;
-      window.history.replaceState({}, "", "/");
-      localStorage.removeItem(WIZARD_STORAGE_KEY);
-      if (saved.pinterestReturn) {
-        setProjectName(saved.projectName || "");
-        setSelectedRooms(saved.selectedRooms || DEFAULT_SELECTED);
-        setDecoStyle(saved.decoStyle || null);
-        setInspoUrlAdded(saved.inspoUrlAdded || []);
-        exchangePinterestCode(code, origin);
-      } else {
-        setPinterestPhase(null);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Auto-join if invite code in URL on mount
   useEffect(() => {
-    if (isPinterestReturn) return;
     const invite = new URLSearchParams(window.location.search).get("invite");
     if (invite) {
       setJoinCode(invite);
@@ -138,20 +76,6 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handlePinterestConnect = () => {
-    if (!PINTEREST_CLIENT_ID) return;
-    localStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify({
-      pinterestReturn: true,
-      projectName,
-      selectedRooms,
-      decoStyle,
-      inspoUrlAdded,
-    }));
-    const redirectUri = window.location.origin;
-    const url = `https://www.pinterest.com/oauth/?client_id=${PINTEREST_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=boards:read,pins:read&state=pinterest_wizard`;
-    window.location.href = url;
-  };
 
   // Progress bar
   const PROGRESS_STEPS = ["name","rooms","style","inspo"];
@@ -196,24 +120,7 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
       const activeRoom = selectedRooms[0] || "salon";
       const generalContext = `${projectName || "Appartement"}, style ${selectedStyle?.label || "moderne"}, pièces : ${selectedRooms.map(r => ROOM_LABELS[r]).join(", ")}.`;
 
-      // 1. Import Pinterest boards server-side (returns Supabase Storage URLs)
-      const pinterestUrls = [];
-      if (selectedBoardIds.length > 0 && pinterestToken) {
-        setLoadingMessage("Import des photos Pinterest…");
-        try {
-          const pinRes = await fetch(`${API_BASE}/pinterest-import`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeader },
-            body: JSON.stringify({ accessToken: pinterestToken, boardIds: selectedBoardIds }),
-          });
-          if (pinRes.ok) {
-            const { urls } = await pinRes.json();
-            pinterestUrls.push(...(urls || []));
-          }
-        } catch {}
-      }
-
-      // 2. Upload local inspiration files
+      // Upload local inspiration files
       const uploadedImages = {};
       if (inspoFiles.length > 0) {
         setLoadingMessage("Upload des inspirations…");
@@ -232,11 +139,6 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
           } catch {}
         }
       }
-
-      // Merge Pinterest URLs into uploadedImages
-      pinterestUrls.forEach((url, i) => {
-        uploadedImages[`${activeRoom}-pin-${i}`] = url;
-      });
 
       // URL-based inspirations
       const inspirationLinks = {};
@@ -312,9 +214,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
           details: {
             rooms: selectedRooms,
             style: decoStyle,
-            hasInspo: inspoFiles.length > 0 || inspoUrlAdded.length > 0 || pinterestUrls.length > 0,
-            inspoCount: inspoFiles.length + inspoUrlAdded.length + pinterestUrls.length,
-            pinterest: selectedBoardIds.length > 0,
+            hasInspo: inspoFiles.length > 0 || inspoUrlAdded.length > 0,
+            inspoCount: inspoFiles.length + inspoUrlAdded.length,
             invited: false,
           },
         }),
@@ -462,22 +363,7 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
               onRemoveUrl={(i) => setInspoUrlAdded(prev => prev.filter((_, idx) => idx !== i))}
               fileInputRef={fileInputRef}
               onNext={handleCreate}
-              onBack={() => {
-                if (pinterestPhase === "selecting") {
-                  setPinterestPhase(null);
-                  setPinterestBoards([]);
-                  setPinterestToken(null);
-                  setSelectedBoardIds([]);
-                } else {
-                  goTo("style", -1);
-                }
-              }}
-              pinterestEnabled={!!PINTEREST_CLIENT_ID}
-              pinterestPhase={pinterestPhase}
-              pinterestBoards={pinterestBoards}
-              selectedBoardIds={selectedBoardIds}
-              setSelectedBoardIds={setSelectedBoardIds}
-              onPinterestConnect={handlePinterestConnect}
+              onBack={() => goTo("style", -1)}
             />
           )}
 
@@ -712,36 +598,8 @@ function StepInspo({
   inspoFiles, inspoUrlAdded, inspoUrlInput, setInspoUrlInput,
   onFileChange, onRemoveFile, onAddUrl, onRemoveUrl, fileInputRef,
   onNext, onBack,
-  pinterestEnabled, pinterestPhase, pinterestBoards, selectedBoardIds, setSelectedBoardIds, onPinterestConnect,
 }) {
-  // Pinterest connecting spinner
-  if (pinterestPhase === "loading") {
-    return (
-      <div className="flex flex-col gap-5">
-        <BackLink onClick={onBack} />
-        <div className="flex flex-col items-center gap-4 py-10">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#e60023]" />
-          <p className="text-sm text-slate-500">Connexion à Pinterest…</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Board selection view
-  if (pinterestPhase === "selecting") {
-    return (
-      <StepPinterestBoards
-        boards={pinterestBoards}
-        selectedBoardIds={selectedBoardIds}
-        setSelectedBoardIds={setSelectedBoardIds}
-        onBack={onBack}
-        onNext={onNext}
-      />
-    );
-  }
-
-  // Normal inspo view
-  const hasContent = inspoFiles.length > 0 || inspoUrlAdded.length > 0 || selectedBoardIds.length > 0;
+  const hasContent = inspoFiles.length > 0 || inspoUrlAdded.length > 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -750,7 +608,7 @@ function StepInspo({
         <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
           Ajoutez vos premières inspirations
         </h2>
-        <p className="text-xs text-slate-500">Photos, liens ou votre board Pinterest — tout ce qui vous inspire.</p>
+        <p className="text-xs text-slate-500">Photos ou liens — tout ce qui vous inspire.</p>
       </div>
 
       {/* File upload */}
@@ -813,33 +671,6 @@ function StepInspo({
         )}
       </div>
 
-      {/* Pinterest button */}
-      {pinterestEnabled && (
-        <button
-          onClick={onPinterestConnect}
-          className="w-full flex items-center justify-center gap-2 rounded-xl border border-black/10 bg-white py-3 px-4 text-sm font-medium text-slate-700 hover:border-[#e60023]/40 hover:text-[#e60023] hover:bg-red-50/40 transition-all"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="#e60023">
-            <path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/>
-          </svg>
-          Importer depuis Pinterest
-        </button>
-      )}
-
-      {/* Selected boards indicator */}
-      {selectedBoardIds.length > 0 && (
-        <div className="flex items-center gap-2 text-xs text-slate-500 bg-red-50 rounded-lg px-3 py-2 border border-red-100">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="#e60023"><path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/></svg>
-          <span>{selectedBoardIds.length} board{selectedBoardIds.length > 1 ? "s" : ""} Pinterest sélectionné{selectedBoardIds.length > 1 ? "s" : ""}</span>
-          <button
-            onClick={() => setSelectedBoardIds([])}
-            className="ml-auto text-slate-400 hover:text-slate-600"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       <PrimaryBtn onClick={onNext}>
         {hasContent ? "Créer mon appartement →" : "Créer mon appartement"}
       </PrimaryBtn>
@@ -849,81 +680,6 @@ function StepInspo({
           Vous pourrez en ajouter directement depuis l'app.
         </p>
       )}
-    </div>
-  );
-}
-
-function StepPinterestBoards({ boards, selectedBoardIds, setSelectedBoardIds, onBack, onNext }) {
-  const toggle = (id) => {
-    setSelectedBoardIds(prev =>
-      prev.includes(id) ? prev.filter(b => b !== id) : prev.length < 3 ? [...prev, id] : prev
-    );
-  };
-
-  return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <BackLink onClick={onBack} />
-        <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
-          Vos boards Pinterest
-        </h2>
-        <p className="text-xs text-slate-500">
-          Sélectionnez jusqu'à 3 boards à importer dans votre galerie.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-2 max-h-72 overflow-y-auto -mx-1 px-1">
-        {boards.length === 0 && (
-          <p className="text-sm text-slate-400 text-center py-6">Aucun board trouvé sur votre compte.</p>
-        )}
-        {boards.map(board => {
-          const sel = selectedBoardIds.includes(board.id);
-          const disabled = !sel && selectedBoardIds.length >= 3;
-          return (
-            <button
-              key={board.id}
-              onClick={() => toggle(board.id)}
-              disabled={disabled}
-              className={`w-full text-left rounded-xl border p-3 transition-all flex items-center gap-3 ${
-                sel
-                  ? "border-slate-900 bg-white ring-1 ring-slate-900/10"
-                  : disabled
-                  ? "border-black/8 bg-white/50 opacity-40 cursor-not-allowed"
-                  : "border-black/10 bg-white hover:border-slate-400"
-              }`}
-            >
-              {board.coverUrl ? (
-                <img src={board.coverUrl} alt="" className="h-10 w-10 rounded-lg object-cover shrink-0" />
-              ) : (
-                <div className="h-10 w-10 rounded-lg bg-slate-100 shrink-0 flex items-center justify-center">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#e60023" opacity="0.5"><path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/></svg>
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-slate-800 truncate">{board.name}</div>
-                <div className="text-xs text-slate-400">{board.pinCount} pins</div>
-              </div>
-              {sel && (
-                <div className="h-5 w-5 rounded-full bg-slate-900 flex items-center justify-center shrink-0">
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                    <path d="M2 5l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      <PrimaryBtn onClick={onNext} disabled={selectedBoardIds.length === 0}>
-        Importer {selectedBoardIds.length > 0
-          ? `${selectedBoardIds.length} board${selectedBoardIds.length > 1 ? "s" : ""} →`
-          : "…"}
-      </PrimaryBtn>
-
-      <button onClick={onNext} className="text-center text-xs text-slate-400 hover:text-slate-600 transition-colors">
-        Continuer sans Pinterest
-      </button>
     </div>
   );
 }

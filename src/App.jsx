@@ -5889,30 +5889,44 @@ export default function App() {
     return () => { supabase.removeChannel(channel); };
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Backfill previews pour les items avec URL mais sans image (chargement initial depuis la base)
+  // Backfill previews : items avec URL (dans item.url ou extraite du text) mais sans image
   useEffect(() => {
     if (!projectId) return;
     const toFetch = [];
     for (const [roomKey, lists] of Object.entries(roomLists)) {
       for (const [listKey, items] of Object.entries(lists)) {
         for (const item of (items || [])) {
-          if (item.url && !item.image && !item.previewLoading && !previewFetchedIdsRef.current.has(item.id)) {
+          if (previewFetchedIdsRef.current.has(item.id) || item.previewLoading) continue;
+          // Cas 1 : url déjà dans la colonne mais pas d'image
+          if (item.url && !item.image) {
             previewFetchedIdsRef.current.add(item.id);
-            toFetch.push({ roomKey, listKey, id: item.id, url: item.url });
+            toFetch.push({ roomKey, listKey, id: item.id, url: item.url, needsUrlSave: false });
+            continue;
+          }
+          // Cas 2 : URL dans le texte mais jamais extraite en colonne (items IA anciens)
+          if (!item.url) {
+            const m = (item.text || "").match(/https?:\/\/[^\s]+/);
+            if (m) {
+              previewFetchedIdsRef.current.add(item.id);
+              toFetch.push({ roomKey, listKey, id: item.id, url: m[0], needsUrlSave: true });
+            }
           }
         }
       }
     }
     if (!toFetch.length) return;
-    for (const { roomKey, listKey, id, url } of toFetch) {
+    for (const { roomKey, listKey, id, url, needsUrlSave } of toFetch) {
       fetchLinkPreview(url).then((preview) => {
-        if (!preview.image && !preview.title) return;
         setRoomLists((prev) => {
-          const updatedItems = ((prev[roomKey] || {})[listKey] || []).map((i) =>
-            i.id === id
-              ? { ...i, ...(preview.image ? { image: preview.image } : {}), ...(preview.title && !i.previewTitle ? { previewTitle: preview.title } : {}) }
-              : i
-          );
+          const updatedItems = ((prev[roomKey] || {})[listKey] || []).map((i) => {
+            if (i.id !== id) return i;
+            return {
+              ...i,
+              ...(needsUrlSave ? { url } : {}),
+              ...(preview.image ? { image: preview.image } : {}),
+              ...(preview.title && !i.previewTitle ? { previewTitle: preview.title } : {}),
+            };
+          });
           saveRoomItemsToServer(projectId, roomKey, listKey, updatedItems);
           return { ...prev, [roomKey]: { ...(prev[roomKey] || {}), [listKey]: updatedItems } };
         });
@@ -5954,6 +5968,22 @@ export default function App() {
     };
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Charger les discussions de toutes les pièces non encore en cache quand on ouvre la vue globale
+  useEffect(() => {
+    if (!projectId || viewMode !== "general" || generalMode !== "discussions") return;
+    const allRoomKeys = ["general", ...orderedActiveRooms];
+    allRoomKeys.forEach(roomKey => {
+      setDiscussionsCache(prev => {
+        if (roomKey in prev) return prev;
+        authedFetchRef.current(`${API_BASE}/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussions&roomKey=${encodeURIComponent(roomKey)}`)
+          .then(r => r.json())
+          .then(({ discussions }) => setDiscussionsCache(p => ({ ...p, [roomKey]: discussions || [] })))
+          .catch(() => {});
+        return prev;
+      });
+    });
+  }, [projectId, viewMode, generalMode, orderedActiveRooms]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Realtime discussions — notifie les membres des nouveaux fils et statuts
   useEffect(() => {
     if (!projectId || !import.meta.env.VITE_SUPABASE_URL) return;
@@ -5963,11 +5993,14 @@ export default function App() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "discussions", filter: `project_id=eq.${projectId}` },
-        () => {
+        (payload) => {
           clearTimeout(reloadTimer);
           reloadTimer = setTimeout(() => {
+            const changedRoomKey = payload?.new?.room_key || payload?.old?.room_key;
             setDiscussionsCache(cache => {
-              Object.keys(cache).forEach(roomKey => {
+              const roomsToRefresh = new Set(Object.keys(cache));
+              if (changedRoomKey) roomsToRefresh.add(changedRoomKey);
+              roomsToRefresh.forEach(roomKey => {
                 authedFetchRef.current(`${API_BASE}/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussions&roomKey=${encodeURIComponent(roomKey)}`)
                   .then(r => r.json())
                   .then(({ discussions }) => setDiscussionsCache(prev => ({ ...prev, [roomKey]: discussions || [] })))

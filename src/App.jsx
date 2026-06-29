@@ -3281,28 +3281,64 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
       const notices = [];
       for (const call of toolCalls) {
         if (call.name === "add_to_shopping_list" && setRoomLists) {
-          const newItems = (call.args.items || []).map((itemText) => ({
-            id: `shopping-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            text: itemText,
-            done: false,
-          }));
+          const newItems = (call.args.items || []).map((itemText) => {
+            const urlMatch = itemText.match(/https?:\/\/[^\s]+/);
+            const url = urlMatch ? urlMatch[0] : null;
+            return { id: `shopping-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, text: itemText, done: false, ...(url ? { url, previewLoading: true } : {}) };
+          });
           setRoomLists((prev) => {
             const updated = [...((prev[room] || {}).shopping || []), ...newItems];
             if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, "shopping", updated);
             return { ...prev, [room]: { ...(prev[room] || {}), shopping: updated } };
           });
+          for (const item of newItems.filter((i) => i.url)) {
+            fetchLinkPreview(item.url).then((preview) => {
+              setRoomLists((prev) => {
+                const updatedItems = ((prev[room] || {}).shopping || []).map((i) =>
+                  i.id === item.id
+                    ? { ...i, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}) }
+                    : i
+                );
+                if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, "shopping", updatedItems);
+                return { ...prev, [room]: { ...(prev[room] || {}), shopping: updatedItems } };
+              });
+            }).catch(() => {
+              setRoomLists((prev) => {
+                const updatedItems = ((prev[room] || {}).shopping || []).map((i) => i.id === item.id ? { ...i, previewLoading: false } : i);
+                return { ...prev, [room]: { ...(prev[room] || {}), shopping: updatedItems } };
+              });
+            });
+          }
           notices.push(`${newItems.length} article${newItems.length > 1 ? "s" : ""} ajouté${newItems.length > 1 ? "s" : ""} à ta liste.`);
         } else if (call.name === "add_to_todo_list" && setRoomLists) {
-          const newItems = (call.args.items || []).map((itemText) => ({
-            id: `todo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            text: itemText,
-            done: false,
-          }));
+          const newItems = (call.args.items || []).map((itemText) => {
+            const urlMatch = itemText.match(/https?:\/\/[^\s]+/);
+            const url = urlMatch ? urlMatch[0] : null;
+            return { id: `todo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, text: itemText, done: false, ...(url ? { url, previewLoading: true } : {}) };
+          });
           setRoomLists((prev) => {
             const updated = [...((prev[room] || {}).todos || []), ...newItems];
             if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, "todos", updated);
             return { ...prev, [room]: { ...(prev[room] || {}), todos: updated } };
           });
+          for (const item of newItems.filter((i) => i.url)) {
+            fetchLinkPreview(item.url).then((preview) => {
+              setRoomLists((prev) => {
+                const updatedItems = ((prev[room] || {}).todos || []).map((i) =>
+                  i.id === item.id
+                    ? { ...i, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}) }
+                    : i
+                );
+                if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, "todos", updatedItems);
+                return { ...prev, [room]: { ...(prev[room] || {}), todos: updatedItems } };
+              });
+            }).catch(() => {
+              setRoomLists((prev) => {
+                const updatedItems = ((prev[room] || {}).todos || []).map((i) => i.id === item.id ? { ...i, previewLoading: false } : i);
+                return { ...prev, [room]: { ...(prev[room] || {}), todos: updatedItems } };
+              });
+            });
+          }
           notices.push(`${newItems.length} tâche${newItems.length > 1 ? "s" : ""} ajoutée${newItems.length > 1 ? "s" : ""} aux todos.`);
         } else if (call.name === "save_room_note" && setRoomNotes) {
           setRoomNotes((prev) => ({ ...prev, [room]: call.args.note }));
@@ -4370,7 +4406,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                   </button>
                 ) : (
                   <button type="button" onClick={() => setEditingDate(item.id)} title="Ajouter une échéance"
-                    className="hidden h-5 w-5 shrink-0 place-items-center rounded-full text-slate-300 hover:bg-slate-50 hover:text-slate-500 group-hover:grid">
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-200 opacity-0 transition-opacity hover:bg-slate-50 hover:text-slate-400 group-hover:opacity-100">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                   </button>
                 )}
@@ -4386,7 +4422,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                   ) : (
                     <button type="button"
                       onClick={() => setOpenPicker(openPicker === `item-${item.id}` ? null : `item-${item.id}`)}
-                      className="hidden h-5 w-5 place-items-center rounded-full border border-dashed border-slate-300 text-[9px] text-slate-300 hover:border-slate-400 hover:text-slate-400 group-hover:grid"
+                      className="grid h-5 w-5 place-items-center rounded-full border border-dashed border-slate-200 text-[9px] text-slate-200 opacity-0 transition-opacity hover:border-slate-400 hover:text-slate-400 group-hover:opacity-100"
                       title="Assigner">+</button>
                   )}
                   {openPicker === `item-${item.id}` && (
@@ -4397,7 +4433,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                   )}
                 </div>
                 <button type="button" onClick={() => removeItem(listKey, item.id)}
-                  className="shrink-0 px-1 text-slate-300 hover:text-slate-600">×</button>
+                  className="shrink-0 px-1 text-slate-200 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100">×</button>
               </li>
             ))}
           </ul>

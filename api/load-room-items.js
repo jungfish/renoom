@@ -1,5 +1,5 @@
-import { allowCors, sendJson } from "./_openai.js";
-import { getUserFromRequest, supabaseWithToken, supabaseAdmin } from "./_supabase.js";
+import { allowCors, sendJson, parseJsonBody } from "./_openai.js";
+import { getUserFromRequest, supabaseWithToken, supabaseAdmin, writeChangeLog } from "./_supabase.js";
 
 export default async function handler(req, res) {
   allowCors(res, req);
@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  if (req.method !== "GET") {
+  if (req.method !== "GET" && req.method !== "POST") {
     sendJson(res, 405, { error: "Méthode non supportée." });
     return;
   }
@@ -21,6 +21,34 @@ export default async function handler(req, res) {
   }
 
   const url = new URL(req.url || "/", "http://localhost");
+
+  // --- POST : suppression d'un membre (owner only) ---
+  if (req.method === "POST") {
+    const { projectId: pid, userId, action } = await parseJsonBody(req);
+    if (action !== "remove-member" || !pid || !userId) {
+      sendJson(res, 400, { error: "action, projectId et userId sont requis." });
+      return;
+    }
+    if (userId === user.id) {
+      sendJson(res, 400, { error: "Vous ne pouvez pas vous supprimer vous-même." });
+      return;
+    }
+    try {
+      const { data: caller } = await supabaseAdmin.from("project_members").select("role").eq("project_id", pid).eq("user_id", user.id).maybeSingle();
+      if (!caller || caller.role !== "owner") { sendJson(res, 403, { error: "Seul l'owner peut supprimer des membres." }); return; }
+      const { data: target } = await supabaseAdmin.from("project_members").select("role").eq("project_id", pid).eq("user_id", userId).maybeSingle();
+      if (!target) { sendJson(res, 404, { error: "Membre introuvable." }); return; }
+      if (target.role === "owner") { sendJson(res, 400, { error: "Impossible de supprimer un owner." }); return; }
+      const { error: delError } = await supabaseAdmin.from("project_members").delete().eq("project_id", pid).eq("user_id", userId);
+      if (delError) throw new Error(delError.message);
+      await writeChangeLog(pid, user.id, "remove_member", { removed_user_id: userId });
+      sendJson(res, 200, { success: true });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message || "Erreur lors de la suppression." });
+    }
+    return;
+  }
+
   const projectId = req.query?.projectId || url.searchParams.get("projectId");
   const type = req.query?.type || url.searchParams.get("type");
 
@@ -106,6 +134,23 @@ export default async function handler(req, res) {
       ).then(() => {}).catch(() => {});
 
       sendJson(res, 200, { messages: messages || [] });
+      return;
+    }
+
+    // --- notifications de mention pour l'utilisateur courant ---
+    if (type === "mention-notifications") {
+      const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
+      if (!member) { sendJson(res, 403, { error: "Accès refusé." }); return; }
+
+      const { data: notifications, error: notifError } = await supabase
+        .from("mention_notifications")
+        .select("id, discussion_id, message_id, mentioned_by, created_at, read_at, project_id")
+        .eq("user_id", user.id)
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false });
+      if (notifError) throw new Error(notifError.message);
+
+      sendJson(res, 200, { notifications: notifications || [] });
       return;
     }
 

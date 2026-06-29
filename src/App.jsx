@@ -2740,13 +2740,14 @@ function renderDiscussionContent(content, allRoomPresets, onNavigateToRoom) {
   });
 }
 
-function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, authedFetch, projectMembers, orderedActiveRooms, allRoomPresets, onClose, onDiscussionUpdate, onNavigateToRoom }) {
+function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, authedFetch, projectMembers, orderedActiveRooms, allRoomPresets, onClose, onDiscussionUpdate, onNavigateToRoom, onMarkMentionsRead }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [mention, setMention] = useState(null);
   const [linkedImage, setLinkedImage] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [mentionedUserIds, setMentionedUserIds] = useState([]);
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -2756,6 +2757,7 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
       .then(r => r.json())
       .then(({ messages: msgs }) => setMessages(msgs || []))
       .catch(() => {});
+    onMarkMentionsRead?.([discussionId]);
   }, [discussionId, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -2794,12 +2796,13 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
     }
   };
 
-  const handleInsertMention = (display) => {
+  const handleInsertMention = (display, memberId = null) => {
     if (!mention || !textareaRef.current) return;
     const cursor = textareaRef.current.selectionStart;
     const beforeMention = input.slice(0, mention.start);
     const afterCursor = input.slice(cursor);
     setInput(`${beforeMention}${mention.type}${display} ${afterCursor}`);
+    if (memberId) setMentionedUserIds(prev => [...prev, memberId]);
     setMention(null);
     setTimeout(() => textareaRef.current?.focus(), 0);
   };
@@ -2807,6 +2810,7 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
   const handleSend = async () => {
     if (!input.trim() || sending) return;
     const content = input.trim();
+    const toMention = [...mentionedUserIds];
     const tempId = `temp-${Date.now()}`;
     const authorName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'Moi';
     const authorAvatar = user?.user_metadata?.avatar_url || null;
@@ -4793,6 +4797,8 @@ export default function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [discussionsCache, setDiscussionsCache] = useState({});
   const [projectMembers, setProjectMembers] = useState([]);
+  const [mentionNotifications, setMentionNotifications] = useState([]);
+  const [openThread, setOpenThread] = useState(null);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [confirmRemoveMember, setConfirmRemoveMember] = useState(null);
   const [roomLists, setRoomLists] = useState(() => {
@@ -5067,13 +5073,35 @@ export default function App() {
       .catch(() => {});
   };
 
+  const loadMentionNotifications = (pid) => {
+    if (!pid) return;
+    authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(pid)}&type=mention-notifications`)
+      .then(r => r.json())
+      .then(({ notifications }) => setMentionNotifications(notifications || []))
+      .catch(() => {});
+  };
+
+  const markMentionsRead = (discussionIds) => {
+    if (!discussionIds?.length || !projectId) return;
+    setMentionNotifications(prev => prev.map(n =>
+      discussionIds.includes(n.discussion_id) && !n.read_at
+        ? { ...n, read_at: new Date().toISOString() }
+        : n
+    ));
+    authedFetch('/api/save-room', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'mark-mentions-read', projectId, discussionIds }),
+    }).catch(() => {});
+  };
+
   const removeMember = async (userId) => {
     if (!projectId) return;
     try {
-      await authedFetch("/api/remove-member", {
+      await authedFetch("/api/load-room-items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, userId }),
+        body: JSON.stringify({ action: "remove-member", projectId, userId }),
       });
       setConfirmRemoveMember(null);
       loadProjectMembers(projectId);
@@ -5418,6 +5446,39 @@ export default function App() {
   // Charger les membres du projet pour les @mentions
   useEffect(() => {
     if (projectId && user) loadProjectMembers(projectId);
+  }, [projectId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Charger les notifications de mention
+  useEffect(() => {
+    if (projectId && user) loadMentionNotifications(projectId);
+  }, [projectId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Demander la permission pour les notifications desktop (une seule fois)
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Realtime — nouvelles mentions pour l'utilisateur courant
+  useEffect(() => {
+    if (!projectId || !user?.id || !import.meta.env.VITE_SUPABASE_URL) return;
+    const channel = supabase
+      .channel(`mentions-${projectId}-${user.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mention_notifications', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          setMentionNotifications(prev => [payload.new, ...prev]);
+          if (document.visibilityState !== 'visible' && Notification.permission === 'granted') {
+            const notif = new Notification('Vous avez été mentionné', {
+              body: 'Quelqu\'un vous a tagué dans une discussion.',
+              icon: '/vite.svg',
+              tag: `mention-${payload.new.id}`,
+            });
+            notif.onclick = () => { window.focus(); notif.close(); };
+          }
+        }
+      ).subscribe();
+    return () => supabase.removeChannel(channel);
   }, [projectId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-save debounce — silently push changes to Supabase for real-time sharing

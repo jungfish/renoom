@@ -45,6 +45,7 @@ Deno.serve(async (req) => {
         .eq("user_id", user.id)
         .maybeSingle();
       if (!member) return corsResponse(403, { error: "Accès refusé." });
+      if (name && member.role === "owner") upsertData.name = name;
     }
 
     const { error: upsertError } = await supabaseAdmin

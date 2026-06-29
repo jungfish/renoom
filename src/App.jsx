@@ -4836,6 +4836,8 @@ export default function App() {
   const [userProjectCount, setUserProjectCount] = useState(1);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [userProjects, setUserProjects] = useState([]);
+  const [renamingProjectId, setRenamingProjectId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(null); // null=detecting, true=show, false=skip
   const [roomLists, setRoomLists] = useState(() => {
     try {
@@ -6079,25 +6081,63 @@ export default function App() {
             {showProjectPicker && userProjects.length > 0 && (
               <div className="absolute bottom-full left-2 right-2 mb-1 overflow-hidden rounded-lg border border-black/[0.08] bg-white shadow-lg">
                 {userProjects.map(p => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => switchProject(p.id)}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12.5px] transition-colors hover:bg-[#F5F3EE]"
-                  >
+                  <div key={p.id} className="group flex items-center gap-2 px-3 py-2.5 text-[12.5px] transition-colors hover:bg-[#F5F3EE]">
                     <div
                       className="h-4 w-4 flex-shrink-0 rounded-[3px]"
                       style={{ background: p.id === projectId ? "linear-gradient(135deg,#CDAA73 10%,#A8B5A2 90%)" : "#E0DDD7" }}
                     />
-                    <span className={`flex-1 truncate ${p.id === projectId ? "font-semibold text-[#1C1A17]" : "text-[#4D4A47]"}`}>
-                      {p.name || "Sans titre"}
-                    </span>
-                    {p.id === projectId && (
+                    {renamingProjectId === p.id ? (
+                      <form
+                        className="flex flex-1 items-center gap-1"
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          const newName = renameValue.trim();
+                          if (!newName) return;
+                          await authedFetch(`${API_BASE}/save-project`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ state: {}, id: p.id, name: newName }),
+                          });
+                          setUserProjects(prev => prev.map(pr => pr.id === p.id ? { ...pr, name: newName } : pr));
+                          setRenamingProjectId(null);
+                        }}
+                      >
+                        <input
+                          autoFocus
+                          className="flex-1 rounded border border-[#CDAA73] bg-white px-1.5 py-0.5 text-[12.5px] text-[#1C1A17] outline-none"
+                          value={renameValue}
+                          onChange={e => setRenameValue(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Escape") setRenamingProjectId(null); }}
+                          onBlur={() => setRenamingProjectId(null)}
+                        />
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => switchProject(p.id)}
+                        className={`flex-1 truncate text-left ${p.id === projectId ? "font-semibold text-[#1C1A17]" : "text-[#4D4A47]"}`}
+                      >
+                        {p.name || "Sans titre"}
+                      </button>
+                    )}
+                    {renamingProjectId !== p.id && (p.role === "owner" || p.id === projectId) && (
+                      <button
+                        type="button"
+                        title="Renommer"
+                        onClick={e => { e.stopPropagation(); setRenameValue(p.name || ""); setRenamingProjectId(p.id); }}
+                        className="flex-shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/[0.06]"
+                      >
+                        <svg className="h-3 w-3 text-[#8A8680]" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8.5 1.5l2 2L3 11H1v-2L8.5 1.5z" />
+                        </svg>
+                      </button>
+                    )}
+                    {p.id === projectId && renamingProjectId !== p.id && (
                       <svg className="h-3 w-3 flex-shrink-0 text-[#A8B5A2]" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M2 6l3 3 5-5" />
                       </svg>
                     )}
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -6341,7 +6381,7 @@ export default function App() {
         </header>
 
         {viewMode === "room" ? (
-          <div className="flex flex-shrink-0 items-center border-b border-black/[0.08] bg-[#FAFAF8] px-4 py-2">
+          <div className="flex h-14 flex-shrink-0 items-center border-b border-black/[0.08] bg-[#FAFAF8] px-4">
             <button type="button" onClick={() => setSidebarOpen(true)} className="mr-2 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-black/[0.05] lg:hidden">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M1 3h12M1 7h12M1 11h12" /></svg>
             </button>
@@ -6381,7 +6421,7 @@ export default function App() {
         ) : null}
 
         {viewMode === "general" ? (
-          <div className="flex flex-shrink-0 items-center border-b border-black/[0.08] bg-[#FAFAF8] px-4 py-2">
+          <div className="flex h-14 flex-shrink-0 items-center border-b border-black/[0.08] bg-[#FAFAF8] px-4">
             <button type="button" onClick={() => setSidebarOpen(true)} className="mr-2 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-black/[0.05] lg:hidden">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M1 3h12M1 7h12M1 11h12" /></svg>
             </button>

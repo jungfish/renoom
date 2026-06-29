@@ -5787,12 +5787,14 @@ export default function App() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-black/[0.08] bg-[#F2EFE7] px-3.5">
-          <div
-            className="h-[22px] w-[22px] flex-shrink-0 rounded-[5px]"
-            style={{ background: "linear-gradient(135deg,#CDAA73 10%,#A8B5A2 90%)" }}
-          />
-          <span className="truncate text-sm font-semibold tracking-tight text-[#1C1A17]">Appartement</span>
+        <div className="flex h-14 flex-shrink-0 items-center gap-2.5 border-b border-black/[0.08] bg-[#F2EFE7] px-3.5">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
+            <rect x="0" y="0" width="9.5" height="9.5" rx="2" fill="#b8c9d0"/>
+            <rect x="12.5" y="0" width="9.5" height="9.5" rx="2" fill="#A8B5A2"/>
+            <rect x="0" y="12.5" width="9.5" height="9.5" rx="2" fill="#D0AA6C"/>
+            <rect x="12.5" y="12.5" width="9.5" height="9.5" rx="2" fill="#FAF6F0" stroke="rgba(0,0,0,0.12)" strokeWidth="0.75"/>
+          </svg>
+          <span className="text-[15px] font-bold tracking-[-0.02em] text-[#1C1A17]">renoom</span>
         </div>
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5">
           <div className="mb-5">
@@ -5902,46 +5904,91 @@ export default function App() {
             </button>
           </div>
         </div>
-        <div className="flex-shrink-0 border-t border-black/[0.08] bg-[#F2EFE7] px-2 py-2">
-          <button
-            type="button"
-            onClick={() => {
-              setShowMembersModal(true);
-              setSidebarOpen(false);
-            }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-[7px] text-[13px] text-[#9A9790] transition-colors hover:bg-black/[0.04] hover:text-[#1C1A17]"
-          >
-            <svg
-              className="h-3.5 w-3.5 flex-shrink-0 opacity-55"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
+        <div className="flex-shrink-0 border-t border-black/[0.08] bg-[#F2EFE7]">
+          {/* Project switcher */}
+          <div className="border-b border-black/[0.06] px-2 py-1.5">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-[7px] text-left transition-colors hover:bg-black/[0.04]"
             >
-              <circle cx="5" cy="4.5" r="2.5" />
-              <path d="M.5 13c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" />
-              <circle cx="11" cy="4.5" r="2" />
-              <path d="M13.5 13c0-2-1.5-3.5-3-3.5" />
-            </svg>
-            <span>Membres</span>
-            {projectMembers.length > 0 && (
-              <div className="ml-auto flex">
-                {projectMembers.slice(0, 3).map((member, i) => (
-                  <div
-                    key={member.id}
-                    className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[#F2EFE7] text-[8.5px] font-bold text-white"
-                    style={{
-                      background: ["#A8B5A2", "#b8c9d0", "#CDAA73"][i % 3],
-                      marginLeft: i === 0 ? 0 : -4,
-                    }}
-                  >
-                    {(member.name || "?")[0].toUpperCase()}
-                  </div>
-                ))}
+              <div
+                className="h-[18px] w-[18px] flex-shrink-0 rounded-[4px]"
+                style={{ background: "linear-gradient(135deg,#CDAA73 10%,#A8B5A2 90%)" }}
+              />
+              <span className="flex-1 truncate text-[12.5px] font-semibold text-[#1C1A17]">Appartement</span>
+              <svg className="h-3.5 w-3.5 flex-shrink-0 text-[#C0BDB6]" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 5.5L7 2.5L10 5.5M4 8.5L7 11.5L10 8.5" />
+              </svg>
+            </button>
+          </div>
+          {/* Membres */}
+          <div className="border-b border-black/[0.06] px-2 py-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setShowMembersModal(true);
+                setSidebarOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-[7px] text-[13px] text-[#9A9790] transition-colors hover:bg-black/[0.04] hover:text-[#1C1A17]"
+            >
+              <svg
+                className="h-3.5 w-3.5 flex-shrink-0 opacity-55"
+                viewBox="0 0 14 14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <circle cx="5" cy="4.5" r="2.5" />
+                <path d="M.5 13c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" />
+                <circle cx="11" cy="4.5" r="2" />
+                <path d="M13.5 13c0-2-1.5-3.5-3-3.5" />
+              </svg>
+              <span>Membres</span>
+              {projectMembers.length > 0 && (
+                <div className="ml-auto flex">
+                  {projectMembers.slice(0, 3).map((member, i) => (
+                    <div
+                      key={member.id}
+                      className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[#F2EFE7] text-[8.5px] font-bold text-white"
+                      style={{
+                        background: ["#A8B5A2", "#b8c9d0", "#CDAA73"][i % 3],
+                        marginLeft: i === 0 ? 0 : -4,
+                      }}
+                    >
+                      {(member.name || "?")[0].toUpperCase()}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </button>
+          </div>
+          {/* User profile */}
+          <div className="px-2 py-1.5">
+            <button
+              type="button"
+              onClick={() => setShowUserMenu((v) => !v)}
+              className="flex w-full items-center gap-2.5 rounded-md px-2 py-[7px] text-left transition-colors hover:bg-black/[0.04]"
+            >
+              {user?.user_metadata?.avatar_url ? (
+                <img
+                  src={user.user_metadata.avatar_url}
+                  alt=""
+                  className="h-[22px] w-[22px] flex-shrink-0 rounded-full border border-black/10"
+                />
+              ) : (
+                <div className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-600">
+                  {(user?.email || "?")[0].toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12px] font-medium leading-tight text-[#1C1A17]">
+                  {user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Moi"}
+                </p>
+                <p className="truncate text-[10.5px] leading-tight text-[#B0ADA6]">{user?.email}</p>
               </div>
-            )}
-          </button>
+            </button>
+          </div>
         </div>
       </aside>
 

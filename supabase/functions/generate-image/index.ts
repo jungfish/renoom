@@ -1,0 +1,16 @@
+import { corsResponse, optionsResponse } from "../_shared/_cors.ts";
+import { generateImage } from "../_shared/_openai.ts";
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return optionsResponse();
+  if (req.method !== "POST") return corsResponse(405, { error: "Méthode non autorisée." });
+
+  try {
+    const body = await req.json();
+    const image = await generateImage(body);
+    return corsResponse(200, { image });
+  } catch (error) {
+    const err = error as { status?: number; message?: string };
+    return corsResponse(err.status || 500, { error: err.message || "Erreur serveur." });
+  }
+});

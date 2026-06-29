@@ -68,6 +68,21 @@ const ROOM_TOOLS = [
       strict: true,
     },
   },
+  {
+    type: "function",
+    name: "update_item",
+    description: "Modifie la due date ou le responsable d'un todo ou d'une envie existant. Utilise l'ID exact fourni dans le contexte. N'inclus que les champs à modifier.",
+    parameters: {
+      type: "object",
+      properties: {
+        list_type: { type: "string", enum: ["todos", "shopping"], description: "'todos' pour les tâches, 'shopping' pour les envies" },
+        item_id: { type: "string", description: "ID exact de l'item tel qu'il apparaît dans le contexte entre crochets" },
+        due_date: { type: "string", description: "Date d'échéance au format YYYY-MM-DD, ou chaîne vide '' pour supprimer l'échéance" },
+        assignee: { type: "string", description: "Nom exact du responsable (doit figurer dans la liste des personnes), ou chaîne vide '' pour retirer" },
+      },
+      required: ["list_type", "item_id"],
+    },
+  },
 ];
 
 function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
@@ -116,6 +131,22 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
         strict: true,
       },
     },
+    {
+      type: "function",
+      name: "update_item",
+      description: "Modifie la due date ou le responsable d'un todo ou d'une envie existant. Utilise l'ID exact fourni dans le contexte. N'inclus que les champs à modifier.",
+      parameters: {
+        type: "object",
+        properties: {
+          room_key: { type: "string", description: `Clé de la pièce cible. Valeurs possibles: ${roomKeyDesc}` },
+          list_type: { type: "string", enum: ["todos", "shopping"], description: "'todos' pour les tâches, 'shopping' pour les envies" },
+          item_id: { type: "string", description: "ID exact de l'item tel qu'il apparaît dans le contexte entre crochets" },
+          due_date: { type: "string", description: "Date d'échéance au format YYYY-MM-DD, ou chaîne vide '' pour supprimer l'échéance" },
+          assignee: { type: "string", description: "Nom exact du responsable (doit figurer dans la liste des personnes), ou chaîne vide '' pour retirer" },
+        },
+        required: ["room_key", "list_type", "item_id"],
+      },
+    },
   ];
 }
 
@@ -130,8 +161,9 @@ function buildSystemPrompt(ctx: Record<string, unknown>): string {
     `Palette: dominante ${ctx.dominantName} (${ctx.dominantHex}), secondaire ${ctx.secondaryName} (${ctx.secondaryHex}), accent ${ctx.accentName} (${ctx.accentHex})`,
     ctx.roomNote ? `Notes: ${ctx.roomNote}` : null,
     ctx.imageMetadataSummary ? `Contexte visuel: ${ctx.imageMetadataSummary}` : null,
-    (ctx.todoItems as string[])?.length ? `Todos de la pièce: ${(ctx.todoItems as string[]).join(", ")}` : null,
-    (ctx.shoppingItems as string[])?.length ? `En liste de courses: ${(ctx.shoppingItems as string[]).join(", ")}` : null,
+    (ctx.todoItems as {id:string,text:string}[])?.length ? `Todos de la pièce: ${(ctx.todoItems as {id:string,text:string}[]).map(i => `[${i.id}] ${i.text}`).join(", ")}` : null,
+    (ctx.shoppingItems as {id:string,text:string}[])?.length ? `En liste de courses: ${(ctx.shoppingItems as {id:string,text:string}[]).map(i => `[${i.id}] ${i.text}`).join(", ")}` : null,
+    (ctx.persons as string[])?.length ? `Personnes disponibles pour assignation: ${(ctx.persons as string[]).join(", ")}` : null,
     (ctx.materialSummary as string[])?.length ? `Matériaux choisis: ${(ctx.materialSummary as string[]).join("; ")}` : null,
     ctx.allRoomsSummary ? `Autres pièces: ${ctx.allRoomsSummary}` : null,
     "",
@@ -146,13 +178,13 @@ function buildSystemPrompt(ctx: Record<string, unknown>): string {
 
 function buildGeneralSystemPrompt(
   ctx: Record<string, unknown>,
-  availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: string[]; shoppingItems?: string[]; materialSummary?: string[] }[],
+  availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: {id:string,text:string}[]; shoppingItems?: {id:string,text:string}[]; materialSummary?: string[] }[],
 ): string {
   const roomsDetail = availableRooms.map((r) => {
     const parts = [`— ${r.label} (key: "${r.key}"): ${r.line || ""}`];
     if (r.roomNote) parts.push(`  Note: ${r.roomNote}`);
-    if (r.todoItems?.length) parts.push(`  Todos: ${r.todoItems.join(", ")}`);
-    if (r.shoppingItems?.length) parts.push(`  En liste: ${r.shoppingItems.join(", ")}`);
+    if (r.todoItems?.length) parts.push(`  Todos: ${r.todoItems.map(i => `[${i.id}] ${i.text}`).join(", ")}`);
+    if (r.shoppingItems?.length) parts.push(`  En liste: ${r.shoppingItems.map(i => `[${i.id}] ${i.text}`).join(", ")}`);
     if (r.materialSummary?.length) parts.push(`  Matériaux: ${r.materialSummary.join("; ")}`);
     return parts.join("\n");
   }).join("\n");
@@ -162,6 +194,8 @@ function buildGeneralSystemPrompt(
     "Tu aides l'utilisateur à prendre des décisions de design pour son appartement.",
     "",
     ctx.generalContext ? `Goûts & contraintes de l'appartement: ${ctx.generalContext}` : null,
+    "",
+    (ctx.persons as string[])?.length ? `Personnes disponibles pour assignation: ${(ctx.persons as string[]).join(", ")}` : null,
     "",
     "Mode Appartement — tu as accès à toutes les pièces et peux agir sur chacune.",
     "Quand tu utilises un outil (add_to_shopping_list, add_to_todo_list, save_room_note), tu DOIS toujours spécifier room_key.",

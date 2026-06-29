@@ -24,21 +24,7 @@ const accents = {
   lin: { name: "Lin sable", hex: "#E9DFC8" },
 };
 
-const ROOM_NUANCES_STORAGE_KEY = "palette_room_nuances_v1";
-const ROOM_NOTES_STORAGE_KEY = "palette_room_notes_v1";
-const CUSTOM_ROOMS_STORAGE_KEY = "palette_custom_rooms_v1";
-const HIDDEN_ROOMS_STORAGE_KEY = "palette_hidden_rooms_v1";
-const PROJECT_STATE_STORAGE_KEY = "palette_project_state_v1";
-const LAST_SAVE_STORAGE_KEY = "palette_last_save_v1";
-const ROOM_LISTS_STORAGE_KEY = "palette_room_lists_v1";
-const ROOM_DOCUMENTS_STORAGE_KEY = "palette_room_documents_v1";
-const ROOM_ORDER_STORAGE_KEY = "palette_room_order_v1";
-const PROJECT_ID_STORAGE_KEY = "palette_project_id_v1";
-const GENERAL_CONTEXT_STORAGE_KEY = "palette_general_context_v1";
-const GENERAL_RESOURCES_STORAGE_KEY = "palette_general_resources_v1";
 const CHAT_HISTORY_MAX = 50;
-const IMAGE_DB_NAME = "palette-appartement-images";
-const IMAGE_DB_STORE = "records";
 
 const rooms = [
   "salon",
@@ -443,56 +429,6 @@ function buildImagePrompt({ aiContext, imageKind, imageTitle }) {
     roomMetadata ? `Contexte visuel des autres images de la pièce:\n- ${roomMetadata}` : "Contexte visuel des autres images de la pièce: aucun autre contexte indexé.",
     `Contraintes: univers rétro, coloré, doux, éditorial; aucun accent rouge; préserver la composition générale de l'image; proposer une version plus cohérente avec la palette de la pièce; rendu lumineux, habitable, naturel, pas de texte ajouté.`,
   ].join("\n");
-}
-
-function safelyStore(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (error) {
-    console.warn(`Impossible de sauvegarder ${key}.`, error);
-  }
-}
-
-function openImageStore() {
-  return new Promise((resolve, reject) => {
-    if (!("indexedDB" in window)) {
-      reject(new Error("IndexedDB indisponible."));
-      return;
-    }
-    const request = indexedDB.open(IMAGE_DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(IMAGE_DB_STORE);
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function readLargeValue(key) {
-  const db = await openImageStore();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(IMAGE_DB_STORE, "readonly");
-    const request = tx.objectStore(IMAGE_DB_STORE).get(key);
-    request.onsuccess = () => resolve(request.result || null);
-    request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
-  });
-}
-
-async function storeLargeValue(key, value) {
-  const db = await openImageStore();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(IMAGE_DB_STORE, "readwrite");
-    tx.objectStore(IMAGE_DB_STORE).put(value, key);
-    tx.oncomplete = () => {
-      db.close();
-      resolve();
-    };
-    tx.onerror = () => {
-      db.close();
-      reject(tx.error);
-    };
-  });
 }
 
 function removeObjectKey(object, key) {
@@ -4742,42 +4678,18 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [projectId, setProjectId] = useState(() => {
     if (new URLSearchParams(window.location.search).get("invite")) return null;
-    const urlId = new URLSearchParams(window.location.search).get("p");
-    if (urlId) {
-      localStorage.setItem(PROJECT_ID_STORAGE_KEY, urlId);
-      return urlId;
-    }
-    return localStorage.getItem(PROJECT_ID_STORAGE_KEY) || null;
+    return new URLSearchParams(window.location.search).get("p") || null;
   });
   const isApplyingRemoteUpdate = useRef(false);
+  const hydratedRef = useRef(false);
   const autoSaveTimerRef = useRef(null);
   const roomNoteTimerRef = useRef(null);
   const [isSavingToServer, setIsSavingToServer] = useState(false);
   const [loadingFromUrl, setLoadingFromUrl] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [customRooms, setCustomRooms] = useState(() => {
-    try {
-      const raw = localStorage.getItem(CUSTOM_ROOMS_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [hiddenRooms, setHiddenRooms] = useState(() => {
-    try {
-      const raw = localStorage.getItem(HIDDEN_ROOMS_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [lastSavedAt, setLastSavedAt] = useState(() => {
-    try {
-      return localStorage.getItem(LAST_SAVE_STORAGE_KEY) || "";
-    } catch {
-      return "";
-    }
-  });
+  const [customRooms, setCustomRooms] = useState([]);
+  const [hiddenRooms, setHiddenRooms] = useState([]);
+  const [lastSavedAt, setLastSavedAt] = useState("");
   const [uploadedImages, setUploadedImages] = useState({});
   const [inspirationLinks, setInspirationLinks] = useState({});
   const [materialUploads, setMaterialUploads] = useState({});
@@ -4791,22 +4703,8 @@ export default function App() {
   const [instagramItems, setInstagramItems] = useState({});
   const [imageAnalysis, setImageAnalysis] = useState({});
   const [deletedImages, setDeletedImages] = useState({});
-  const [roomNuances, setRoomNuances] = useState(() => {
-    try {
-      const raw = localStorage.getItem(ROOM_NUANCES_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : INITIAL_ROOM_NUANCES;
-    } catch {
-      return INITIAL_ROOM_NUANCES;
-    }
-  });
-  const [roomNotes, setRoomNotes] = useState(() => {
-    try {
-      const raw = localStorage.getItem(ROOM_NOTES_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [roomNuances, setRoomNuances] = useState(INITIAL_ROOM_NUANCES);
+  const [roomNotes, setRoomNotes] = useState({});
   const [viewMode, setViewMode] = useState("room");
   const [roomMode, setRoomMode] = useState("inspirations");
   const [generalMode, setGeneralMode] = useState("todos");
@@ -4834,39 +4732,13 @@ export default function App() {
   const [renamingProjectId, setRenamingProjectId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(null); // null=detecting, true=show, false=skip
-  const [roomLists, setRoomLists] = useState(() => {
-    try {
-      const raw = localStorage.getItem(ROOM_LISTS_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  });
-  const [roomDocuments, setRoomDocuments] = useState(() => {
-    try {
-      const raw = localStorage.getItem(ROOM_DOCUMENTS_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  });
-  const [roomOrder, setRoomOrder] = useState(() => {
-    try {
-      const raw = localStorage.getItem(ROOM_ORDER_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [roomLists, setRoomLists] = useState({});
+  const [roomDocuments, setRoomDocuments] = useState({});
+  const [roomOrder, setRoomOrder] = useState(null);
   const [draggingRoom, setDraggingRoom] = useState(null);
   const [chatHistory, setChatHistory] = useState({});
-  const [generalContext, setGeneralContext] = useState(
-    () => localStorage.getItem(GENERAL_CONTEXT_STORAGE_KEY) || ""
-  );
-  const [generalResources, setGeneralResources] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(GENERAL_RESOURCES_STORAGE_KEY) || "[]"); }
-    catch { return []; }
-  });
+  const [generalContext, setGeneralContext] = useState("");
+  const [generalResources, setGeneralResources] = useState([]);
 
   const customRoomPresets = Object.fromEntries(
     customRooms.map((customRoom) => [
@@ -5191,27 +5063,20 @@ export default function App() {
       ),
     };
 
-    await storeLargeValue(PROJECT_STATE_STORAGE_KEY, projectState);
-    safelyStore(CUSTOM_ROOMS_STORAGE_KEY, customRooms);
-    safelyStore(HIDDEN_ROOMS_STORAGE_KEY, hiddenRooms);
-    safelyStore(ROOM_NUANCES_STORAGE_KEY, roomNuances);
-    safelyStore(ROOM_NOTES_STORAGE_KEY, roomNotes);
-    localStorage.setItem(LAST_SAVE_STORAGE_KEY, savedAt);
     setLastSavedAt(savedAt);
 
     try {
       setIsSavingToServer(true);
-      const existingId = projectId || localStorage.getItem(PROJECT_ID_STORAGE_KEY);
       const res = await authedFetch(`${API_BASE}/save-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: projectState, id: existingId, snapshot, snapshotLabel }),
+        body: JSON.stringify({ state: projectState, id: projectId, snapshot, snapshotLabel }),
       });
       const { id } = await res.json();
-      const savedProjectId = id || existingId;
+      const savedProjectId = id || projectId;
       if (id) {
         setProjectId(id);
-        localStorage.setItem(PROJECT_ID_STORAGE_KEY, id);
+        window.history.replaceState({}, "", `/?p=${id}`);
       }
       // Dual-write : synchro room_items dans la table normalisée
       if (savedProjectId) {
@@ -5222,14 +5087,14 @@ export default function App() {
         }
       }
     } catch {
-      // local save already succeeded
+      // ignore — server errors don't block the UI
     } finally {
       setIsSavingToServer(false);
     }
   };
 
   const hydrateState = (saved) => {
-    // Scalaires projet — priorité projectConfig (load-project normalisé) puis blob (snapshot restore / localStorage)
+    // Scalaires projet — priorité projectConfig (load-project normalisé) puis blob (snapshot restore)
     const cfg = saved.projectConfig || saved;
     if (cfg.room) setRoom(cfg.room);
     if (cfg.globalAccent) setGlobalAccent(cfg.globalAccent);
@@ -5300,6 +5165,8 @@ export default function App() {
     } else if (saved.chatHistory && typeof saved.chatHistory === "object") {
       setChatHistory(saved.chatHistory);
     }
+
+    hydratedRef.current = true;
   };
 
   useEffect(() => {
@@ -5313,7 +5180,6 @@ export default function App() {
         if (projectConfig) {
           hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized });
           setProjectId(idToLoad);
-          localStorage.setItem(PROJECT_ID_STORAGE_KEY, idToLoad);
         }
         if (typeof owner === "boolean") setIsOwner(owner);
         if (code) setInviteCode(code);
@@ -5355,11 +5221,7 @@ export default function App() {
   };
 
   const switchProject = (id) => {
-    [
-      ROOM_LISTS_STORAGE_KEY, ROOM_DOCUMENTS_STORAGE_KEY,
-      ROOM_NUANCES_STORAGE_KEY, ROOM_NOTES_STORAGE_KEY, PROJECT_STATE_STORAGE_KEY,
-      HIDDEN_ROOMS_STORAGE_KEY, CUSTOM_ROOMS_STORAGE_KEY,
-    ].forEach(k => localStorage.removeItem(k));
+    hydratedRef.current = false;
     setUploadedImages({});
     setInspirationLinks({});
     setMaterialUploads({});
@@ -5380,7 +5242,6 @@ export default function App() {
     setHiddenRooms([]);
     setCustomRooms([]);
     setProjectId(id);
-    localStorage.setItem(PROJECT_ID_STORAGE_KEY, id);
     window.history.replaceState({}, "", `/?p=${id}`);
     setShowProjectPicker(false);
     setLoadingFromUrl(true);
@@ -5412,7 +5273,6 @@ export default function App() {
     if (!res.ok) return { ok: false, error: data.error };
     if (data.projectId) {
       setProjectId(data.projectId);
-      localStorage.setItem(PROJECT_ID_STORAGE_KEY, data.projectId);
       window.history.replaceState({}, "", `/?p=${data.projectId}`);
       // Charger le projet
       const loaded = await authedFetch(`${API_BASE}/load-project?id=${data.projectId}`).then((r) => r.json());
@@ -5579,6 +5439,7 @@ export default function App() {
   // Auto-save debounce — silently push changes to Supabase for real-time sharing
   useEffect(() => {
     if (!projectId || isApplyingRemoteUpdate.current) return;
+    if (!hydratedRef.current) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => { saveProject(); }, 5000);
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
@@ -5590,34 +5451,6 @@ export default function App() {
     roomNuances, roomNotes, roomLists, roomDocuments, roomOrder,
     generalContext, generalResources, chatHistory,
   ]);
-
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("p")) return;
-    let isMounted = true;
-    readLargeValue(PROJECT_STATE_STORAGE_KEY)
-      .then((saved) => {
-        if (!isMounted || !saved) return;
-        if (saved.room) setRoom(saved.room);
-        if (saved.globalAccent) setGlobalAccent(saved.globalAccent);
-        if (typeof saved.warmth === "number") setWarmth(saved.warmth);
-        if (Array.isArray(saved.customRooms)) setCustomRooms(saved.customRooms);
-        if (Array.isArray(saved.hiddenRooms)) setHiddenRooms(saved.hiddenRooms);
-        if (saved.roomNuances) setRoomNuances(saved.roomNuances);
-        if (saved.roomNotes) setRoomNotes(saved.roomNotes);
-        if (saved.roomLists) setRoomLists(saved.roomLists);
-        if (saved.roomDocuments) setRoomDocuments(prev => Object.keys(prev).length ? { ...saved.roomDocuments, ...prev } : saved.roomDocuments);
-        if (saved.roomOrder) setRoomOrder(saved.roomOrder);
-        if (saved.savedAt) setLastSavedAt(saved.savedAt);
-        if (typeof saved.generalContext === "string") setGeneralContext(saved.generalContext);
-        if (Array.isArray(saved.generalResources)) setGeneralResources(saved.generalResources);
-        if (saved.chatHistory && typeof saved.chatHistory === "object") setChatHistory(saved.chatHistory);
-      })
-      .catch(() => {});
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (orderedActiveRooms.length && !orderedActiveRooms.includes(room)) {
@@ -5642,42 +5475,6 @@ export default function App() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showProjectPicker]);
-
-  useEffect(() => {
-    safelyStore(CUSTOM_ROOMS_STORAGE_KEY, customRooms);
-  }, [customRooms]);
-
-  useEffect(() => {
-    safelyStore(HIDDEN_ROOMS_STORAGE_KEY, hiddenRooms);
-  }, [hiddenRooms]);
-
-  useEffect(() => {
-    safelyStore(ROOM_NUANCES_STORAGE_KEY, roomNuances);
-  }, [roomNuances]);
-
-  useEffect(() => {
-    safelyStore(ROOM_NOTES_STORAGE_KEY, roomNotes);
-  }, [roomNotes]);
-
-  useEffect(() => {
-    safelyStore(ROOM_LISTS_STORAGE_KEY, roomLists);
-  }, [roomLists]);
-
-  useEffect(() => {
-    safelyStore(ROOM_DOCUMENTS_STORAGE_KEY, roomDocuments);
-  }, [roomDocuments]);
-
-  useEffect(() => {
-    if (roomOrder) safelyStore(ROOM_ORDER_STORAGE_KEY, roomOrder);
-  }, [roomOrder]);
-
-  useEffect(() => {
-    try { localStorage.setItem(GENERAL_CONTEXT_STORAGE_KEY, generalContext); } catch {}
-  }, [generalContext]);
-
-  useEffect(() => {
-    safelyStore(GENERAL_RESOURCES_STORAGE_KEY, generalResources);
-  }, [generalResources]);
 
   useEffect(() => {
     setRoomMode(lastRoomModeRef.current[room] || "inspirations");
@@ -5712,35 +5509,8 @@ export default function App() {
           user={user}
           session={session}
           onComplete={(id) => {
-            // Vider l'état et le localStorage pour ne pas polluer le nouveau projet
-            [
-              ROOM_LISTS_STORAGE_KEY, ROOM_DOCUMENTS_STORAGE_KEY,
-              ROOM_NUANCES_STORAGE_KEY, ROOM_NOTES_STORAGE_KEY, PROJECT_STATE_STORAGE_KEY,
-              HIDDEN_ROOMS_STORAGE_KEY, CUSTOM_ROOMS_STORAGE_KEY,
-            ].forEach(k => localStorage.removeItem(k));
-            setUploadedImages({});
-            setInspirationLinks({});
-            setMaterialUploads({});
-            setMaterialLinks({});
-            setPlanUploads({});
-            setPlanLinks({});
-            setExtraPlanImages({});
-            setExtraMaterialImages({});
-            setExtraMaterialMeta({});
-            setAiInspirations({});
-            setInstagramItems({});
-            setImageAnalysis({});
-            setDeletedImages({});
-            setRoomNuances({});
-            setRoomNotes({});
-            setRoomLists({});
-            setRoomDocuments({});
-            setHiddenRooms([]);
-            setCustomRooms([]);
-            setProjectId(id);
-            localStorage.setItem(PROJECT_ID_STORAGE_KEY, id);
-            window.history.replaceState({}, "", `/?p=${id}`);
             setShowOnboarding(false);
+            switchProject(id);
           }}
           onJoinProject={handleJoinProject}
           onSkip={() => setShowOnboarding(false)}

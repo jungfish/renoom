@@ -1,6 +1,13 @@
 import { corsResponse, optionsResponse } from "../_shared/_cors.ts";
 import { getUserFromRequest, supabaseAdmin, supabaseWithToken, writeChangeLog, stripBinaryData } from "../_shared/_supabase.ts";
 
+const MEDIA_FIELDS = [
+  "uploadedImages", "inspirationLinks", "aiInspirations", "instagramItems",
+  "imageAnalysis", "deletedImages", "materialUploads", "materialLinks",
+  "extraMaterialImages", "extraMaterialMeta", "planUploads", "planLinks",
+  "extraPlanImages",
+] as const;
+
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -63,38 +70,16 @@ Deno.serve(async (req) => {
 
     const supabaseUser = supabaseWithToken(token);
 
-    // Read existing media to avoid overwriting server data with empty client state
-    // (happens when a fresh browser session auto-saves before localStorage is populated)
-    const { data: existingMedia } = await supabaseAdmin
+    const mediaData = Object.fromEntries(
+      MEDIA_FIELDS.map((field) => [field, (state as Record<string, unknown>)[field] ?? {}])
+    );
+    const { error: mediaUpsertError } = await supabaseUser
       .from("room_media")
-      .select("data")
-      .eq("project_id", projectId)
-      .maybeSingle();
-    const existing = (existingMedia as { data: Record<string, unknown> } | null)?.data || {};
-
-    function mergeField(incoming: unknown, field: string): unknown {
-      const val = incoming ?? {};
-      return Object.keys(val as object).length > 0 ? val : (existing[field] ?? {});
-    }
-
-    const mediaData = {
-      uploadedImages:      mergeField(state.uploadedImages,      "uploadedImages"),
-      inspirationLinks:    mergeField(state.inspirationLinks,    "inspirationLinks"),
-      aiInspirations:      mergeField(state.aiInspirations,      "aiInspirations"),
-      instagramItems:      mergeField(state.instagramItems,      "instagramItems"),
-      imageAnalysis:       mergeField(state.imageAnalysis,       "imageAnalysis"),
-      deletedImages:       mergeField(state.deletedImages,       "deletedImages"),
-      materialUploads:     mergeField(state.materialUploads,     "materialUploads"),
-      materialLinks:       mergeField(state.materialLinks,       "materialLinks"),
-      extraMaterialImages: mergeField(state.extraMaterialImages, "extraMaterialImages"),
-      extraMaterialMeta:   mergeField(state.extraMaterialMeta,   "extraMaterialMeta"),
-      planUploads:         mergeField(state.planUploads,         "planUploads"),
-      planLinks:           mergeField(state.planLinks,           "planLinks"),
-      extraPlanImages:     mergeField(state.extraPlanImages,     "extraPlanImages"),
-    };
-    supabaseUser.from("room_media")
-      .upsert({ project_id: projectId, data: mediaData, updated_at: new Date().toISOString() }, { onConflict: "project_id" })
-      .then(() => {}).catch(() => {});
+      .upsert(
+        { project_id: projectId, data: mediaData, updated_at: new Date().toISOString() },
+        { onConflict: "project_id" },
+      );
+    if (mediaUpsertError) throw new Error(mediaUpsertError.message);
 
     if (state.roomNuances && typeof state.roomNuances === "object") {
       const nuanceRows = Object.entries(state.roomNuances).map(([roomKey, n]) => ({

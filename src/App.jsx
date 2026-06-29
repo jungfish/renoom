@@ -3798,96 +3798,186 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
   );
 }
 
-function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists }) {
+function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn }) {
   const [filter, setFilter] = useState("all");
-  const [hideDone, setHideDone] = useState(false);
+  const [hideDone, setHideDone] = useState(true);
+  const [groupBy, setGroupBy] = useState("room"); // "room" | "week"
 
   const toggleItem = (roomKey, listKey, id) => {
-    setRoomLists((prev) => ({
-      ...prev,
-      [roomKey]: {
-        ...(prev[roomKey] || {}),
-        [listKey]: ((prev[roomKey] || {})[listKey] || []).map((item) => (item.id === id ? { ...item, done: !item.done } : item)),
-      },
-    }));
+    setRoomLists((prev) => {
+      const updatedList = ((prev[roomKey] || {})[listKey] || []).map((item) => (item.id === id ? { ...item, done: !item.done } : item));
+      const next = { ...prev, [roomKey]: { ...(prev[roomKey] || {}), [listKey]: updatedList } };
+      if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, roomKey, listKey, updatedList);
+      return next;
+    });
   };
 
-  const totalPending = orderedActiveRooms.reduce((acc, key) => {
-    const list = roomLists[key] || {};
-    return acc + [...(list.shopping || []), ...(list.todos || [])].filter((i) => !i.done).length;
-  }, 0);
+  // Collect all items across all rooms
+  const allItemsFlat = orderedActiveRooms.flatMap((roomKey) => {
+    const list = roomLists[roomKey] || {};
+    const shopping = filter !== "todos" ? (list.shopping || []).map((i) => ({ ...i, listKey: "shopping", roomKey })) : [];
+    const todos = filter !== "shopping" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey })) : [];
+    return [...shopping, ...todos];
+  });
+
+  const visibleItems = hideDone ? allItemsFlat.filter((i) => !i.done) : allItemsFlat;
+
+  const totalPending = allItemsFlat.filter((i) => !i.done).length;
+
+  // ── Week grouping helpers ────────────────────────────────────────────────
+  const getMonday = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+  const MONTHS_SHORT = ["jan","fév","mar","avr","mai","juin","juil","aoû","sep","oct","nov","déc"];
+  const weekLabel = (monday) => {
+    const todayMonday = getMonday(new Date());
+    const diff = Math.round((monday - todayMonday) / (7 * 86400000));
+    if (diff === 0) return "Cette semaine";
+    if (diff === 1) return "Semaine prochaine";
+    const sunday = new Date(monday); sunday.setDate(sunday.getDate() + 6);
+    return `${monday.getDate()} – ${sunday.getDate()} ${MONTHS_SHORT[sunday.getMonth()]}`;
+  };
+
+  const buildWeekGroups = (items) => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const overdue = [];
+    const byWeek = {};
+    const noDate = [];
+
+    for (const item of items) {
+      if (!item.dueDate) { noDate.push(item); continue; }
+      if (item.dueDate < todayStr) { overdue.push(item); continue; }
+      const monday = getMonday(new Date(item.dueDate + "T00:00:00"));
+      const key = monday.toISOString().split("T")[0];
+      if (!byWeek[key]) byWeek[key] = { monday, items: [] };
+      byWeek[key].items.push(item);
+    }
+
+    const sortedWeeks = Object.entries(byWeek).sort(([a], [b]) => a.localeCompare(b));
+    return { overdue, weeks: sortedWeeks.map(([, v]) => v), noDate };
+  };
+
+  // ── Shared item row ──────────────────────────────────────────────────────
+  const renderItemRow = (item, showRoom = false) => (
+    <li key={item.id}
+      className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"}`}>
+      <button type="button" onClick={() => toggleItem(item.roomKey, item.listKey, item.id)}
+        className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
+        {item.done ? "✓" : ""}
+      </button>
+      {item.image && (
+        <img src={item.image} alt={item.previewTitle || item.text}
+          className="h-10 w-10 shrink-0 rounded-md object-cover border border-black/10" />
+      )}
+      <span className={`min-w-0 flex-1 text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>
+        {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70">{item.text}</a> : item.text}
+      </span>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {showRoom && (
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
+            {allRoomPresets[item.roomKey]?.label}
+          </span>
+        )}
+        {item.dueDate && groupBy === "room" && (
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isDueOverdue(item.dueDate) ? "bg-red-50 text-red-500" : isDueSoonDate(item.dueDate) ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"}`}>
+            {formatDueDate(item.dueDate)}
+          </span>
+        )}
+        {item.assignee && (
+          <span className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white"
+            style={{ background: personColor(item.assignee) }} title={item.assignee}>
+            {personInitials(item.assignee)}
+          </span>
+        )}
+        {groupBy === "room" && (
+          <span className="text-[11px] text-slate-400">{item.listKey === "shopping" ? "courses" : "à faire"}</span>
+        )}
+      </div>
+    </li>
+  );
+
+  const weekGroups = groupBy === "week" ? buildWeekGroups(visibleItems) : null;
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="rounded-xl border border-black/10 bg-white p-4">
         <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
         <h2 className="type-h2">Tous les todos</h2>
-        {totalPending > 0 ? (
-          <p className="mt-1 text-sm text-slate-600">{totalPending} élément{totalPending > 1 ? "s" : ""} en attente dans toutes les pièces.</p>
-        ) : (
-          <p className="mt-1 text-sm text-slate-600">Tout est fait — rien en attente.</p>
-        )}
-        <div className="mt-3 flex flex-wrap gap-2">
+        <p className="mt-1 text-sm text-slate-600">
+          {totalPending > 0 ? `${totalPending} élément${totalPending > 1 ? "s" : ""} en attente.` : "Tout est fait — rien en attente."}
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {[{ key: "all", label: "Tout" }, { key: "todos", label: "À faire" }, { key: "shopping", label: "Courses" }].map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setFilter(key)}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${filter === key ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white"}`}
-            >
+            <button key={key} type="button" onClick={() => setFilter(key)}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${filter === key ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white hover:bg-slate-50"}`}>
               {label}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => setHideDone((v) => !v)}
-            className={`ml-auto rounded-lg border px-3 py-1.5 text-sm ${hideDone ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white"}`}
-          >
-            {hideDone ? "Afficher terminés" : "Masquer terminés"}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {/* Group by toggle */}
+            <div className="flex overflow-hidden rounded-lg border border-black/15">
+              <button type="button" onClick={() => setGroupBy("room")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm ${groupBy === "room" ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}
+                title="Grouper par pièce">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                Pièces
+              </button>
+              <button type="button" onClick={() => setGroupBy("week")}
+                className={`flex items-center gap-1.5 border-l border-black/15 px-3 py-1.5 text-sm ${groupBy === "week" ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}
+                title="Grouper par semaine">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                Semaine
+              </button>
+            </div>
+            <button type="button" onClick={() => setHideDone((v) => !v)}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${hideDone ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white hover:bg-slate-50"}`}>
+              {hideDone ? "Voir terminés" : "Masquer terminés"}
+            </button>
+          </div>
         </div>
       </div>
-      {orderedActiveRooms.map((key) => {
+
+      {/* Vue par pièce */}
+      {groupBy === "room" && orderedActiveRooms.map((key) => {
         const preset = allRoomPresets[key];
         const list = roomLists[key] || {};
-        const shoppingItems = filter !== "todos" ? (list.shopping || []) : [];
-        const todoItems = filter !== "shopping" ? (list.todos || []) : [];
-        const allItems = [...shoppingItems.map((i) => ({ ...i, listKey: "shopping" })), ...todoItems.map((i) => ({ ...i, listKey: "todos" }))];
-        const visibleItems = hideDone ? allItems.filter((i) => !i.done) : allItems;
-        if (visibleItems.length === 0) return null;
+        const shopping = filter !== "todos" ? (list.shopping || []).map((i) => ({ ...i, listKey: "shopping", roomKey: key })) : [];
+        const todos = filter !== "shopping" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey: key })) : [];
+        const allItems = [...shopping, ...todos];
+        const visible = hideDone ? allItems.filter((i) => !i.done) : allItems;
+        if (visible.length === 0) return null;
+        const sorted = [...visible.filter((i) => !i.done), ...visible.filter((i) => i.done)];
         return (
           <div key={key} className="rounded-xl border border-black/10 bg-white p-4">
             <h3 className="mb-3 font-medium text-slate-900">{preset?.label}</h3>
-            <ul className="space-y-1.5">
-              {[...visibleItems.filter((i) => !i.done), ...visibleItems.filter((i) => i.done)].map((item) => (
-                <li
-                  key={item.id}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleItem(key, item.listKey, item.id)}
-                    className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}
-                  >
-                    {item.done ? "✓" : ""}
-                  </button>
-                  {item.image && (
-                    <img
-                      src={item.image}
-                      alt={item.previewTitle || item.text}
-                      className="h-10 w-10 shrink-0 rounded-md object-cover border border-black/10"
-                    />
-                  )}
-                  <span className={`min-w-0 flex-1 text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>
-                    {renderItemText(item.text, item.url)}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-slate-400">{item.listKey === "shopping" ? "courses" : "à faire"}</span>
-                </li>
-              ))}
-            </ul>
+            <ul className="space-y-1.5">{sorted.map((item) => renderItemRow(item, false))}</ul>
           </div>
         );
       })}
+
+      {/* Vue par semaine */}
+      {groupBy === "week" && weekGroups && (() => {
+        const { overdue, weeks, noDate } = weekGroups;
+        const sections = [
+          ...(overdue.length ? [{ label: "En retard", items: overdue, accent: "text-red-600", bg: "bg-red-50 border-red-100" }] : []),
+          ...weeks.map((w) => ({ label: weekLabel(w.monday), items: w.items, accent: "text-slate-900", bg: "bg-white border-black/10" })),
+          ...(noDate.length ? [{ label: "Sans échéance", items: noDate, accent: "text-slate-500", bg: "bg-white border-black/10" }] : []),
+        ];
+        if (sections.length === 0) return <div className="py-12 text-center text-sm text-slate-400">Aucun élément à afficher.</div>;
+        return sections.map(({ label, items, accent, bg }) => (
+          <div key={label} className={`rounded-xl border p-4 ${bg}`}>
+            <h3 className={`mb-3 text-sm font-semibold uppercase tracking-wide ${accent}`}>{label}</h3>
+            <ul className="space-y-1.5">
+              {[...items.filter((i) => !i.done), ...items.filter((i) => i.done)].map((item) => renderItemRow(item, true))}
+            </ul>
+          </div>
+        ));
+      })()}
     </div>
   );
 }
@@ -3926,9 +4016,9 @@ function LinkPreviewMini({ item }) {
 
   if (item.previewLoading) {
     return (
-      <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-black/8 bg-slate-50 p-2">
-        <div className="h-12 w-12 shrink-0 animate-pulse rounded-md bg-slate-200" />
-        <div className="min-w-0 flex-1 space-y-2">
+      <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-black/8 bg-slate-50">
+        <div className="h-20 w-24 shrink-0 animate-pulse bg-slate-200" />
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 px-3">
           <div className="h-3 w-3/4 animate-pulse rounded bg-slate-200" />
           <div className="h-2.5 w-1/3 animate-pulse rounded bg-slate-100" />
         </div>
@@ -3941,21 +4031,21 @@ function LinkPreviewMini({ item }) {
       href={item.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-black/8 bg-slate-50 p-2 transition-colors hover:bg-slate-100"
+      className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-black/8 bg-slate-50 transition-colors hover:bg-slate-100"
     >
       {item.image ? (
-        <img src={item.image} alt={cardTitle} className="h-12 w-12 shrink-0 rounded-md object-cover" />
+        <img src={item.image} alt={cardTitle} className="h-20 w-24 shrink-0 object-cover" />
       ) : (
-        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-slate-200 text-slate-400">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <div className="grid h-20 w-16 shrink-0 place-items-center bg-slate-200 text-slate-400">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
           </svg>
         </div>
       )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium leading-tight text-slate-800">{cardTitle}</p>
-        {domain && <p className="mt-0.5 truncate text-[11px] text-slate-400">{domain}</p>}
+      <div className="flex min-w-0 flex-1 flex-col justify-center px-3">
+        <p className="line-clamp-2 text-sm font-medium leading-snug text-slate-800">{cardTitle}</p>
+        {domain && <p className="mt-1 truncate text-[11px] text-slate-400">{domain}</p>}
       </div>
     </a>
   );
@@ -5011,6 +5101,7 @@ export default function App() {
   });
   const isApplyingRemoteUpdate = useRef(false);
   const hydratedRef = useRef(false);
+  const previewFetchedIdsRef = useRef(new Set());
   const autoSaveTimerRef = useRef(null);
   const roomNoteTimerRef = useRef(null);
   const [isSavingToServer, setIsSavingToServer] = useState(false);
@@ -5701,6 +5792,37 @@ export default function App() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Backfill previews pour les items avec URL mais sans image (chargement initial depuis la base)
+  useEffect(() => {
+    if (!projectId) return;
+    const toFetch = [];
+    for (const [roomKey, lists] of Object.entries(roomLists)) {
+      for (const [listKey, items] of Object.entries(lists)) {
+        for (const item of (items || [])) {
+          if (item.url && !item.image && !item.previewLoading && !previewFetchedIdsRef.current.has(item.id)) {
+            previewFetchedIdsRef.current.add(item.id);
+            toFetch.push({ roomKey, listKey, id: item.id, url: item.url });
+          }
+        }
+      }
+    }
+    if (!toFetch.length) return;
+    for (const { roomKey, listKey, id, url } of toFetch) {
+      fetchLinkPreview(url).then((preview) => {
+        if (!preview.image && !preview.title) return;
+        setRoomLists((prev) => {
+          const updatedItems = ((prev[roomKey] || {})[listKey] || []).map((i) =>
+            i.id === id
+              ? { ...i, ...(preview.image ? { image: preview.image } : {}), ...(preview.title && !i.previewTitle ? { previewTitle: preview.title } : {}) }
+              : i
+          );
+          saveRoomItemsToServer(projectId, roomKey, listKey, updatedItems);
+          return { ...prev, [roomKey]: { ...(prev[roomKey] || {}), [listKey]: updatedItems } };
+        });
+      }).catch(() => {});
+    }
+  }, [roomLists, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Realtime room_items — sync granulaire des todos/shopping entre utilisateurs
   useEffect(() => {
@@ -6558,6 +6680,8 @@ export default function App() {
               allRoomPresets={allRoomPresets}
               roomLists={roomLists}
               setRoomLists={setRoomLists}
+              projectId={projectId}
+              saveRoomItemsFn={saveRoomItemsToServer}
             />
           ) : generalMode === "couleurs" ? (
             <>

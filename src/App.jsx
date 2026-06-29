@@ -5220,7 +5220,7 @@ function ActivityFeedView({ activityFeed, allRoomPresets }) {
         </div>
       ) : (
         <div className="rounded-xl border border-black/10 bg-white divide-y divide-black/[0.04]">
-          {activityFeed.map((entry) => {
+          {activityFeed.slice(0, visible).map((entry) => {
             const initials = (entry.user_name || "?").split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
             const roomLabel = entry.room_key ? allRoomPresets[entry.room_key]?.label : null;
             return (
@@ -5247,6 +5247,15 @@ function ActivityFeedView({ activityFeed, allRoomPresets }) {
               </div>
             );
           })}
+          {activityFeed.length > visible && (
+            <button
+              type="button"
+              onClick={() => setVisible((v) => v + PAGE)}
+              className="w-full px-4 py-3 text-center text-[12.5px] text-[#8A8580] transition-colors hover:bg-black/[0.02] hover:text-[#1C1A17]"
+            >
+              Voir plus ({activityFeed.length - visible} restant{activityFeed.length - visible > 1 ? "s" : ""})
+            </button>
+          )}
         </div>
       )}
     </div>

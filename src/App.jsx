@@ -6071,7 +6071,7 @@ export default function App() {
                 className="h-[18px] w-[18px] flex-shrink-0 rounded-[4px]"
                 style={{ background: "linear-gradient(135deg,#CDAA73 10%,#A8B5A2 90%)" }}
               />
-              <span className="flex-1 truncate text-[12.5px] font-semibold text-[#1C1A17]">Appartement</span>
+              <span className="flex-1 truncate text-[12.5px] font-semibold text-[#1C1A17]">{userProjects.find(p => p.id === projectId)?.name || "Appartement"}</span>
               {userProjectCount > 1 && (
                 <svg className="h-3.5 w-3.5 flex-shrink-0 text-[#8A8680]" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 5.5L7 2.5L10 5.5M4 8.5L7 11.5L10 8.5" />

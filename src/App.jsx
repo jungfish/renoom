@@ -5384,7 +5384,11 @@ function ActivityFeedView({ activityFeed, allRoomPresets, onNavigate }) {
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] text-[#1C1A17]">
                     <span className="font-medium">{entry.user_name || "Quelqu'un"}</span>{" "}
-                    <span className="text-[#4D4A47]">{actionLabel(entry.action_type)}</span>
+                    <span className="text-[#4D4A47]">
+                      {entry.action_type === "reaction_added" && entry.metadata?.emoji
+                        ? `a réagi ${entry.metadata.emoji} à une envie`
+                        : actionLabel(entry.action_type)}
+                    </span>
                     {roomLabel && (
                       <span className="text-[#4D4A47]"> dans <span className="font-medium text-[#1C1A17]">{roomLabel}</span></span>
                     )}
@@ -5841,7 +5845,7 @@ export default function App() {
         const found = (lists.shopping || []).find(i => i.id === itemId);
         if (found) { itemRoomKey = rk; itemText = found.previewTitle || found.text; break; }
       }
-      if (itemRoomKey) logActivity("reaction_added", itemRoomKey, { emoji, itemText });
+      if (itemRoomKey) logActivity("reaction_added", itemRoomKey, { emoji, text: itemText });
     }
     authedFetch(`${API_BASE}/save-room`, {
       method: "POST",
@@ -5950,10 +5954,10 @@ export default function App() {
     }
   };
 
-  const hydrateState = (saved) => {
+  const hydrateState = (saved, { skipRoomSync = false } = {}) => {
     // Scalaires projet — priorité projectConfig (load-project normalisé) puis blob (snapshot restore)
     const cfg = saved.projectConfig || saved;
-    if (cfg.room) setRoom(cfg.room);
+    if (cfg.room && !skipRoomSync) setRoom(cfg.room);
     if (cfg.globalAccent) setGlobalAccent(cfg.globalAccent);
     if (typeof cfg.warmth === "number") setWarmth(cfg.warmth);
     if (Array.isArray(cfg.customRooms)) setCustomRooms(cfg.customRooms);
@@ -6207,7 +6211,7 @@ export default function App() {
             .then((r) => r.json())
             .then(({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }) => {
               if (projectConfig) {
-                hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized });
+                hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }, { skipRoomSync: true });
               }
             })
             .catch(() => {})

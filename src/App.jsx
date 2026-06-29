@@ -2088,6 +2088,7 @@ function MaterialsSection({
   const [page, setPage] = useState(0);
   const [editingCard, setEditingCard] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [addModalOpen, setAddModalOpen] = useState(false);
   const pageSize = 3;
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
 
@@ -2114,28 +2115,16 @@ function MaterialsSection({
     }
   };
 
-  const handleAddImage = async (file) => {
-    if (!file) return;
-    const data = await readFileAsDataUrl(file);
-    if (typeof data === "string") {
-      const nextIndex = (extraMaterialImages[room] || []).length;
-      const nextKey = `${room}-material-extra-${nextIndex}`;
-      const url = await uploadToBlob(data, `${nextKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      setExtraMaterialImages((prev) => ({ ...prev, [room]: [...(prev[room] || []), url] }));
-      const analysis = await analyzeImageForContext({
-        image: url,
-        context: `Matériau ajouté ${room}`,
-        section: "matériau",
-      });
-      if (analysis) setImageAnalysis((prev) => ({ ...prev, [nextKey]: analysis }));
-    }
-  };
-
-  const handleAddLink = (preview) => {
+  const handleAddFromModal = (linkEntry, meta) => {
+    const nextIndex = (extraMaterialImages[room] || []).length;
+    const nextKey = `${room}-material-extra-${nextIndex}`;
     setExtraMaterialImages((prev) => ({
       ...prev,
-      [room]: [...(prev[room] || []), { type: "link", ...preview }],
+      [room]: [...(prev[room] || []), { type: "link", ...linkEntry }],
     }));
+    if (Object.keys(meta).length) {
+      setExtraMaterialMeta((prev) => ({ ...prev, [nextKey]: meta }));
+    }
   };
 
   const visibleItems = items
@@ -2173,7 +2162,15 @@ function MaterialsSection({
               </button>
             </div>
           ) : null}
-          <AddMaterialButton onFile={handleAddImage} onLink={handleAddLink} />
+          <button
+            type="button"
+            title="Ajouter un matériau"
+            aria-label="Ajouter un matériau"
+            onClick={() => setAddModalOpen(true)}
+            className="grid h-11 w-11 place-items-center rounded-full border border-black/15 bg-white text-lg leading-none shadow-sm hover:bg-[#fcf8d5]"
+          >
+            +
+          </button>
         </div>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -2332,6 +2329,12 @@ function MaterialsSection({
           </div>
         </div>,
         document.body
+      )}
+      {addModalOpen && (
+        <AddMaterialModal
+          onAdd={handleAddFromModal}
+          onClose={() => setAddModalOpen(false)}
+        />
       )}
     </div>
   );
@@ -5237,7 +5240,7 @@ function SnapshotHistoryPanel({ snapshots, loading, onRestore, onClose, restorin
   );
 }
 
-function ActivityFeedView({ activityFeed, allRoomPresets }) {
+function ActivityFeedView({ activityFeed, allRoomPresets, onNavigate }) {
   const PAGE = 20;
   const [visible, setVisible] = useState(PAGE);
 
@@ -5257,6 +5260,17 @@ function ActivityFeedView({ activityFeed, allRoomPresets }) {
       case "inspiration_link_added": return "a ajouté un lien d'inspiration";
       case "discussion_added": return "a créé une discussion";
       default: return "a effectué une action";
+    }
+  };
+
+  const tabForAction = (type) => {
+    switch (type) {
+      case "todo_added":
+      case "shopping_added": return "liste";
+      case "inspiration_added":
+      case "inspiration_link_added": return "inspirations";
+      case "discussion_added": return "discussions";
+      default: return null;
     }
   };
 
@@ -5284,8 +5298,14 @@ function ActivityFeedView({ activityFeed, allRoomPresets }) {
           {activityFeed.slice(0, visible).map((entry) => {
             const initials = (entry.user_name || "?").split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
             const roomLabel = entry.room_key ? allRoomPresets[entry.room_key]?.label : null;
+            const tab = tabForAction(entry.action_type);
+            const isNavigable = onNavigate && entry.room_key && tab;
             return (
-              <div key={entry.id} className="flex items-start gap-3 px-4 py-3">
+              <div
+                key={entry.id}
+                className={`flex items-start gap-3 px-4 py-3 ${isNavigable ? "cursor-pointer hover:bg-black/[0.025] transition-colors" : ""}`}
+                onClick={isNavigable ? () => onNavigate(entry.room_key, tab) : undefined}
+              >
                 <div
                   className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
                   style={{ background: avatarColor(entry.user_name) }}
@@ -5413,7 +5433,14 @@ export default function App() {
   const [generalContext, setGeneralContext] = useState("");
   const [generalResources, setGeneralResources] = useState([]);
   const [activityFeed, setActivityFeed] = useState([]);
-  const [activityLastViewed, setActivityLastViewed] = useState(null);
+  const [activityLastViewed, setActivityLastViewed] = useState(
+    () => localStorage.getItem("activityLastViewed") || null
+  );
+  const markActivityViewed = () => {
+    const now = new Date().toISOString();
+    setActivityLastViewed(now);
+    localStorage.setItem("activityLastViewed", now);
+  };
 
   const customRoomPresets = Object.fromEntries(
     customRooms.map((customRoom) => [
@@ -6522,7 +6549,7 @@ export default function App() {
                     onClick={() => {
                       setViewMode("general");
                       setGeneralMode(key);
-                      if (key === "activite") setActivityLastViewed(new Date().toISOString());
+                      if (key === "activite") markActivityViewed();
                       setSidebarOpen(false);
                     }}
                     className={`group relative flex w-full items-center gap-1.5 rounded-md px-2 py-[6px] text-left text-[13px] transition-colors ${
@@ -7004,7 +7031,7 @@ export default function App() {
                   <button
                     key={key}
                     type="button"
-                    onClick={() => { setGeneralMode(key); if (key === "activite") setActivityLastViewed(new Date().toISOString()); }}
+                    onClick={() => { setGeneralMode(key); if (key === "activite") markActivityViewed(); }}
                     className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                       generalMode === key ? "bg-[#1C1A17] text-white" : "text-[#4D4A47] hover:bg-black/[0.06] hover:text-[#1C1A17]"
                     }`}
@@ -7133,6 +7160,13 @@ export default function App() {
             <ActivityFeedView
               activityFeed={activityFeed}
               allRoomPresets={allRoomPresets}
+              onNavigate={(roomKey, tab) => {
+                setRoom(roomKey);
+                setViewMode("room");
+                lastRoomModeRef.current[roomKey] = tab;
+                setRoomMode(tab);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
             />
           )
         ) : roomMode === "couleurs" ? (

@@ -4544,6 +4544,7 @@ export default function App() {
   const [warmth, setWarmth] = useState(60);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [projectId, setProjectId] = useState(() => {
+    if (new URLSearchParams(window.location.search).get("invite")) return null;
     const urlId = new URLSearchParams(window.location.search).get("p");
     if (urlId) {
       localStorage.setItem(PROJECT_ID_STORAGE_KEY, urlId);

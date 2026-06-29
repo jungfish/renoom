@@ -2840,7 +2840,7 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
     setMentionedUserIds([]);
     setSending(true);
     try {
-      const r = await authedFetch(`/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-message', projectId, discussionId, content, linkedImage, mentionedUserIds: toMention }) });
+      const r = await authedFetch(`${API_BASE}/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-message', projectId, discussionId, content, linkedImage, mentionedUserIds: toMention }) });
       const { messageId } = await r.json();
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: messageId } : m));
     } catch {
@@ -2857,7 +2857,7 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const r = await fetch(`/upload-image`, { method: 'POST', body: fd });
+      const r = await fetch(`${API_BASE}/upload-image`, { method: 'POST', body: fd });
       const { url } = await r.json();
       setLinkedImage(url);
     } catch {
@@ -2869,7 +2869,7 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
   };
 
   const handleDeleteMessage = async (messageId) => {
-    await authedFetch(`/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-delete-message', projectId, messageId }) }).catch(() => {});
+    await authedFetch(`${API_BASE}/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-delete-message', projectId, messageId }) }).catch(() => {});
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_deleted: true } : m));
   };
 
@@ -2891,13 +2891,13 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
 
   const handleToggleResolve = async () => {
     const newStatus = isResolved ? 'open' : 'resolved';
-    await authedFetch(`/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-update', projectId, discussionId, status: newStatus }) }).catch(() => {});
+    await authedFetch(`${API_BASE}/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-update', projectId, discussionId, status: newStatus }) }).catch(() => {});
     onDiscussionUpdate?.({ status: newStatus });
   };
 
   const handleTogglePin = async () => {
     const newPinned = !isPinned;
-    await authedFetch(`/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-update', projectId, discussionId, isPinned: newPinned }) }).catch(() => {});
+    await authedFetch(`${API_BASE}/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-update', projectId, discussionId, isPinned: newPinned }) }).catch(() => {});
     onDiscussionUpdate?.({ is_pinned: newPinned });
   };
 
@@ -3053,7 +3053,7 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
     if (!newTitle.trim() || creating) return;
     setCreating(true);
     try {
-      const r = await authedFetch(`/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-create', projectId, roomKey: room, title: newTitle }) });
+      const r = await authedFetch(`${API_BASE}/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-create', projectId, roomKey: room, title: newTitle }) });
       const { discussionId } = await r.json();
       const newDisc = { id: discussionId, title: newTitle.trim(), status: 'open', is_pinned: false, message_count: 0, last_message_preview: null, last_message_at: null, created_at: new Date().toISOString(), created_by: user?.id, unread_count: 0 };
       onDiscussionsChange(room, [newDisc, ...(discussions || [])]);
@@ -5233,7 +5233,7 @@ export default function App() {
         ? { ...n, read_at: new Date().toISOString() }
         : n
     ));
-    authedFetch(`/save-room`, {
+    authedFetch(`${API_BASE}/save-room`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'mark-mentions-read', projectId, discussionIds }),

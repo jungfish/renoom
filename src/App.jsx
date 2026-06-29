@@ -7,6 +7,8 @@ import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
+const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+
 const baseColors = {
   creme: { name: "Crème chaud", light: "#FAF6F0", hex: "#F4F1EA", medium: "#E8DFD3", dark: "#D8CEC1" },
   bleu: { name: "Bleu clair grisé", light: "#DCE8ED", hex: "#b8c9d0", medium: "#9fb7bf", dark: "#7f9ea8" },
@@ -324,7 +326,7 @@ function isPdfUrl(url) {
 async function uploadToBlob(dataUrl, filename) {
   if (!dataUrl?.startsWith("data:")) return dataUrl;
   try {
-    const res = await fetch("/api/upload-image", {
+    const res = await fetch(`${API_BASE}/upload-image`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dataUrl, filename }),
@@ -339,7 +341,7 @@ async function uploadToBlob(dataUrl, filename) {
 
 async function uploadUrlToBlob(sourceUrl, filename) {
   try {
-    const res = await fetch("/api/upload-image", {
+    const res = await fetch(`${API_BASE}/upload-image`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sourceUrl, filename }),
@@ -357,7 +359,7 @@ async function extractImageFromUrl(url) {
   const isDirectImage = /\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(url);
   if (isDirectImage && !isPinterest) return url;
   try {
-    const res = await fetch("/api/fetch-link-preview", {
+    const res = await fetch(`${API_BASE}/fetch-link-preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
@@ -371,7 +373,7 @@ async function extractImageFromUrl(url) {
 }
 
 async function fetchLinkPreview(url) {
-  const res = await fetch("/api/fetch-link-preview", {
+  const res = await fetch(`${API_BASE}/fetch-link-preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
@@ -505,7 +507,7 @@ function removeObjectKey(object, key) {
 
 async function analyzeImageForContext({ image, context, section }) {
   try {
-    const response = await fetch("/api/analyze-image", {
+    const response = await fetch(`${API_BASE}/analyze-image`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image, context, section }),
@@ -1014,7 +1016,7 @@ function AiImageEditor({ imageSrc, imageKind, imageTitle, aiContext, imageMetada
     try {
       const raw = await imageSrcToDataUrl(imageSrc);
       const image = await normalizeImageForAi(raw);
-      const response = await fetch("/api/generate-image", {
+      const response = await fetch(`${API_BASE}/generate-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image, prompt }),
@@ -2762,7 +2764,7 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussion-messages&discussionId=${discussionId}`)
+    authedFetch(`${API_BASE}/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussion-messages&discussionId=${discussionId}`)
       .then(r => r.json())
       .then(({ messages: msgs }) => setMessages(msgs || []))
       .catch(() => {});
@@ -2829,7 +2831,7 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
     setMentionedUserIds([]);
     setSending(true);
     try {
-      const r = await authedFetch('/api/save-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-message', projectId, discussionId, content, linkedImage, mentionedUserIds: toMention }) });
+      const r = await authedFetch(`/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-message', projectId, discussionId, content, linkedImage, mentionedUserIds: toMention }) });
       const { messageId } = await r.json();
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: messageId } : m));
     } catch {
@@ -2846,7 +2848,7 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const r = await fetch('/api/upload-image', { method: 'POST', body: fd });
+      const r = await fetch(`/upload-image`, { method: 'POST', body: fd });
       const { url } = await r.json();
       setLinkedImage(url);
     } catch {
@@ -2858,7 +2860,7 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
   };
 
   const handleDeleteMessage = async (messageId) => {
-    await authedFetch('/api/save-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-delete-message', projectId, messageId }) }).catch(() => {});
+    await authedFetch(`/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-delete-message', projectId, messageId }) }).catch(() => {});
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_deleted: true } : m));
   };
 
@@ -2880,13 +2882,13 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
 
   const handleToggleResolve = async () => {
     const newStatus = isResolved ? 'open' : 'resolved';
-    await authedFetch('/api/save-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-update', projectId, discussionId, status: newStatus }) }).catch(() => {});
+    await authedFetch(`/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-update', projectId, discussionId, status: newStatus }) }).catch(() => {});
     onDiscussionUpdate?.({ status: newStatus });
   };
 
   const handleTogglePin = async () => {
     const newPinned = !isPinned;
-    await authedFetch('/api/save-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-update', projectId, discussionId, isPinned: newPinned }) }).catch(() => {});
+    await authedFetch(`/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-update', projectId, discussionId, isPinned: newPinned }) }).catch(() => {});
     onDiscussionUpdate?.({ is_pinned: newPinned });
   };
 
@@ -3031,7 +3033,7 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
   useEffect(() => {
     if (!projectId || !room) return;
     setLoading(true);
-    authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussions&roomKey=${encodeURIComponent(room)}`)
+    authedFetch(`${API_BASE}/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussions&roomKey=${encodeURIComponent(room)}`)
       .then(r => r.json())
       .then(({ discussions: discs }) => onDiscussionsChange(room, discs || []))
       .catch(() => {})
@@ -3042,7 +3044,7 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
     if (!newTitle.trim() || creating) return;
     setCreating(true);
     try {
-      const r = await authedFetch('/api/save-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-create', projectId, roomKey: room, title: newTitle }) });
+      const r = await authedFetch(`/save-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-create', projectId, roomKey: room, title: newTitle }) });
       const { discussionId } = await r.json();
       const newDisc = { id: discussionId, title: newTitle.trim(), status: 'open', is_pinned: false, message_count: 0, last_message_preview: null, last_message_at: null, created_at: new Date().toISOString(), created_by: user?.id, unread_count: 0 };
       onDiscussionsChange(room, [newDisc, ...(discussions || [])]);
@@ -3275,7 +3277,7 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
     };
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch(`${API_BASE}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: requestBody,
@@ -3368,7 +3370,7 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
     try {
       const raw = await imageSrcToDataUrl(imageSrc);
       const dataUrl = await normalizeImageForAi(raw);
-      const res = await fetch("/api/generate-image", {
+      const res = await fetch(`${API_BASE}/generate-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: dataUrl, prompt: imagePrompt }),
@@ -4299,18 +4301,16 @@ function LoginScreen({ onSignIn }) {
         <div className="w-full max-w-[300px]">
           {/* Brand */}
           <div className="mb-10">
-            <div className="mb-5 flex gap-0.5 overflow-hidden rounded-md">
-              {["#b8c9d0", "#A8B5A2", "#D0AA6C", "#FAF6F0"].map((hex, i) => (
-                <div
-                  key={hex}
-                  className="h-2 flex-1"
-                  style={{ backgroundColor: hex, boxShadow: i === 3 ? "inset 0 0 0 1px rgba(0,0,0,0.08)" : "none" }}
-                />
-              ))}
+            <div className="mb-3 flex items-center gap-2.5">
+              <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="0" y="0" width="15" height="15" rx="3" fill="#b8c9d0"/>
+                <rect x="19" y="0" width="15" height="15" rx="3" fill="#A8B5A2"/>
+                <rect x="0" y="19" width="15" height="15" rx="3" fill="#D0AA6C"/>
+                <rect x="19" y="19" width="15" height="15" rx="3" fill="#FAF6F0" stroke="rgba(0,0,0,0.12)" strokeWidth="1"/>
+              </svg>
+              <span className="text-[26px] font-bold tracking-[-0.02em] text-slate-900">renoom</span>
             </div>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
-              Palette appartement
-            </p>
+            <p className="mb-6 text-sm text-slate-400">Co-créez votre intérieur.</p>
             <h1 className="text-[26px] font-semibold leading-snug text-slate-900">
               Votre projet déco,<br />organisé pièce par pièce.
             </h1>
@@ -4470,7 +4470,7 @@ function JoinOrCreateScreen({ user, onJoin, onCreateNew, signOut }) {
     <div className="min-h-screen bg-[#FAF6F0] flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-4">
         <div className="mb-6 text-center">
-          <p className="font-sans text-xs font-semibold uppercase tracking-[0.25em] text-slate-400 mb-3">Palette appartement</p>
+          <p className="font-sans text-xs font-semibold uppercase tracking-[0.25em] text-slate-400 mb-3">Renoom</p>
           <h1 className="text-2xl font-semibold text-slate-900">Quel appartement ?</h1>
           <p className="mt-2 text-sm text-slate-500">Rejoignez un projet existant ou créez le vôtre.</p>
         </div>
@@ -4635,6 +4635,7 @@ export default function App() {
   const [globalAccent, setGlobalAccent] = useState("butter");
   const [warmth, setWarmth] = useState(60);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [projectId, setProjectId] = useState(() => {
     if (new URLSearchParams(window.location.search).get("invite")) return null;
     const urlId = new URLSearchParams(window.location.search).get("p");
@@ -5029,7 +5030,7 @@ export default function App() {
 
   const saveRoomNoteToServer = (pid, roomKey, content) => {
     if (!pid) return;
-    authedFetch("/api/save-room", {
+    authedFetch(`${API_BASE}/save-room`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "note", projectId: pid, roomKey, content }),
@@ -5038,7 +5039,7 @@ export default function App() {
 
   const saveRoomDocumentToServer = (pid, roomKey, doc) => {
     if (!pid) return;
-    authedFetch("/api/save-room", {
+    authedFetch(`${API_BASE}/save-room`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "document", projectId: pid, roomKey, document: doc }),
@@ -5047,7 +5048,7 @@ export default function App() {
 
   const deleteRoomDocumentFromServer = (pid, documentId) => {
     if (!pid) return;
-    authedFetch("/api/save-room", {
+    authedFetch(`${API_BASE}/save-room`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "document", projectId: pid, documentId }),
@@ -5056,7 +5057,7 @@ export default function App() {
 
   const saveChatMessageToServer = (pid, roomKey, message) => {
     if (!pid) return;
-    authedFetch("/api/save-room", {
+    authedFetch(`${API_BASE}/save-room`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "chat-message", projectId: pid, roomKey, message }),
@@ -5065,7 +5066,7 @@ export default function App() {
 
   const saveRoomItemsToServer = (pid, roomKey, listKey, items) => {
     if (!pid) return;
-    authedFetch("/api/save-room", {
+    authedFetch(`${API_BASE}/save-room`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "items", projectId: pid, roomKey, listKey, items }),
@@ -5078,7 +5079,7 @@ export default function App() {
 
   const loadProjectMembers = (pid) => {
     if (!pid) return;
-    authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(pid)}&type=members`)
+    authedFetch(`${API_BASE}/load-room-items?projectId=${encodeURIComponent(pid)}&type=members`)
       .then(r => r.json())
       .then(({ members }) => setProjectMembers(members || []))
       .catch(() => {});
@@ -5086,7 +5087,7 @@ export default function App() {
 
   const loadMentionNotifications = (pid) => {
     if (!pid) return;
-    authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(pid)}&type=mention-notifications`)
+    authedFetch(`${API_BASE}/load-room-items?projectId=${encodeURIComponent(pid)}&type=mention-notifications`)
       .then(r => r.json())
       .then(({ notifications }) => setMentionNotifications(notifications || []))
       .catch(() => {});
@@ -5099,7 +5100,7 @@ export default function App() {
         ? { ...n, read_at: new Date().toISOString() }
         : n
     ));
-    authedFetch('/api/save-room', {
+    authedFetch(`/save-room`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'mark-mentions-read', projectId, discussionIds }),
@@ -5109,7 +5110,7 @@ export default function App() {
   const removeMember = async (userId) => {
     if (!projectId) return;
     try {
-      await authedFetch("/api/load-room-items", {
+      await authedFetch(`${API_BASE}/load-room-items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "remove-member", projectId, userId }),
@@ -5182,7 +5183,7 @@ export default function App() {
     try {
       setIsSavingToServer(true);
       const existingId = projectId || localStorage.getItem(PROJECT_ID_STORAGE_KEY);
-      const res = await authedFetch("/api/save-project", {
+      const res = await authedFetch(`${API_BASE}/save-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ state: projectState, id: existingId, snapshot, snapshotLabel }),
@@ -5287,7 +5288,7 @@ export default function App() {
     const idToLoad = urlId || projectId;
     if (!idToLoad || !session) return;
     setLoadingFromUrl(true);
-    authedFetch(`/api/load-project?id=${encodeURIComponent(idToLoad)}&t=${Date.now()}`, { cache: "no-store" })
+    authedFetch(`${API_BASE}/load-project?id=${encodeURIComponent(idToLoad)}&t=${Date.now()}`, { cache: "no-store" })
       .then((r) => r.json())
       .then(({ projectConfig, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }) => {
         if (projectConfig) {
@@ -5306,7 +5307,7 @@ export default function App() {
   useEffect(() => {
     if (!showSnapshotHistory || !projectId || !session) return;
     setLoadingSnapshots(true);
-    authedFetch(`/api/list-snapshots?projectId=${encodeURIComponent(projectId)}`)
+    authedFetch(`${API_BASE}/list-snapshots?projectId=${encodeURIComponent(projectId)}`)
       .then((r) => r.json())
       .then(({ snapshots: list }) => setSnapshots(list || []))
       .catch(() => {})
@@ -5317,7 +5318,7 @@ export default function App() {
     if (!window.confirm("Restaurer ce point ? Les changements non-sauvegardés seront perdus.")) return;
     setRestoringSnapshotId(snapshotId);
     try {
-      const res = await authedFetch("/api/restore-snapshot", {
+      const res = await authedFetch(`${API_BASE}/restore-snapshot`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId, snapshotId }),
@@ -5342,7 +5343,7 @@ export default function App() {
   };
 
   const handleJoinProject = async (inviteCode) => {
-    const res = await authedFetch("/api/join-project", {
+    const res = await authedFetch(`${API_BASE}/join-project`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ inviteCode }),
@@ -5354,7 +5355,7 @@ export default function App() {
       localStorage.setItem(PROJECT_ID_STORAGE_KEY, data.projectId);
       window.history.replaceState({}, "", `/?p=${data.projectId}`);
       // Charger le projet
-      const loaded = await authedFetch(`/api/load-project?id=${data.projectId}`).then((r) => r.json());
+      const loaded = await authedFetch(`${API_BASE}/load-project?id=${data.projectId}`).then((r) => r.json());
       if (loaded.state) {
         hydrateState(loaded.roomItems?.length ? { ...loaded.state, roomItems: loaded.roomItems } : loaded.state);
         if (typeof loaded.isOwner === "boolean") setIsOwner(loaded.isOwner);
@@ -5375,7 +5376,7 @@ export default function App() {
         () => {
           if (isApplyingRemoteUpdate.current) return;
           isApplyingRemoteUpdate.current = true;
-          authedFetch(`/api/load-project?id=${encodeURIComponent(projectId)}&t=${Date.now()}`, { cache: "no-store" })
+          authedFetch(`${API_BASE}/load-project?id=${encodeURIComponent(projectId)}&t=${Date.now()}`, { cache: "no-store" })
             .then((r) => r.json())
             .then(({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }) => {
               if (projectConfig) {
@@ -5404,7 +5405,7 @@ export default function App() {
           clearTimeout(reloadTimer);
           reloadTimer = setTimeout(() => {
             if (isApplyingRemoteUpdate.current) return;
-            authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(projectId)}`)
+            authedFetch(`${API_BASE}/load-room-items?projectId=${encodeURIComponent(projectId)}`)
               .then((r) => r.json())
               .then(({ items }) => {
                 if (!Array.isArray(items) || items.length === 0) return;
@@ -5437,7 +5438,7 @@ export default function App() {
           reloadTimer = setTimeout(() => {
             setDiscussionsCache(cache => {
               Object.keys(cache).forEach(roomKey => {
-                authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussions&roomKey=${encodeURIComponent(roomKey)}`)
+                authedFetch(`${API_BASE}/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussions&roomKey=${encodeURIComponent(roomKey)}`)
                   .then(r => r.json())
                   .then(({ discussions }) => setDiscussionsCache(prev => ({ ...prev, [roomKey]: discussions || [] })))
                   .catch(() => {});
@@ -5708,7 +5709,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-creme text-slate-800">
+    <div className="flex h-screen overflow-hidden bg-[#F4F1EA] text-slate-800">
       {/* Modales */}
       {showMembersModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => { setShowMembersModal(false); setConfirmRemoveMember(null); }}>
@@ -5778,227 +5779,285 @@ export default function App() {
           </div>
         </div>
       ) : null}
-      <div className="sticky top-0 z-40 border-b border-black/10 bg-white/95 px-3 py-2 backdrop-blur sm:hidden">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen((current) => !current)}
-            aria-label="Ouvrir la navigation des pièces"
-            className="grid h-10 w-10 place-items-center rounded-md border border-black/15 bg-white shadow-sm"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M4 6h16M4 12h16M4 18h16"/>
-            </svg>
-          </button>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{preset.label}</div>
-            {lastSavedAt ? <div className="truncate text-[11px] text-slate-500">Auto-sauvé {new Date(lastSavedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</div> : null}
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowSnapshotHistory(true)}
-            className="grid h-9 w-9 place-items-center rounded-md border border-black/15 bg-white text-slate-500 shadow-sm hover:bg-slate-50"
-            title="Historique"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowSnapshotModal(true)}
-            className="rounded-md border border-black/15 bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm"
-            title="Créer un point de sauvegarde"
-          >
-            📌
-          </button>
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-20 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+      <aside
+        className={`fixed lg:relative inset-y-0 left-0 z-30 flex h-full w-60 flex-shrink-0 flex-col border-r border-black/[0.08] bg-[#F9F7F3] transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-black/[0.08] bg-[#F2EFE7] px-3.5">
+          <div
+            className="h-[22px] w-[22px] flex-shrink-0 rounded-[5px]"
+            style={{ background: "linear-gradient(135deg,#CDAA73 10%,#A8B5A2 90%)" }}
+          />
+          <span className="truncate text-sm font-semibold tracking-tight text-[#1C1A17]">Appartement</span>
         </div>
-        {mobileMenuOpen ? (
-          <div className="mt-2 grid max-h-[60vh] gap-2 overflow-y-auto rounded-lg border border-black/10 bg-white p-2 shadow-lg">
-            <button
-              type="button"
-              onClick={() => { setViewMode("general"); setMobileMenuOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-              className={`rounded-md border px-3 py-2 text-left text-sm font-medium ${viewMode === "general" ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-[#f9f7f3]"}`}
-            >
-              Général
-            </button>
-            <div className="my-1 h-px bg-black/10" />
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5">
+          <div className="mb-5">
+            <span className="mb-1 block px-2 text-[10.5px] font-bold uppercase tracking-[0.07em] text-[#C0BDB6]">
+              Vue générale
+            </span>
+            {(() => {
+              const tPending = orderedActiveRooms.reduce((acc, k) => {
+                const l = roomLists[k] || {};
+                return acc + [...(l.shopping || []), ...(l.todos || [])].filter((i) => !i.done).length;
+              }, 0);
+              const tUnread = ["general", ...orderedActiveRooms].reduce(
+                (acc, k) => acc + (discussionsCache[k] || []).reduce((s, d) => s + (d.unread_count || 0), 0),
+                0
+              );
+              const tDocs = orderedActiveRooms.reduce((acc, k) => acc + (roomDocuments[k] || []).length, 0);
+              const tMention = (mentionNotifications || []).filter((n) => !n.read_at).length;
+              return [
+                { key: "todos", label: "Todos", badge: tPending, mention: 0 },
+                { key: "couleurs", label: "Couleurs", badge: 0, mention: 0 },
+                { key: "discussions", label: "Discussions", badge: tUnread, mention: tMention },
+                { key: "ressources", label: "Ressources", badge: tDocs, mention: 0 },
+              ].map(({ key, label, badge, mention }) => {
+                const active = viewMode === "general" && generalMode === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setViewMode("general");
+                      setGeneralMode(key);
+                      setSidebarOpen(false);
+                    }}
+                    className={`group relative flex w-full items-center gap-1.5 rounded-md px-2 py-[6px] text-left text-[13px] transition-colors ${
+                      active
+                        ? "bg-black/[0.05] font-medium text-[#1C1A17]"
+                        : "text-[#9A9790] hover:bg-black/[0.04] hover:text-[#1C1A17]"
+                    }`}
+                  >
+                    {active && (
+                      <span className="absolute -left-2 bottom-1 top-1 w-[2.5px] rounded-r bg-[#CDAA73]" />
+                    )}
+                    <span className="flex-1 truncate">{label}</span>
+                    {mention > 0 ? (
+                      <span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#CDAA73] px-1 text-[10px] font-bold text-white">
+                        {mention}
+                      </span>
+                    ) : badge > 0 ? (
+                      <span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#EDE9E0] px-1 text-[10px] font-semibold text-[#8A8580]">
+                        {badge}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              });
+            })()}
+          </div>
+          <div>
+            <span className="mb-1 block px-2 text-[10.5px] font-bold uppercase tracking-[0.07em] text-[#C0BDB6]">
+              Pièces
+            </span>
             {orderedActiveRooms.map((key) => {
-              const pending = roomPendingCount(key);
+              const active = viewMode === "room" && room === key;
               return (
                 <button
                   key={key}
-                  draggable
-                  onDragStart={() => setDraggingRoom(key)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleRoomDrop(key)}
-                  onDragEnd={() => setDraggingRoom(null)}
+                  type="button"
                   onClick={() => {
                     setRoom(key);
                     setViewMode("room");
-                    setMobileMenuOpen(false);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
+                    setSidebarOpen(false);
                   }}
-                  className={`flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-opacity ${
-                    viewMode === "room" && room === key ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-[#f9f7f3]"
-                  } ${draggingRoom === key ? "opacity-40" : ""}`}
+                  className={`group relative flex w-full items-center gap-2 rounded-md px-2 py-[6px] text-left text-[13px] transition-colors ${
+                    active
+                      ? "bg-black/[0.05] font-medium text-[#1C1A17]"
+                      : "text-[#9A9790] hover:bg-black/[0.04] hover:text-[#1C1A17]"
+                  }`}
                 >
-                  <span className="flex items-center gap-2">
-                    <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" className="shrink-0 opacity-30">
-                      <circle cx="3" cy="2" r="1.3"/><circle cx="7" cy="2" r="1.3"/>
-                      <circle cx="3" cy="6" r="1.3"/><circle cx="7" cy="6" r="1.3"/>
-                      <circle cx="3" cy="10" r="1.3"/><circle cx="7" cy="10" r="1.3"/>
-                    </svg>
-                    {allRoomPresets[key].label}
-                  </span>
-                  {pending > 0 ? (
-                    <span className="ml-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-amber-900">{pending}</span>
-                  ) : null}
+                  {active && (
+                    <span className="absolute -left-2 bottom-1 top-1 w-[2.5px] rounded-r bg-[#CDAA73]" />
+                  )}
+                  <span
+                    className={`h-1.5 w-1.5 flex-shrink-0 rounded-full bg-current ${
+                      active ? "opacity-70" : "opacity-30 group-hover:opacity-50"
+                    }`}
+                  />
+                  <span className="flex-1 truncate">{allRoomPresets[key].label}</span>
                 </button>
               );
             })}
             <button
               type="button"
               onClick={addRoom}
-              className="rounded-md border border-black/15 bg-white px-3 py-2 text-left text-sm font-medium"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-[6px] text-left text-[12.5px] text-[#C8C5BE] transition-colors hover:text-[#9A9790]"
             >
-              + Ajouter une pièce
+              <svg
+                className="h-3.5 w-3.5 flex-shrink-0"
+                viewBox="0 0 14 14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <path d="M7 2v10M2 7h10" />
+              </svg>
+              Ajouter une pièce
             </button>
           </div>
-        ) : null}
-      </div>
-
-      <main className="mx-auto w-full max-w-7xl space-y-5 p-3 sm:p-4 md:space-y-6 md:p-8">
-        <header className="rounded-xl border border-black/10 bg-white p-4 md:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-sans text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Palette appartement interactive</p>
-              <h1 className="type-h1">Univers rétro, coloré, doux</h1>
-              <p className="mt-2 text-sm text-slate-600">Projet de Violette et Matthieu Jungfer pour Botzaris.</p>
-            </div>
-            <div className="hidden w-full flex-col items-end gap-2 sm:flex sm:w-auto">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowSnapshotHistory(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-black/12 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm hover:bg-slate-50 transition-colors"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                  Historique
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowSnapshotModal(true)}
-                  disabled={isSavingSnapshot}
-                  className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-700 disabled:opacity-60 transition-colors"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                  {isSavingSnapshot ? "Sauvegarde…" : "Point de sauvegarde"}
-                </button>
-                <div className="relative" ref={userMenuRef}>
-                  <button type="button" onClick={() => setShowUserMenu((v) => !v)} className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30">
-                    {user?.user_metadata?.avatar_url ? (
-                      <img
-                        src={user.user_metadata.avatar_url}
-                        alt=""
-                        className="h-9 w-9 rounded-full border-2 border-white shadow-sm ring-1 ring-black/10"
-                        onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }}
-                      />
-                    ) : null}
-                    <div style={{ display: user?.user_metadata?.avatar_url ? "none" : "flex" }} className="h-9 w-9 rounded-full bg-slate-200 border border-black/10 items-center justify-center text-sm font-semibold text-slate-600">
-                      {(user?.email || "?")[0].toUpperCase()}
-                    </div>
-                  </button>
-                  {showUserMenu && (
-                  <div className="absolute right-0 top-full mt-1.5 z-50 w-52 rounded-xl border border-black/10 bg-white shadow-xl overflow-hidden">
-                    <div className="px-3 py-2.5 border-b border-black/8">
-                      <p className="text-xs font-medium text-slate-800 truncate">{user?.user_metadata?.full_name || "Utilisateur"}</p>
-                      <p className="text-[11px] text-slate-400 truncate mt-0.5">{user?.email}</p>
-                    </div>
-                    {isOwner && (
-                      <button
-                        onClick={() => { setShowMembersModal(true); setShowUserMenu(false); }}
-                        className="w-full px-3 py-2.5 text-left hover:bg-slate-50 transition-colors"
-                      >
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Membres</p>
-                        <p className="text-sm text-slate-700 mt-0.5">Gérer les membres →</p>
-                      </button>
-                    )}
-                    {isOwner && inviteCode && (
-                      <button
-                        onClick={() => {
-                          const inviteUrl = `${window.location.origin}/?invite=${inviteCode}`;
-                          navigator.clipboard.writeText(inviteUrl);
-                          setCopyInviteSuccess(true);
-                          setTimeout(() => setCopyInviteSuccess(false), 2000);
-                        }}
-                        className="w-full px-3 py-2.5 text-left hover:bg-slate-50 transition-colors"
-                      >
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Lien d'invitation</p>
-                        <p className="text-sm text-slate-700 mt-0.5">{copyInviteSuccess ? "✓ Lien copié !" : "Copier le lien →"}</p>
-                      </button>
-                    )}
-                    <button onClick={signOut} className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50 transition-colors border-t border-black/8">
-                      Se déconnecter
-                    </button>
+        </div>
+        <div className="flex-shrink-0 border-t border-black/[0.08] bg-[#F2EFE7] px-2 py-2">
+          <button
+            type="button"
+            onClick={() => {
+              setShowMembersModal(true);
+              setSidebarOpen(false);
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-[7px] text-[13px] text-[#9A9790] transition-colors hover:bg-black/[0.04] hover:text-[#1C1A17]"
+          >
+            <svg
+              className="h-3.5 w-3.5 flex-shrink-0 opacity-55"
+              viewBox="0 0 14 14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
+              <circle cx="5" cy="4.5" r="2.5" />
+              <path d="M.5 13c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" />
+              <circle cx="11" cy="4.5" r="2" />
+              <path d="M13.5 13c0-2-1.5-3.5-3-3.5" />
+            </svg>
+            <span>Membres</span>
+            {projectMembers.length > 0 && (
+              <div className="ml-auto flex">
+                {projectMembers.slice(0, 3).map((member, i) => (
+                  <div
+                    key={member.id}
+                    className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-[#F2EFE7] text-[8.5px] font-bold text-white"
+                    style={{
+                      background: ["#A8B5A2", "#b8c9d0", "#CDAA73"][i % 3],
+                      marginLeft: i === 0 ? 0 : -4,
+                    }}
+                  >
+                    {(member.name || "?")[0].toUpperCase()}
                   </div>
-                  )}
-                </div>
+                ))}
               </div>
-              {lastSavedAt ? (
-                <span className="text-[11px] text-slate-400">Auto-sauvé à {new Date(lastSavedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
-              ) : null}
+            )}
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex flex-1 flex-col overflow-hidden min-w-0">
+        <header className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-black/[0.07] bg-[#FAFAF8] px-5">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-black/[0.1] text-slate-500 hover:bg-slate-50 lg:hidden"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M1 3h12M1 7h12M1 11h12" />
+            </svg>
+          </button>
+          <span className="flex-1 truncate text-sm font-semibold tracking-tight text-[#1C1A17]">
+            {viewMode === "room" ? allRoomPresets[room]?.label : "Vue générale"}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowSnapshotHistory(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-black/[0.1] bg-white px-3 py-1.5 text-sm text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </svg>
+              <span className="hidden sm:inline">Historique</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSnapshotModal(true)}
+              disabled={isSavingSnapshot}
+              className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-700 disabled:opacity-60"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              <span className="hidden sm:inline">{isSavingSnapshot ? "Sauvegarde…" : "Snapshot"}</span>
+            </button>
+            <div className="relative" ref={userMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowUserMenu((v) => !v)}
+                className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30"
+              >
+                {user?.user_metadata?.avatar_url ? (
+                  <img
+                    src={user.user_metadata.avatar_url}
+                    alt=""
+                    className="h-8 w-8 rounded-full border-2 border-white shadow-sm ring-1 ring-black/10"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                      e.currentTarget.nextSibling.style.display = "flex";
+                    }}
+                  />
+                ) : null}
+                <div
+                  style={{ display: user?.user_metadata?.avatar_url ? "none" : "flex" }}
+                  className="h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-slate-200 text-sm font-semibold text-slate-600"
+                >
+                  {(user?.email || "?")[0].toUpperCase()}
+                </div>
+              </button>
+              {showUserMenu && (
+                <div className="absolute right-0 top-full z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-black/10 bg-white shadow-xl">
+                  <div className="border-b border-black/8 px-3 py-2.5">
+                    <p className="truncate text-xs font-medium text-slate-800">
+                      {user?.user_metadata?.full_name || "Utilisateur"}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] text-slate-400">{user?.email}</p>
+                  </div>
+                  {isOwner && (
+                    <button
+                      onClick={() => { setShowMembersModal(true); setShowUserMenu(false); }}
+                      className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Membres</p>
+                      <p className="mt-0.5 text-sm text-slate-700">Gérer les membres →</p>
+                    </button>
+                  )}
+                  {isOwner && inviteCode && (
+                    <button
+                      onClick={() => {
+                        const inviteUrl = `${window.location.origin}/?invite=${inviteCode}`;
+                        navigator.clipboard.writeText(inviteUrl);
+                        setCopyInviteSuccess(true);
+                        setTimeout(() => setCopyInviteSuccess(false), 2000);
+                      }}
+                      className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Lien d'invitation</p>
+                      <p className="mt-0.5 text-sm text-slate-700">{copyInviteSuccess ? "✓ Lien copié !" : "Copier le lien →"}</p>
+                    </button>
+                  )}
+                  <button
+                    onClick={signOut}
+                    className="w-full border-t border-black/8 px-3 py-2 text-left text-sm text-red-500 transition-colors hover:bg-red-50"
+                  >
+                    Se déconnecter
+                  </button>
+                </div>
+              )}
             </div>
+            {lastSavedAt && (
+              <span className="hidden text-[11px] text-slate-400 md:inline">
+                Auto-sauvé {new Date(lastSavedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
           </div>
         </header>
 
-        <section className="sticky top-2 z-30 hidden rounded-xl border border-black/10 bg-white/95 p-3 backdrop-blur sm:block md:top-4 md:p-4">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            <button
-              type="button"
-              onClick={() => { setViewMode("general"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-              className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-medium ${
-                viewMode === "general" ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-[#f9f7f3]"
-              }`}
-            >
-              Général
-            </button>
-            <div className="mx-1 h-6 w-px shrink-0 bg-black/10" />
-            {orderedActiveRooms.map((key) => {
-              const pending = roomPendingCount(key);
-              return (
-                <button
-                  key={key}
-                  draggable
-                  onDragStart={() => setDraggingRoom(key)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleRoomDrop(key)}
-                  onDragEnd={() => setDraggingRoom(null)}
-                  onClick={() => { setRoom(key); setViewMode("room"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-                  title="Glisser pour réorganiser"
-                  className={`relative shrink-0 cursor-grab whitespace-nowrap rounded-lg border px-3 py-2 text-sm transition-opacity active:cursor-grabbing ${
-                    viewMode === "room" && room === key ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-[#f9f7f3]"
-                  } ${draggingRoom === key ? "opacity-40" : ""}`}
-                >
-                  {allRoomPresets[key].label}
-                  {pending > 0 ? (
-                    <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-amber-900">{pending}</span>
-                  ) : null}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={addRoom}
-              title="Ajouter une pièce"
-              aria-label="Ajouter une pièce"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-black/15 bg-white text-xl leading-none shadow-sm hover:bg-[#fcf8d5]"
-            >
-              +
-            </button>
-          </div>
-        </section>
-
         {viewMode === "room" ? (
-          <div className="flex gap-1 rounded-xl border border-black/10 bg-white p-1.5">
+          <div className="flex flex-shrink-0 gap-1 border-b border-black/[0.08] bg-[#FAFAF8] px-4 py-2">
             {[
               { key: "inspirations", label: "Inspirations" },
               { key: "couleurs", label: "Couleurs" },
@@ -6014,8 +6073,8 @@ export default function App() {
                   key={key}
                   type="button"
                   onClick={() => handleSetRoomMode(key)}
-                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
-                    roomMode === key ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    roomMode === key ? "bg-[#1C1A17] text-white" : "text-[#9A9790] hover:bg-black/[0.06] hover:text-[#1C1A17]"
                   }`}
                 >
                   {label}
@@ -6031,7 +6090,7 @@ export default function App() {
         ) : null}
 
         {viewMode === "general" ? (
-          <div className="flex gap-1 rounded-xl border border-black/10 bg-white p-1.5">
+          <div className="flex flex-shrink-0 gap-1 border-b border-black/[0.08] bg-[#FAFAF8] px-4 py-2">
             {(() => {
               const totalPending = orderedActiveRooms.reduce((acc, key) => {
                 const list = roomLists[key] || {};
@@ -6052,8 +6111,8 @@ export default function App() {
                   key={key}
                   type="button"
                   onClick={() => setGeneralMode(key)}
-                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
-                    generalMode === key ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    generalMode === key ? "bg-[#1C1A17] text-white" : "text-[#9A9790] hover:bg-black/[0.06] hover:text-[#1C1A17]"
                   }`}
                 >
                   {label}
@@ -6068,6 +6127,8 @@ export default function App() {
           </div>
         ) : null}
 
+        <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-5xl space-y-5 p-4 md:space-y-6 md:p-6">
         {viewMode === "general" ? (
           generalMode === "todos" ? (
             <TodosGlobalView
@@ -6475,7 +6536,9 @@ export default function App() {
             onClose={() => setShow3D(false)}
           />
         ) : null}
-      </main>
+        </div>
+        </div>
+      </div>
       {createPortal(
         <>
           <button

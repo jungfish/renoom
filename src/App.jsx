@@ -4010,12 +4010,23 @@ function renderItemText(text, url) {
   return parts.length > 0 ? parts : text;
 }
 
-function LinkPreviewMini({ item }) {
+function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, onSaveEditTitle, onCancelEditTitle, onStartEditTitle }) {
   const domain = (() => {
     try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; }
   })();
-  const textWithoutUrl = item.text.replace(item.url, "").trim();
-  const cardTitle = item.previewTitle || textWithoutUrl || domain;
+  const isCustomTitle = item.text && item.text !== item.url;
+  const cardTitle = isCustomTitle ? item.text : (item.previewTitle || domain);
+
+  const imageEl = item.image ? (
+    <img src={item.image} alt={cardTitle} className="h-20 w-24 shrink-0 object-cover" />
+  ) : (
+    <div className="grid h-20 w-16 shrink-0 place-items-center bg-slate-200 text-slate-400">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+      </svg>
+    </div>
+  );
 
   if (item.previewLoading) {
     return (
@@ -4029,28 +4040,54 @@ function LinkPreviewMini({ item }) {
     );
   }
 
-  return (
-    <a
-      href={item.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-black/8 bg-slate-50 transition-colors hover:bg-slate-100"
-    >
-      {item.image ? (
-        <img src={item.image} alt={cardTitle} className="h-20 w-24 shrink-0 object-cover" />
-      ) : (
-        <div className="grid h-20 w-16 shrink-0 place-items-center bg-slate-200 text-slate-400">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-          </svg>
+  if (editingTitle) {
+    return (
+      <div className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-amber-300 bg-amber-50">
+        {imageEl}
+        <div className="flex min-w-0 flex-1 flex-col justify-center px-3">
+          <input
+            autoFocus
+            value={editingValue}
+            onChange={e => onChangeEditValue(e.target.value)}
+            onBlur={() => onSaveEditTitle()}
+            onKeyDown={e => { if (e.key === "Enter") onSaveEditTitle(); if (e.key === "Escape") onCancelEditTitle(); }}
+            className="w-full bg-transparent text-sm font-medium text-slate-800 outline-none"
+            placeholder={cardTitle}
+          />
+          {domain && <p className="mt-1 truncate text-[11px] text-slate-400">{domain}</p>}
         </div>
-      )}
-      <div className="flex min-w-0 flex-1 flex-col justify-center px-3">
-        <p className="line-clamp-2 text-sm font-medium leading-snug text-slate-800">{cardTitle}</p>
-        {domain && <p className="mt-1 truncate text-[11px] text-slate-400">{domain}</p>}
       </div>
-    </a>
+    );
+  }
+
+  return (
+    <div className="relative flex min-w-0 flex-1 group/link-preview">
+      <a
+        href={item.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-black/8 bg-slate-50 transition-colors hover:bg-slate-100"
+      >
+        {imageEl}
+        <div className="flex min-w-0 flex-1 flex-col justify-center px-3">
+          <p className="line-clamp-2 text-sm font-medium leading-snug text-slate-800">{cardTitle}</p>
+          {domain && <p className="mt-1 truncate text-[11px] text-slate-400">{domain}</p>}
+        </div>
+      </a>
+      {onStartEditTitle && (
+        <button
+          type="button"
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onStartEditTitle(cardTitle); }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded text-slate-300 opacity-0 transition-opacity hover:bg-slate-200 hover:text-slate-600 group-hover/link-preview:opacity-100"
+          title="Modifier le titre"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -4259,10 +4296,55 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
   const [newMeta, setNewMeta] = useState({ shopping: { dueDate: "", assignee: "" }, todos: { dueDate: "", assignee: "" } });
   const [openPicker, setOpenPicker] = useState(null);
   const [editingDate, setEditingDate] = useState(null);
+  const [editingTitleId, setEditingTitleId] = useState(null);
+  const [editingTitleValue, setEditingTitleValue] = useState("");
+  const migratedItemIds = useRef(new Set());
 
   const list = roomLists[room] || {};
   const shopping = list.shopping || [];
   const todos = list.todos || [];
+
+  useEffect(() => {
+    const toMigrate = shopping.filter(item =>
+      !migratedItemIds.current.has(item.id) &&
+      !item.url &&
+      /https?:\/\/[^\s]+/.test(item.text || '')
+    );
+    if (toMigrate.length === 0) return;
+    toMigrate.forEach(item => migratedItemIds.current.add(item.id));
+    const urlOf = text => (text || '').match(/https?:\/\/[^\s]+/)?.[0];
+    setRoomLists(prev => {
+      const items = ((prev[room] || {}).shopping || []).map(item =>
+        toMigrate.some(m => m.id === item.id)
+          ? { ...item, url: urlOf(item.text), previewLoading: true }
+          : item
+      );
+      if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, 'shopping', items);
+      return { ...prev, [room]: { ...(prev[room] || {}), shopping: items } };
+    });
+    toMigrate.forEach(async origItem => {
+      const url = urlOf(origItem.text);
+      try {
+        const preview = await fetchLinkPreview(url);
+        setRoomLists(prev => {
+          const items = ((prev[room] || {}).shopping || []).map(item =>
+            item.id === origItem.id
+              ? { ...item, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}) }
+              : item
+          );
+          if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, 'shopping', items);
+          return { ...prev, [room]: { ...(prev[room] || {}), shopping: items } };
+        });
+      } catch {
+        setRoomLists(prev => {
+          const items = ((prev[room] || {}).shopping || []).map(item =>
+            item.id === origItem.id ? { ...item, previewLoading: false } : item
+          );
+          return { ...prev, [room]: { ...(prev[room] || {}), shopping: items } };
+        });
+      }
+    });
+  }, [room, shopping.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const allPersons = [
     ...(projectMembers).map(m => ({ id: m.id, name: m.name })),
@@ -4500,7 +4582,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                   </button>
                 ) : (
                   <button type="button" onClick={() => setEditingDate(item.id)} title="Ajouter une échéance"
-                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-200 opacity-0 transition-opacity hover:bg-slate-50 hover:text-slate-400 group-hover:opacity-100">
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                   </button>
                 )}
@@ -4516,7 +4598,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                   ) : (
                     <button type="button"
                       onClick={() => setOpenPicker(openPicker === `item-${item.id}` ? null : `item-${item.id}`)}
-                      className="grid h-5 w-5 place-items-center rounded-full border border-dashed border-slate-200 text-[9px] text-slate-200 opacity-0 transition-opacity hover:border-slate-400 hover:text-slate-400 group-hover:opacity-100"
+                      className="grid h-5 w-5 place-items-center rounded-full border border-dashed border-slate-400 text-[9px] text-slate-400 opacity-0 transition-opacity hover:border-slate-600 hover:text-slate-600 group-hover:opacity-100"
                       title="Assigner">+</button>
                   )}
                   {openPicker === `item-${item.id}` && (
@@ -4527,7 +4609,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                   )}
                 </div>
                 <button type="button" onClick={() => removeItem(listKey, item.id)}
-                  className="shrink-0 px-1 text-slate-200 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100">×</button>
+                  className="shrink-0 px-1 text-slate-400 opacity-0 transition-opacity hover:text-slate-700 group-hover:opacity-100">×</button>
               </li>
             ))}
           </ul>

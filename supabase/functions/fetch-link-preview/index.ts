@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
       headers: {
         "User-Agent": isInstagram
           ? "Mozilla/5.0 (compatible; Twitterbot/1.0)"
-          : "Mozilla/5.0 (compatible; DesignHelperBot/1.0; +https://design-helper.vercel.app)",
+          : "Mozilla/5.0 (compatible; RenoomBot/1.0; +https://renoom.vercel.app)",
         Accept: "text/html,application/xhtml+xml",
         "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
       },

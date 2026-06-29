@@ -2586,6 +2586,417 @@ function renderMessageContent(content) {
   });
 }
 
+// ── Collaborative Discussions ─────────────────────────────────────────────
+
+function renderDiscussionContent(content, allRoomPresets, onNavigateToRoom) {
+  if (!content) return null;
+  const parts = content.split(/(@\w+|#[\w-]+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('@')) {
+      return <span key={i} className="inline-block rounded bg-amber-100 px-1 text-sm font-medium text-amber-800">{part}</span>;
+    }
+    if (part.startsWith('#')) {
+      const key = part.slice(1);
+      if (allRoomPresets?.[key]) {
+        return (
+          <button key={i} type="button" onClick={() => onNavigateToRoom?.(key)}
+            className="inline-block rounded bg-slate-100 px-1 text-sm font-medium text-slate-700 underline hover:bg-slate-200">
+            {part}
+          </button>
+        );
+      }
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, authedFetch, projectMembers, orderedActiveRooms, allRoomPresets, onClose, onDiscussionUpdate, onNavigateToRoom }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [mention, setMention] = useState(null);
+  const [linkedImage, setLinkedImage] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const textareaRef = useRef(null);
+  const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussion-messages&discussionId=${discussionId}`)
+      .then(r => r.json())
+      .then(({ messages: msgs }) => setMessages(msgs || []))
+      .catch(() => {});
+  }, [discussionId, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const channel = supabase.channel(`thread-${discussionId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'discussion_messages', filter: `discussion_id=eq.${discussionId}` },
+        (payload) => {
+          if (payload.new.author_id !== user?.id) {
+            setMessages(prev => [...prev, payload.new]);
+            supabase.from('discussion_reads')
+              .upsert({ user_id: user.id, discussion_id: discussionId, last_read_at: new Date().toISOString() }, { onConflict: 'user_id,discussion_id' })
+              .then(() => {}).catch(() => {});
+          }
+        }
+      ).subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [discussionId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setInput(val);
+    const cursor = e.target.selectionStart;
+    const textBefore = val.slice(0, cursor);
+    const atMatch = textBefore.match(/@(\w*)$/);
+    const hashMatch = textBefore.match(/#([\w-]*)$/);
+    if (atMatch) {
+      setMention({ type: '@', query: atMatch[1], start: cursor - atMatch[0].length });
+    } else if (hashMatch) {
+      setMention({ type: '#', query: hashMatch[1], start: cursor - hashMatch[0].length });
+    } else {
+      setMention(null);
+    }
+  };
+
+  const handleInsertMention = (display) => {
+    if (!mention || !textareaRef.current) return;
+    const cursor = textareaRef.current.selectionStart;
+    const beforeMention = input.slice(0, mention.start);
+    const afterCursor = input.slice(cursor);
+    setInput(`${beforeMention}${mention.type}${display} ${afterCursor}`);
+    setMention(null);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || sending) return;
+    const content = input.trim();
+    const tempId = `temp-${Date.now()}`;
+    const authorName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'Moi';
+    const authorAvatar = user?.user_metadata?.avatar_url || null;
+    setMessages(prev => [...prev, { id: tempId, author_id: user?.id, author_name: authorName, author_avatar: authorAvatar, content, linked_image: linkedImage, created_at: new Date().toISOString(), is_deleted: false }]);
+    setInput('');
+    setLinkedImage(null);
+    setSending(true);
+    try {
+      const r = await authedFetch('/api/save-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-message', projectId, discussionId, content, linkedImage }) });
+      const { messageId } = await r.json();
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: messageId } : m));
+    } catch {
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch('/api/upload-image', { method: 'POST', body: fd });
+      const { url } = await r.json();
+      setLinkedImage(url);
+    } catch {
+      // ignore upload errors
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleDeleteMessage = async (messageId) => {
+    await authedFetch('/api/save-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-delete-message', projectId, messageId }) }).catch(() => {});
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_deleted: true } : m));
+  };
+
+  const groupedMessages = messages.reduce((acc, msg, i) => {
+    const prev = messages[i - 1];
+    const sameAuthor = prev && prev.author_id === msg.author_id;
+    const within5min = prev && (new Date(msg.created_at) - new Date(prev.created_at)) < 5 * 60 * 1000;
+    if (sameAuthor && within5min) {
+      acc[acc.length - 1].msgs.push(msg);
+    } else {
+      acc.push({ author_id: msg.author_id, author_name: msg.author_name, author_avatar: msg.author_avatar, msgs: [msg] });
+    }
+    return acc;
+  }, []);
+
+  const isResolved = discussion?.status === 'resolved';
+  const isPinned = discussion?.is_pinned;
+  const canModerate = isOwner || discussion?.created_by === user?.id;
+
+  const handleToggleResolve = async () => {
+    const newStatus = isResolved ? 'open' : 'resolved';
+    await authedFetch('/api/save-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-update', projectId, discussionId, status: newStatus }) }).catch(() => {});
+    onDiscussionUpdate?.({ status: newStatus });
+  };
+
+  const handleTogglePin = async () => {
+    const newPinned = !isPinned;
+    await authedFetch('/api/save-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-update', projectId, discussionId, isPinned: newPinned }) }).catch(() => {});
+    onDiscussionUpdate?.({ is_pinned: newPinned });
+  };
+
+  const mentionOptions = mention
+    ? mention.type === '@'
+      ? (projectMembers || []).filter(m => m.name.toLowerCase().includes((mention.query || '').toLowerCase()))
+      : (orderedActiveRooms || []).filter(r => r.includes(mention.query || '')).map(r => ({ id: r, name: allRoomPresets?.[r]?.label || r }))
+    : [];
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      <div className="flex shrink-0 items-center gap-3 border-b border-black/10 px-4 py-3">
+        <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-md border border-black/10 hover:bg-slate-50">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            {isPinned && <span className="text-xs">📌</span>}
+            <span className="truncate font-medium text-slate-900">{discussion?.title}</span>
+            {isResolved && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">Résolu</span>}
+          </div>
+        </div>
+        {canModerate && (
+          <div className="flex gap-1.5">
+            {isOwner && (
+              <button type="button" onClick={handleTogglePin} title={isPinned ? "Désépingler" : "Épingler"}
+                className={`flex h-9 w-9 items-center justify-center rounded-md border text-sm hover:bg-slate-50 ${isPinned ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-black/10 text-slate-400'}`}>
+                📌
+              </button>
+            )}
+            <button type="button" onClick={handleToggleResolve}
+              className={`flex items-center gap-1 rounded-md border px-3 py-2 text-xs font-medium hover:bg-slate-50 ${isResolved ? 'border-slate-300 text-slate-600' : 'border-green-300 bg-green-50 text-green-700'}`}>
+              {isResolved ? 'Rouvrir' : 'Résoudre'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        {messages.length === 0 && (
+          <div className="py-12 text-center text-sm text-slate-400">Aucun message. Soyez le premier à écrire !</div>
+        )}
+        {groupedMessages.map((group, gi) => {
+          const isOwn = group.author_id === user?.id;
+          return (
+            <div key={gi} className={`flex gap-2.5 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+              {!isOwn && (
+                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-slate-100 text-xs font-medium text-slate-500">
+                  {group.author_avatar
+                    ? <img src={group.author_avatar} alt={group.author_name} className="h-full w-full object-cover" />
+                    : (group.author_name?.[0] || '?').toUpperCase()}
+                </div>
+              )}
+              <div className={`flex max-w-[75%] flex-col gap-1 ${isOwn ? 'items-end' : 'items-start'}`}>
+                {!isOwn && <div className="text-[11px] font-medium text-slate-400">{group.author_name}</div>}
+                {group.msgs.map((msg) => (
+                  <div key={msg.id} className="group relative">
+                    {msg.is_deleted
+                      ? <div className="rounded-xl border border-black/5 bg-slate-50 px-3 py-2 text-sm italic text-slate-400">Message supprimé</div>
+                      : (
+                        <div className={`rounded-xl px-3 py-2 text-sm leading-relaxed ${isOwn ? 'rounded-br-sm bg-slate-900 text-white' : 'rounded-bl-sm border border-black/10 bg-[#f9f7f3] text-slate-800'}`}>
+                          {msg.linked_image && <img src={msg.linked_image} alt="" className="mb-2 max-h-48 w-full rounded-lg object-cover" />}
+                          <div className="whitespace-pre-wrap">{renderDiscussionContent(msg.content, allRoomPresets, onNavigateToRoom)}</div>
+                          <div className={`mt-1 text-[10px] ${isOwn ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                      )
+                    }
+                    {!msg.is_deleted && msg.author_id === user?.id && (
+                      <button type="button" onClick={() => handleDeleteMessage(msg.id)}
+                        className={`absolute top-1 hidden h-5 w-5 items-center justify-center rounded text-slate-400 hover:text-red-500 group-hover:flex ${isOwn ? '-left-6' : '-right-6'}`}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {mention && mentionOptions.length > 0 && (
+        <div className="absolute bottom-20 left-4 right-4 z-10 overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
+          {mentionOptions.slice(0, 5).map((opt) => (
+            <button key={opt.id} type="button" onClick={() => handleInsertMention(opt.name)}
+              className="flex w-full items-center gap-2 border-b border-black/5 px-3 py-2.5 text-sm last:border-0 hover:bg-slate-50">
+              {mention.type === '@' && (opt.avatar
+                ? <img src={opt.avatar} alt="" className="h-5 w-5 rounded-full" />
+                : <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-[10px] font-medium">{opt.name[0]}</span>)}
+              {mention.type === '#' && <span className="text-xs text-slate-400">#</span>}
+              <span>{opt.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {linkedImage && (
+        <div className="relative mx-4 mb-2">
+          <img src={linkedImage} alt="" className="h-24 rounded-lg object-cover" />
+          <button type="button" onClick={() => setLinkedImage(null)} className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs leading-none text-white">×</button>
+        </div>
+      )}
+
+      <div className="shrink-0 border-t border-black/10 px-4 py-3">
+        <div className="flex items-end gap-2">
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-black/10 text-slate-500 hover:bg-slate-50 disabled:opacity-40">
+            {uploadingImage ? <span className="text-xs">…</span> : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+            )}
+          </button>
+          <textarea ref={textareaRef} value={input} onChange={handleInputChange}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } if (e.key === 'Escape') setMention(null); }}
+            placeholder="Écrire un message… @prénom #pièce"
+            rows={1}
+            className="flex-1 resize-none rounded-xl border border-black/10 bg-[#f9f7f3] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-300"
+            style={{ maxHeight: '120px', overflowY: 'auto' }}
+            onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }}
+          />
+          <button type="button" onClick={handleSend} disabled={!input.trim() || sending}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-40">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m22 2-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscussionsChange, authedFetch, onOpenThread, allRoomPresets, orderedActiveRooms }) {
+  const [filter, setFilter] = useState('all');
+  const [showCreate, setShowCreate] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!projectId || !room) return;
+    setLoading(true);
+    authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussions&roomKey=${encodeURIComponent(room)}`)
+      .then(r => r.json())
+      .then(({ discussions: discs }) => onDiscussionsChange(room, discs || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [projectId, room]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCreate = async () => {
+    if (!newTitle.trim() || creating) return;
+    setCreating(true);
+    try {
+      const r = await authedFetch('/api/save-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'discussion-create', projectId, roomKey: room, title: newTitle }) });
+      const { discussionId } = await r.json();
+      const newDisc = { id: discussionId, title: newTitle.trim(), status: 'open', is_pinned: false, message_count: 0, last_message_preview: null, last_message_at: null, created_at: new Date().toISOString(), created_by: user?.id, unread_count: 0 };
+      onDiscussionsChange(room, [newDisc, ...(discussions || [])]);
+      setNewTitle('');
+      setShowCreate(false);
+      onOpenThread(discussionId, newDisc);
+    } catch {
+      // ignore creation errors
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const filteredDiscussions = (discussions || []).filter(d => filter === 'all' || d.status === filter);
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-black/10 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Discussions</p>
+            <h2 className="type-h2">Échanges</h2>
+          </div>
+          <button type="button" onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-black/15 px-3 py-2 text-sm font-medium hover:bg-slate-50">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            Nouveau fil
+          </button>
+        </div>
+        <div className="flex gap-1 rounded-lg border border-black/10 bg-[#f9f7f3] p-1">
+          {[['all', 'Tous'], ['open', 'Ouverts'], ['resolved', 'Résolus']].map(([key, label]) => (
+            <button key={key} type="button" onClick={() => setFilter(key)}
+              className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${filter === key ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {showCreate && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="mb-2 text-sm font-medium text-amber-900">Nouveau fil</p>
+          <input type="text" value={newTitle} onChange={e => setNewTitle(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setShowCreate(false); }}
+            placeholder="Ex: Canapé, Couleur des murs, Budget…"
+            autoFocus
+            className="mb-2 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+          <div className="flex gap-2">
+            <button type="button" onClick={handleCreate} disabled={!newTitle.trim() || creating}
+              className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40">
+              {creating ? 'Création…' : 'Créer'}
+            </button>
+            <button type="button" onClick={() => { setShowCreate(false); setNewTitle(''); }}
+              className="rounded-lg border border-black/10 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-white">
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading && (discussions || []).length === 0 ? (
+        <div className="rounded-xl border border-black/10 bg-white p-6 text-center text-sm text-slate-400">Chargement…</div>
+      ) : filteredDiscussions.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-black/15 bg-white p-8 text-center">
+          <p className="text-sm text-slate-400">{filter === 'all' ? "Aucune discussion pour l'instant." : 'Aucun fil dans cette catégorie.'}</p>
+          {filter === 'all' && <p className="mt-1 text-xs text-slate-300">Créez un fil pour commencer à échanger.</p>}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredDiscussions.map((d) => (
+            <button key={d.id} type="button" onClick={() => onOpenThread(d.id, d)}
+              className="group w-full rounded-xl border border-black/10 bg-white p-4 text-left transition-all hover:border-slate-300 hover:shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {d.is_pinned && <span className="text-xs">📌</span>}
+                    <span className="truncate font-medium text-slate-900">{d.title}</span>
+                    {d.status === 'resolved' && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">Résolu</span>}
+                  </div>
+                  {d.last_message_preview && <p className="mt-1 truncate text-xs text-slate-400">{d.last_message_preview}</p>}
+                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-300">
+                    <span>{d.message_count} message{d.message_count !== 1 ? 's' : ''}</span>
+                    {d.last_message_at && <span>· {new Date(d.last_message_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>}
+                  </div>
+                </div>
+                {(d.unread_count || 0) > 0 && (
+                  <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-amber-900">{d.unread_count}</span>
+                )}
+                <span className="shrink-0 text-slate-300 transition-colors group-hover:text-slate-500">→</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, projectId, saveMessageFn, saveNoteFn, onClose }) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -2674,6 +3085,17 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
             [room]: { ...(prev[room] || {}), shopping: [...((prev[room] || {}).shopping || []), ...newItems] },
           }));
           notices.push(`${newItems.length} article${newItems.length > 1 ? "s" : ""} ajouté${newItems.length > 1 ? "s" : ""} à ta liste.`);
+        } else if (call.name === "add_to_todo_list" && setRoomLists) {
+          const newItems = (call.args.items || []).map((itemText) => ({
+            id: `todo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            text: itemText,
+            done: false,
+          }));
+          setRoomLists((prev) => ({
+            ...prev,
+            [room]: { ...(prev[room] || {}), todos: [...((prev[room] || {}).todos || []), ...newItems] },
+          }));
+          notices.push(`${newItems.length} tâche${newItems.length > 1 ? "s" : ""} ajoutée${newItems.length > 1 ? "s" : ""} aux todos.`);
         } else if (call.name === "save_room_note" && setRoomNotes) {
           setRoomNotes((prev) => ({ ...prev, [room]: call.args.note }));
           if (saveNoteFn && projectId) saveNoteFn(projectId, room, call.args.note);
@@ -3498,58 +3920,210 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
 
 // ─── Écran de connexion SSO ──────────────────────────────────────────────────
 
-const LOGIN_PREVIEWS = [
+const LOGIN_SLIDES = [
   {
-    src: "/images/Salon.JPG",
-    label: "Salon",
-    line: "Ambiance rétro lumineuse, bibliothèque colorée et tons bleu clair.",
-    swatches: [
-      { name: "Bleu clair grisé", hex: "#b8c9d0" },
-      { name: "Crème chaud", hex: "#F4F1EA" },
-      { name: "Chêne clair", hex: "#D0AA6C" },
-    ],
+    id: "palette",
+    title: "Palette par pièce",
+    description: "Coordonnez les couleurs de chaque pièce avec des palettes sur mesure.",
   },
   {
-    src: "/images/Bureau.JPG",
-    label: "Bureau",
-    line: "Espace calme et concentré, bleu doux et bois chaleureux.",
-    swatches: [
-      { name: "Bleu clair grisé", hex: "#9fb7bf" },
-      { name: "Chêne clair", hex: "#D0AA6C" },
-      { name: "Olive doux", hex: "#B7C3A5" },
-    ],
+    id: "inspirations",
+    title: "Board d'inspirations",
+    description: "Rassemblez vos images Pinterest, Instagram et photos en un seul endroit.",
   },
   {
-    src: "/images/Chambre%20parent.JPG",
-    label: "Chambre parents",
-    line: "Chambre douce et colorée par touches structurées.",
-    swatches: [
-      { name: "Vert sauge", hex: "#A8B5A2" },
-      { name: "Crème chaud", hex: "#F4F1EA" },
-      { name: "Chêne clair", hex: "#D0AA6C" },
-    ],
+    id: "materiaux",
+    title: "Matériaux & surfaces",
+    description: "Retrouvez toutes vos références de matières et liens produits.",
   },
   {
-    src: "/images/Terasse.JPG",
-    label: "Terrasse",
-    line: "Extérieur lumineux, matières naturelles et palette douce.",
-    swatches: [
-      { name: "Vert sauge", hex: "#7A8F7A" },
-      { name: "Crème chaud", hex: "#E8DFD3" },
-      { name: "Chêne clair", hex: "#B98945" },
-    ],
+    id: "ia",
+    title: "Propositions IA",
+    description: "L'IA adapte visuellement vos photos à votre palette de couleurs.",
   },
 ];
+
+function AppMockupContent({ id }) {
+  if (id === "palette") {
+    return (
+      <div className="p-4">
+        <div className="mb-3 flex gap-1.5 overflow-hidden">
+          {["Salon", "Cuisine", "Bureau", "Entrée", "SdB"].map((tab, i) => (
+            <div
+              key={tab}
+              className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
+                i === 0 ? "bg-slate-900 text-white" : "border border-black/8 bg-white text-slate-400"
+              }`}
+            >
+              {tab}
+            </div>
+          ))}
+        </div>
+        <div className="mb-2.5 rounded-xl border border-black/8 bg-white p-3">
+          <p className="mb-2 text-[9px] font-semibold uppercase tracking-widest text-slate-400">Palette de couleurs</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {[
+              { label: "Bleu clair grisé", hex: "#b8c9d0", shade: "Moyen" },
+              { label: "Crème chaud", hex: "#F4F1EA", shade: "Clair" },
+              { label: "Chêne clair", hex: "#D0AA6C", shade: "Moyen" },
+              { label: "Vert sauge", hex: "#A8B5A2", shade: "Moyen" },
+              { label: "Jaune beurre", hex: "#FCF8D5", shade: "Accent" },
+              { label: "Olive doux", hex: "#B7C3A5", shade: "Accent" },
+            ].map((s) => (
+              <div key={s.hex} className="overflow-hidden rounded-lg border border-black/8">
+                <div className="h-7" style={{ backgroundColor: s.hex }} />
+                <div className="bg-white p-1">
+                  <div className="truncate text-[8px] font-medium text-slate-700">{s.label}</div>
+                  <div className="text-[7px] text-slate-400">{s.shade}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-black/8 bg-white p-3">
+          <p className="mb-1 text-[9px] font-semibold uppercase tracking-widest text-slate-400">Note</p>
+          <p className="text-[10px] leading-relaxed text-slate-600">
+            Salon nord : base claire, bibliothèque colorée, ambiance rétro lumineuse.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (id === "inspirations") {
+    return (
+      <div className="p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">Salon</p>
+            <p className="text-sm font-semibold text-slate-900">Inspirations</p>
+          </div>
+          <div className="flex gap-1">
+            {["+ Photo", "+ Lien"].map((label) => (
+              <div key={label} className="rounded-full border border-black/10 bg-white px-2 py-0.5 text-[9px] font-medium text-slate-500">
+                {label}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {[
+            [
+              { h: "h-24", from: "#b8c9d0", to: "#7f9ea8", ai: true },
+              { h: "h-16", from: "#F4F1EA", to: "#D8CEC1" },
+            ],
+            [
+              { h: "h-16", from: "#D0AA6C", to: "#B98945" },
+              { h: "h-24", from: "#A8B5A2", to: "#5F7463" },
+            ],
+            [
+              { h: "h-20", from: "#FCF8D5", to: "#E8DFD3" },
+              { h: "h-20", from: "#C8D1C4", to: "#7A8F7A" },
+            ],
+          ].map((col, ci) => (
+            <div key={ci} className="flex flex-1 flex-col gap-2">
+              {col.map((item, ii) => (
+                <div
+                  key={ii}
+                  className={`relative overflow-hidden rounded-xl ${item.h}`}
+                  style={{ background: `linear-gradient(135deg, ${item.from}, ${item.to})` }}
+                >
+                  {item.ai && (
+                    <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-full bg-black/40 px-1.5 py-0.5 text-[7px] font-medium text-white backdrop-blur-sm">
+                      <svg width="7" height="7" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                      </svg>
+                      IA
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (id === "materiaux") {
+    return (
+      <div className="p-4">
+        <div className="mb-3">
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">Cuisine</p>
+          <p className="text-sm font-semibold text-slate-900">Matériaux & surfaces</p>
+        </div>
+        <div className="space-y-2">
+          {[
+            { label: "Sol", value: "Parquet bois clair", hex: "#D0AA6C" },
+            { label: "Crédence", value: "Zellige beige Ivory brillant", hex: "#F4F1EA", link: true },
+            { label: "Plan de travail", value: "Chêne clair ou pierre claire", hex: "#B98945" },
+            { label: "Textiles", value: "Lin naturel / coton écru", hex: "#E8DFD3" },
+          ].map((m) => (
+            <div key={m.label} className="flex items-center gap-2.5 rounded-xl border border-black/8 bg-white p-2">
+              <div className="h-9 w-9 shrink-0 rounded-lg border border-black/8" style={{ backgroundColor: m.hex }} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[8px] font-semibold uppercase tracking-widest text-slate-400">{m.label}</p>
+                <p className="truncate text-[10px] font-medium text-slate-800">{m.value}</p>
+              </div>
+              {m.link && (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-slate-300">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (id === "ia") {
+    return (
+      <div className="p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-500">
+            <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+          </svg>
+          <div>
+            <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">Génération IA</p>
+            <p className="text-sm font-semibold text-slate-900">Salon · Inspiration</p>
+          </div>
+        </div>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <div>
+            <p className="mb-1 text-[9px] font-medium text-slate-400">Original</p>
+            <div className="h-28 rounded-xl" style={{ background: "linear-gradient(135deg, #b8c9d0, #7f9ea8)" }} />
+          </div>
+          <div>
+            <p className="mb-1 text-[9px] font-medium text-slate-400">Proposition IA</p>
+            <div className="relative h-28 overflow-hidden rounded-xl" style={{ background: "linear-gradient(135deg, #A8B5A2, #5F7463)" }}>
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-1.5">
+          <div className="flex-1 rounded-lg border border-black/8 bg-[#fcf8d5] px-2 py-1.5 text-center text-[9px] font-medium text-slate-700">
+            Ajouter aux inspirations
+          </div>
+          <div className="flex-1 rounded-lg bg-slate-900 px-2 py-1.5 text-center text-[9px] font-medium text-white">
+            Remplacer l'image
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 function LoginScreen({ onSignIn }) {
   const [slide, setSlide] = useState(0);
 
   useEffect(() => {
-    const id = setInterval(() => setSlide((p) => (p + 1) % LOGIN_PREVIEWS.length), 4500);
+    const id = setInterval(() => setSlide((p) => (p + 1) % LOGIN_SLIDES.length), 4000);
     return () => clearInterval(id);
   }, []);
-
-  const current = LOGIN_PREVIEWS[slide];
 
   return (
     <div className="flex min-h-screen bg-[#FAF6F0]">
@@ -3640,67 +4214,56 @@ function LoginScreen({ onSignIn }) {
         </div>
       </div>
 
-      {/* ── Right: App preview (desktop only) ─────────────────── */}
-      <div className="relative hidden flex-1 overflow-hidden lg:block">
-        {/* Background images with crossfade */}
-        {LOGIN_PREVIEWS.map((p, i) => (
-          <img
-            key={p.src}
-            src={p.src}
-            alt={p.label}
-            className="absolute inset-0 h-full w-full object-cover"
-            style={{ opacity: i === slide ? 1 : 0, transition: "opacity 0.9s ease-in-out" }}
-          />
-        ))}
-
-        {/* Gradient overlays */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-slate-950/10" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/15 to-transparent" />
-
-        {/* Top-right feature badges */}
-        <div className="absolute right-7 top-8 flex flex-col items-end gap-2">
-          {["Palette IA", "Inspirations", "Plans & Matériaux"].map((badge) => (
-            <div
-              key={badge}
-              className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-medium text-white/70 backdrop-blur-md"
-            >
-              <div className="h-1.5 w-1.5 rounded-full bg-[#A8B5A2]" />
-              {badge}
-            </div>
-          ))}
+      {/* ── Right: App mockup (desktop only) ──────────────────── */}
+      <div
+        className="relative hidden flex-1 flex-col items-center justify-center p-10 lg:flex"
+        style={{ background: "linear-gradient(135deg, #1c1814 0%, #241e18 100%)" }}
+      >
+        {/* App window */}
+        <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-[#faf7f2] shadow-2xl ring-1 ring-white/8">
+          {/* Window chrome */}
+          <div className="flex items-center gap-1.5 border-b border-black/8 bg-[#f2ede6] px-4 py-2.5">
+            <div className="h-2.5 w-2.5 rounded-full bg-black/15" />
+            <div className="h-2.5 w-2.5 rounded-full bg-black/15" />
+            <div className="h-2.5 w-2.5 rounded-full bg-black/15" />
+            <div className="mx-auto rounded-md bg-black/8 px-8 py-0.5 text-[9px] text-slate-400">palette.app</div>
+          </div>
+          {/* Animated slide content */}
+          <div className="relative overflow-hidden" style={{ height: 320 }}>
+            {LOGIN_SLIDES.map((s, i) => (
+              <div
+                key={s.id}
+                className="absolute inset-0"
+                style={{
+                  opacity: i === slide ? 1 : 0,
+                  transform: i === slide ? "translateX(0)" : i < slide ? "translateX(-8px)" : "translateX(8px)",
+                  transition: "opacity 0.4s ease, transform 0.4s ease",
+                  pointerEvents: i === slide ? "auto" : "none",
+                }}
+              >
+                <AppMockupContent id={s.id} />
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Bottom: palette card + slide indicators */}
-        <div className="absolute bottom-8 left-8 right-8 flex items-end gap-4">
-          <div className="flex-1 rounded-2xl border border-white/15 bg-white/10 p-5 shadow-2xl backdrop-blur-xl">
-            <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-widest text-white/50">
-              Pièce en cours
+        {/* Caption + indicators */}
+        <div className="mt-7 flex w-full max-w-sm items-end justify-between">
+          <div>
+            <p className="text-sm font-semibold text-white">{LOGIN_SLIDES[slide].title}</p>
+            <p className="mt-0.5 max-w-[220px] text-xs leading-relaxed text-white/45">
+              {LOGIN_SLIDES[slide].description}
             </p>
-            <p className="mb-3 text-base font-semibold text-white">{current.label}</p>
-            <div className="flex gap-2.5">
-              {current.swatches.map((swatch) => (
-                <div key={swatch.hex} className="flex flex-col items-center gap-1.5">
-                  <div
-                    className="h-9 w-9 rounded-lg shadow-md ring-1 ring-white/20"
-                    style={{ backgroundColor: swatch.hex }}
-                  />
-                  <span className="font-mono text-[9px] text-white/40">{swatch.hex}</span>
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-xs leading-relaxed text-white/50">{current.line}</p>
           </div>
-
-          {/* Vertical slide indicators */}
-          <div className="flex flex-col items-center gap-1.5 pb-2">
-            {LOGIN_PREVIEWS.map((_, i) => (
+          <div className="flex gap-1.5 pb-0.5">
+            {LOGIN_SLIDES.map((_, i) => (
               <button
                 key={i}
                 type="button"
                 onClick={() => setSlide(i)}
-                aria-label={`Voir ${LOGIN_PREVIEWS[i].label}`}
+                aria-label={`Voir ${LOGIN_SLIDES[i].title}`}
                 className={`cursor-pointer rounded-full transition-all duration-300 ${
-                  i === slide ? "h-6 w-1.5 bg-white" : "h-1.5 w-1.5 bg-white/30 hover:bg-white/60"
+                  i === slide ? "h-1.5 w-5 bg-white" : "h-1.5 w-1.5 bg-white/30 hover:bg-white/60"
                 }`}
               />
             ))}
@@ -4074,6 +4637,9 @@ export default function App() {
   const [lightbox, setLightbox] = useState(null);
   const [show3D, setShow3D] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [discussionsCache, setDiscussionsCache] = useState({});
+  const [openThread, setOpenThread] = useState(null);
+  const [projectMembers, setProjectMembers] = useState([]);
   const [roomLists, setRoomLists] = useState(() => {
     try {
       const raw = localStorage.getItem(ROOM_LISTS_STORAGE_KEY);
@@ -4332,6 +4898,18 @@ export default function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "items", projectId: pid, roomKey, listKey, items }),
     }).catch(() => {});
+  };
+
+  const updateDiscussionsCache = (roomKey, discussions) => {
+    setDiscussionsCache(prev => ({ ...prev, [roomKey]: discussions }));
+  };
+
+  const loadProjectMembers = (pid) => {
+    if (!pid) return;
+    authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(pid)}&type=members`)
+      .then(r => r.json())
+      .then(({ members }) => setProjectMembers(members || []))
+      .catch(() => {});
   };
 
   // snapshot=true uniquement via le bouton "Point de sauvegarde", pas l'auto-save
@@ -4635,6 +5213,42 @@ export default function App() {
       supabase.removeChannel(roomItemsChannel);
     };
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Realtime discussions — notifie les membres des nouveaux fils et statuts
+  useEffect(() => {
+    if (!projectId || !import.meta.env.VITE_SUPABASE_URL) return;
+    let reloadTimer;
+    const discussionsChannel = supabase
+      .channel(`discussions-${projectId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "discussions", filter: `project_id=eq.${projectId}` },
+        () => {
+          clearTimeout(reloadTimer);
+          reloadTimer = setTimeout(() => {
+            setDiscussionsCache(cache => {
+              Object.keys(cache).forEach(roomKey => {
+                authedFetch(`/api/load-room-items?projectId=${encodeURIComponent(projectId)}&type=discussions&roomKey=${encodeURIComponent(roomKey)}`)
+                  .then(r => r.json())
+                  .then(({ discussions }) => setDiscussionsCache(prev => ({ ...prev, [roomKey]: discussions || [] })))
+                  .catch(() => {});
+              });
+              return cache;
+            });
+          }, 300);
+        }
+      )
+      .subscribe();
+    return () => {
+      clearTimeout(reloadTimer);
+      supabase.removeChannel(discussionsChannel);
+    };
+  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Charger les membres du projet pour les @mentions
+  useEffect(() => {
+    if (projectId && user) loadProjectMembers(projectId);
+  }, [projectId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-save debounce — silently push changes to Supabase for real-time sharing
   useEffect(() => {

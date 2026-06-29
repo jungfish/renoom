@@ -30,6 +30,16 @@ const CHAT_TOOLS = [
   },
   {
     type: "function",
+    name: "add_to_todo_list",
+    description: "Ajoute des tâches à la liste de todos de la pièce active. Utilise si l'utilisateur mentionne quelque chose à faire, une action à réaliser ou une décision à ne pas oublier.",
+    parameters: {
+      type: "object",
+      properties: { items: { type: "array", items: { type: "string" } } },
+      required: ["items"], strict: true,
+    },
+  },
+  {
+    type: "function",
     name: "save_room_note",
     description: "Met à jour la note de design de la pièce active.",
     parameters: {

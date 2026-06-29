@@ -162,6 +162,112 @@ export default async function handler(req, res) {
       return;
     }
 
+    // --- discussion-create ---
+    if (action === "discussion-create" && req.method === "POST") {
+      const { projectId, roomKey, title, linkedItemType, linkedItemRef } = body;
+      if (!projectId || !roomKey || !title?.trim()) {
+        sendJson(res, 400, { error: "projectId, roomKey et title requis." });
+        return;
+      }
+
+      const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
+      if (!member) { sendJson(res, 403, { error: "Accès refusé." }); return; }
+
+      const { data, error } = await supabase.from("discussions").insert({
+        project_id: projectId,
+        room_key: roomKey,
+        title: title.trim(),
+        created_by: user.id,
+        linked_item_type: linkedItemType || null,
+        linked_item_ref: linkedItemRef || null,
+      }).select("id").single();
+      if (error) throw new Error(error.message);
+
+      sendJson(res, 200, { ok: true, discussionId: data.id });
+      return;
+    }
+
+    // --- discussion-message ---
+    if (action === "discussion-message" && req.method === "POST") {
+      const { projectId, discussionId, content, linkedImage } = body;
+      if (!projectId || !discussionId || !content?.trim()) {
+        sendJson(res, 400, { error: "projectId, discussionId et content requis." });
+        return;
+      }
+
+      const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
+      if (!member) { sendJson(res, 403, { error: "Accès refusé." }); return; }
+
+      const authorName = user.user_metadata?.full_name || user.user_metadata?.name || user.email || "Inconnu";
+      const authorAvatar = user.user_metadata?.avatar_url || null;
+
+      const { data: msgData, error: msgError } = await supabase.from("discussion_messages").insert({
+        discussion_id: discussionId,
+        project_id: projectId,
+        author_id: user.id,
+        author_name: authorName,
+        author_avatar: authorAvatar,
+        content: content.trim(),
+        linked_image: linkedImage || null,
+      }).select("id").single();
+      if (msgError) throw new Error(msgError.message);
+
+      // Marquer comme lu pour l'auteur (fire-and-forget)
+      supabase.from("discussion_reads").upsert(
+        { user_id: user.id, discussion_id: discussionId, last_read_at: new Date().toISOString() },
+        { onConflict: "user_id,discussion_id" }
+      ).then(() => {}).catch(() => {});
+
+      sendJson(res, 200, { ok: true, messageId: msgData.id });
+      return;
+    }
+
+    // --- discussion-update (résoudre, épingler, renommer) ---
+    if (action === "discussion-update" && req.method === "POST") {
+      const { projectId, discussionId, status, isPinned, title } = body;
+      if (!projectId || !discussionId) {
+        sendJson(res, 400, { error: "projectId et discussionId requis." });
+        return;
+      }
+
+      const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
+      if (!member) { sendJson(res, 403, { error: "Accès refusé." }); return; }
+
+      const patch = { updated_at: new Date().toISOString() };
+      if (status !== undefined) patch.status = status;
+      if (isPinned !== undefined) patch.is_pinned = isPinned;
+      if (title?.trim()) patch.title = title.trim();
+
+      const { error } = await supabase.from("discussions").update(patch).eq("id", discussionId).eq("project_id", projectId);
+      if (error) throw new Error(error.message);
+
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    // --- discussion-delete-message ---
+    if (action === "discussion-delete-message" && req.method === "POST") {
+      const { projectId, messageId } = body;
+      if (!projectId || !messageId) {
+        sendJson(res, 400, { error: "projectId et messageId requis." });
+        return;
+      }
+
+      const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
+      if (!member) { sendJson(res, 403, { error: "Accès refusé." }); return; }
+
+      // Soft delete — seulement l'auteur peut supprimer
+      const { error } = await supabase
+        .from("discussion_messages")
+        .update({ is_deleted: true })
+        .eq("id", messageId)
+        .eq("author_id", user.id);
+      if (error) throw new Error(error.message);
+
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
     sendJson(res, 405, { error: "Méthode ou action non supportée." });
   } catch (err) {
     sendJson(res, 500, { error: err.message || "Erreur lors de la sauvegarde." });

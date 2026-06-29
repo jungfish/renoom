@@ -2435,7 +2435,7 @@ function GeneralResourcesSection({ generalResources, setGeneralResources }) {
   return (
     <div className="rounded-xl border border-black/10 bg-white p-4">
       <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Appartement</p>
-      <h2 className="type-h2">Ressources</h2>
+      <h2 className="type-h2">Documents</h2>
       <p className="mt-1 mb-3 text-sm text-slate-600">
         Pinterest, boutiques, blogs design — références valables pour tout l'appartement.
       </p>
@@ -6709,7 +6709,7 @@ export default function App() {
                 { key: "todos", label: "Todos", badge: tPending, mention: 0 },
                 { key: "couleurs", label: "Couleurs", badge: 0, mention: 0 },
                 { key: "discussions", label: "Discussions", badge: tUnread, mention: tMention },
-                { key: "ressources", label: "Ressources", badge: tDocs, mention: 0 },
+                { key: "ressources", label: "Documents", badge: 0, mention: 0 },
                 { key: "activite", label: "Activité", badge: tActivity, mention: 0 },
               ].map(({ key, label, badge, mention }) => {
                 const active = viewMode === "general" && generalMode === key;
@@ -7196,7 +7196,7 @@ export default function App() {
                   { key: "todos", label: "Todos", badge: totalPending },
                   { key: "couleurs", label: "Couleurs", badge: 0 },
                   { key: "discussions", label: "Discussions", badge: totalUnread, mentionBadge: totalMentionUnread },
-                  { key: "ressources", label: "Ressources", badge: totalDocs },
+                  { key: "ressources", label: "Documents", badge: 0 },
                   { key: "activite", label: "Activité", badge: totalActivity },
                 ].map(({ key, label, badge, mentionBadge }) => (
                   <button

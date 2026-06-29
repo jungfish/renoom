@@ -105,8 +105,8 @@ const roomPresets = {
   },
   sanitaires: {
     label: "Sanitaires",
-    dominant: "clair",
-    secondary: "clair",
+    dominant: "creme",
+    secondary: "creme",
     line: "Sanitaires : fonctionnel et soigné, avec des matières qui résistent bien à l'humidité.",
     notes: ["Le carrelage de métro blanc reste la valeur sûre."],
   },
@@ -122,6 +122,7 @@ const INITIAL_ROOM_NUANCES = {
   enfant: { dominant: "moyen", secondary: "clair", accent: "butter", dominantColor: "vert", secondaryColor: "bleu" },
   vinyle: { dominant: "moyen", secondary: "moyen", accent: "olive", dominantColor: "creme", secondaryColor: "bois" },
   cellier: { dominant: "soutenu", secondary: "moyen", accent: "butter", dominantColor: "vert", secondaryColor: "creme" },
+  sanitaires: { dominant: "clair", secondary: "clair", accent: "bois", dominantColor: "creme", secondaryColor: "creme" },
 };
 
 const roomInspirationImages = {

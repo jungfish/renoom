@@ -5071,6 +5071,80 @@ function SnapshotHistoryPanel({ snapshots, loading, onRestore, onClose, restorin
   );
 }
 
+function ActivityFeedView({ activityFeed, allRoomPresets }) {
+  const timeAgo = (iso) => {
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 60) return "à l'instant";
+    if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
+    if (diff < 86400) return `il y a ${Math.floor(diff / 3600)} h`;
+    return `il y a ${Math.floor(diff / 86400)} j`;
+  };
+
+  const actionLabel = (type) => {
+    switch (type) {
+      case "todo_added": return "a ajouté une tâche";
+      case "shopping_added": return "a ajouté un article courses";
+      case "inspiration_added": return "a ajouté une inspiration";
+      case "inspiration_link_added": return "a ajouté un lien d'inspiration";
+      case "discussion_added": return "a créé une discussion";
+      default: return "a effectué une action";
+    }
+  };
+
+  const avatarColor = (name) => {
+    const palette = ["#A8B5A2", "#b8c9d0", "#CDAA73", "#c4a882", "#9fb5b0"];
+    let hash = 0;
+    for (let i = 0; i < (name || "?").length; i++) hash = (name.charCodeAt(i) + ((hash << 5) - hash)) % palette.length;
+    return palette[Math.abs(hash)];
+  };
+
+  return (
+    <div>
+      <div className="rounded-xl border border-black/10 bg-white p-4 mb-4">
+        <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Journal</p>
+        <h2 className="type-h2">Activité récente</h2>
+        <p className="mt-1 text-sm text-slate-500">Ce que les membres ont fait récemment sur ce projet.</p>
+      </div>
+      {activityFeed.length === 0 ? (
+        <div className="rounded-xl border border-black/10 bg-white p-8 text-center">
+          <p className="text-sm text-slate-400">Aucune activité pour l'instant.</p>
+          <p className="mt-1 text-xs text-slate-300">Les actions des membres apparaîtront ici.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-black/10 bg-white divide-y divide-black/[0.04]">
+          {activityFeed.map((entry) => {
+            const initials = (entry.user_name || "?").split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+            const roomLabel = entry.room_key ? allRoomPresets[entry.room_key]?.label : null;
+            return (
+              <div key={entry.id} className="flex items-start gap-3 px-4 py-3">
+                <div
+                  className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                  style={{ background: avatarColor(entry.user_name) }}
+                >
+                  {initials}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] text-[#1C1A17]">
+                    <span className="font-medium">{entry.user_name || "Quelqu'un"}</span>{" "}
+                    <span className="text-[#4D4A47]">{actionLabel(entry.action_type)}</span>
+                    {roomLabel && (
+                      <span className="text-[#4D4A47]"> dans <span className="font-medium text-[#1C1A17]">{roomLabel}</span></span>
+                    )}
+                  </p>
+                  {(entry.metadata?.text || entry.metadata?.title) && (
+                    <p className="mt-0.5 truncate text-[11.5px] text-[#8A8580]">« {entry.metadata.text || entry.metadata.title} »</p>
+                  )}
+                </div>
+                <time className="flex-shrink-0 text-[11px] text-[#A8A5A0]">{timeAgo(entry.created_at)}</time>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   // ── Auth ──────────────────────────────────────────────────────────────────
   const { user, session, loading: authLoading, signInWithGoogle, signOut } = useAuth();

@@ -79,7 +79,9 @@ Deno.serve(async (req) => {
         { project_id: projectId, data: mediaData, updated_at: new Date().toISOString() },
         { onConflict: "project_id" },
       );
-    if (mediaUpsertError) throw new Error(mediaUpsertError.message);
+    if (mediaUpsertError) {
+      return corsResponse(500, { error: mediaUpsertError.message, id: projectId });
+    }
 
     if (state.roomNuances && typeof state.roomNuances === "object") {
       const nuanceRows = Object.entries(state.roomNuances).map(([roomKey, n]) => ({
@@ -93,7 +95,7 @@ Deno.serve(async (req) => {
         updated_at:      new Date().toISOString(),
       }));
       if (nuanceRows.length) {
-        supabaseUser.from("room_nuances")
+        await supabaseUser.from("room_nuances")
           .upsert(nuanceRows, { onConflict: "project_id,room_key" })
           .then(() => {}).catch(() => {});
       }

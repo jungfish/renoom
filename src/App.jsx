@@ -5073,12 +5073,14 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ state: projectState, id: projectId, snapshot, snapshotLabel }),
       });
-      const { id } = await res.json();
+      const data = await res.json();
+      const { id } = data;
       const savedProjectId = id || projectId;
       if (id) {
         setProjectId(id);
         window.history.replaceState({}, "", `/?p=${id}`);
       }
+      if (!res.ok) return;
       // Dual-write : synchro room_items dans la table normalisée
       if (savedProjectId) {
         for (const [rk, lists] of Object.entries(roomLists)) {
@@ -5242,6 +5244,9 @@ export default function App() {
     setRoomDocuments({});
     setHiddenRooms([]);
     setCustomRooms([]);
+    setGlobalAccent("butter");
+    setRoomOrder(null);
+    setChatHistory({});
     setProjectId(id);
     window.history.replaceState({}, "", `/?p=${id}`);
     setShowProjectPicker(false);
@@ -5254,10 +5259,14 @@ export default function App() {
         if (code) setInviteCode(code);
       })
       .catch(() => {})
-      .finally(() => setLoadingFromUrl(false));
+      .finally(() => {
+        if (!hydratedRef.current) hydratedRef.current = true;
+        setLoadingFromUrl(false);
+      });
   };
 
   const handleCreateSnapshot = async (label) => {
+    if (!hydratedRef.current) return;
     setIsSavingSnapshot(true);
     await saveProject({ snapshot: true, snapshotLabel: label });
     setIsSavingSnapshot(false);
@@ -5330,6 +5339,7 @@ export default function App() {
               .then((r) => r.json())
               .then(({ items }) => {
                 if (!Array.isArray(items) || items.length === 0) return;
+                if (!hydratedRef.current) return;
                 isApplyingRemoteUpdate.current = true;
                 hydrateState({ roomItems: items });
                 setTimeout(() => { isApplyingRemoteUpdate.current = false; }, 200);
@@ -5442,7 +5452,9 @@ export default function App() {
     if (!projectId || isApplyingRemoteUpdate.current) return;
     if (!hydratedRef.current) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(() => { saveProject(); }, 5000);
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (!isApplyingRemoteUpdate.current) saveProject();
+    }, 5000);
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
   }, [ // eslint-disable-line react-hooks/exhaustive-deps
     projectId, room, globalAccent, warmth, customRooms, hiddenRooms,

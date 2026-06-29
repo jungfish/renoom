@@ -3441,16 +3441,25 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-slate-400">
             <span className="text-3xl">✦</span>
-            <p>Pose une question sur la décoration de cette pièce.</p>
+            <p className="text-slate-500">Posez une question ou demandez-moi de créer des listes pour cette pièce.</p>
             <div className="flex flex-wrap justify-center gap-2">
-              {["Quelles couleurs pour les murs ?", "Comment choisir les matières ?", "Quelle ambiance lumineuse ?"].map((q) => (
+              {[
+                { label: "Créer une liste de courses", icon: "🛒" },
+                { label: "Ajouter des tâches à faire", icon: "✓" },
+                { label: "Quelles couleurs pour les murs ?", icon: null },
+                { label: "Quelle ambiance lumineuse ?", icon: null },
+              ].map(({ label, icon }) => (
                 <button
-                  key={q}
+                  key={label}
                   type="button"
-                  onClick={() => sendMessage(q)}
-                  className="rounded-full border border-black/15 bg-[#f9f7f3] px-3 py-1.5 text-xs text-slate-600 hover:bg-[#fcf8d5]"
+                  onClick={() => sendMessage(icon ? `${label}` : label)}
+                  className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                    icon
+                      ? "border-slate-900/20 bg-slate-900 text-white hover:bg-slate-700"
+                      : "border-black/15 bg-[#f9f7f3] text-slate-600 hover:bg-[#fcf8d5]"
+                  }`}
                 >
-                  {q}
+                  {icon && <span className="mr-1">{icon}</span>}{label}
                 </button>
               ))}
             </div>
@@ -4489,7 +4498,7 @@ function JoinOrCreateScreen({ user, onJoin, onCreateNew, signOut }) {
               className="flex-1 rounded-lg border border-black/15 bg-[#fafaf8] px-3 py-2 text-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-slate-900/20"
             />
             <button
-              onClick={handleJoin}
+              onClick={() => handleJoin()}
               disabled={loading || !code.trim()}
               className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
             >
@@ -4807,6 +4816,7 @@ export default function App() {
   const [lightbox, setLightbox] = useState(null);
   const [show3D, setShow3D] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatBubbleDismissed, setChatBubbleDismissed] = useState(false);
   const [discussionsCache, setDiscussionsCache] = useState({});
   const [projectMembers, setProjectMembers] = useState([]);
   const [mentionNotifications, setMentionNotifications] = useState([]);
@@ -5997,15 +6007,28 @@ export default function App() {
                   </p>
                   <p className="mt-0.5 truncate text-[11px] text-slate-400">{user?.email}</p>
                 </div>
-                {isOwner && (
-                  <button
-                    onClick={() => { setShowMembersModal(true); setShowUserMenu(false); }}
-                    className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
-                  >
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Membres</p>
-                    <p className="mt-0.5 text-sm text-slate-700">Gérer les membres →</p>
-                  </button>
-                )}
+                <button
+                  onClick={() => { setShowSnapshotHistory(true); setShowUserMenu(false); }}
+                  className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50 flex items-center gap-2.5"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-slate-400">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 6v6l4 2" />
+                  </svg>
+                  <span className="text-sm text-slate-700">Historique</span>
+                </button>
+                <button
+                  onClick={() => { setShowSnapshotModal(true); setShowUserMenu(false); }}
+                  disabled={isSavingSnapshot}
+                  className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50 flex items-center gap-2.5 disabled:opacity-60"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-400">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  <span className="text-sm text-slate-700">{isSavingSnapshot ? "Sauvegarde…" : "Snapshot"}</span>
+                </button>
                 <button
                   onClick={signOut}
                   className="w-full border-t border-black/8 px-3 py-2 text-left text-sm text-red-500 transition-colors hover:bg-red-50"
@@ -6039,30 +6062,6 @@ export default function App() {
                     <p className="truncate text-[10.5px] leading-tight text-[#B0ADA6]">{user?.email}</p>
                   )}
                 </div>
-              </button>
-              <button
-                type="button"
-                title="Historique"
-                onClick={() => setShowSnapshotHistory(true)}
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-[#4D4A47] transition-colors hover:bg-black/[0.05] hover:text-[#1C1A17]"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 6v6l4 2" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                title="Snapshot"
-                onClick={() => setShowSnapshotModal(true)}
-                disabled={isSavingSnapshot}
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#1C1A17] text-white transition-colors hover:bg-[#3A3835] disabled:opacity-60"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                  <polyline points="17 21 17 13 7 13 7 21" />
-                  <polyline points="7 3 7 8 15 8" />
-                </svg>
               </button>
             </div>
           </div>
@@ -6679,24 +6678,46 @@ export default function App() {
       </div>
       {createPortal(
         <>
-          <button
-            type="button"
-            onClick={() => setIsChatOpen((v) => !v)}
-            className={`fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-colors ${
-              isChatOpen ? "bg-slate-700 text-white" : "bg-slate-900 text-white hover:bg-slate-700"
-            }`}
-            aria-label="Chat IA"
-          >
-            {isChatOpen ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M18 6 6 18M6 6l12 12"/>
-              </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
-              </svg>
+          <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
+            {!isChatOpen && !chatBubbleDismissed && (
+              <div
+                className="relative rounded-2xl bg-slate-900 px-4 py-2.5 shadow-xl max-w-[210px] text-right"
+                style={{ animation: "chatBubbleIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both" }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setChatBubbleDismissed(true)}
+                  className="absolute -top-1.5 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-600 text-white hover:bg-slate-500"
+                  style={{ fontSize: 9 }}
+                  aria-label="Fermer"
+                >✕</button>
+                <p className="text-xs font-semibold text-white">Assistant IA ✦</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-300">Posez une question, créez des todos ou une liste de courses…</p>
+                <div className="absolute -bottom-2 right-5 h-4 w-4 rotate-45 bg-slate-900" />
+              </div>
             )}
-          </button>
+            <button
+              type="button"
+              onClick={() => { setIsChatOpen((v) => !v); setChatBubbleDismissed(true); }}
+              className={`relative flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-colors ${
+                isChatOpen ? "bg-slate-700 text-white" : "bg-slate-900 text-white hover:bg-slate-700"
+              }`}
+              aria-label="Chat IA"
+            >
+              {!isChatOpen && (
+                <span className="absolute inset-0 rounded-full bg-slate-600 opacity-40" style={{ animation: "chatPing 2s cubic-bezier(0,0,0.2,1) infinite" }} />
+              )}
+              {isChatOpen ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M18 6 6 18M6 6l12 12"/>
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                </svg>
+              )}
+            </button>
+          </div>
           {isChatOpen ? (
             <div className="fixed inset-0 z-50 flex items-start justify-end">
               <div className="absolute inset-0" onClick={() => setIsChatOpen(false)} />

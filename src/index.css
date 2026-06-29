@@ -52,6 +52,15 @@ label {
   100% { background-position: 200% 0; }
 }
 
+@keyframes chatPing {
+  75%, 100% { transform: scale(1.7); opacity: 0; }
+}
+
+@keyframes chatBubbleIn {
+  0% { opacity: 0; transform: translateY(8px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @layer components {
   .type-h1 {
     @apply font-display text-[24px] font-semibold leading-[28px] tracking-normal text-slate-900 md:text-[32px] md:leading-[40px];

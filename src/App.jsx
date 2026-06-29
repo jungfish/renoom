@@ -2511,6 +2511,83 @@ function GeneralResourcesSection({ generalResources, setGeneralResources }) {
   );
 }
 
+function DocumentsGlobalView({ orderedActiveRooms, allRoomPresets, roomDocuments }) {
+  const docIcon = (type) => {
+    if (type?.includes("pdf")) return "📄";
+    if (type?.includes("word") || type?.includes("document")) return "📝";
+    if (type?.includes("sheet") || type?.includes("excel") || type?.includes("spreadsheet")) return "📊";
+    if (type?.startsWith("image/")) return "🖼";
+    return "📎";
+  };
+
+  const formatSize = (bytes) => {
+    if (!bytes) return "";
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+  };
+
+  const roomsWithDocs = orderedActiveRooms.filter((key) => (roomDocuments[key] || []).length > 0);
+
+  return (
+    <>
+      <div className="rounded-xl border border-black/10 bg-white p-4">
+        <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
+        <h2 className="type-h2">Documents par pièce</h2>
+        <p className="mt-1 text-sm text-slate-600">Devis, plans et fichiers uploadés dans chaque pièce.</p>
+      </div>
+      {roomsWithDocs.length === 0 ? (
+        <div className="rounded-xl border border-black/10 bg-white p-8 text-center text-sm text-slate-400">
+          Aucun document uploadé pour l'instant. Ouvre une pièce et ajoute des fichiers dans la section "Devis & documents".
+        </div>
+      ) : (
+        roomsWithDocs.map((key) => {
+          const p = allRoomPresets[key];
+          const docs = roomDocuments[key] || [];
+          return (
+            <div key={key} className="rounded-xl border border-black/10 bg-white p-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{p?.label || key}</p>
+              <ul className="space-y-1.5">
+                {docs.map((doc) => (
+                  <li key={doc.id} className="flex items-center gap-3 rounded-lg border border-black/10 bg-white px-3 py-2">
+                    {doc.type?.includes("pdf") ? (
+                      <PdfThumbnail url={doc.url} className="h-12 w-9 shrink-0 rounded" />
+                    ) : (
+                      <span className="text-xl leading-none">{docIcon(doc.type)}</span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block truncate text-sm font-medium text-slate-800 hover:underline"
+                      >
+                        {doc.name}
+                      </a>
+                      <span className="text-xs text-slate-400">
+                        {formatSize(doc.size)}
+                        {doc.size && doc.uploadedAt ? " · " : ""}
+                        {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString("fr-FR") : ""}
+                      </span>
+                    </div>
+                    <a
+                      href={doc.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 rounded border border-black/10 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50"
+                    >
+                      Ouvrir
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })
+      )}
+    </>
+  );
+}
+
 function DiscussionsGlobalView({ orderedActiveRooms, allRoomPresets, discussionsCache, onOpenThread }) {
   const [filter, setFilter] = useState("open");
 
@@ -5886,11 +5963,12 @@ export default function App() {
               const totalUnread = ["general", ...orderedActiveRooms].reduce((acc, key) => {
                 return acc + (discussionsCache[key] || []).reduce((sum, d) => sum + (d.unread_count || 0), 0);
               }, 0);
+              const totalDocs = orderedActiveRooms.reduce((acc, key) => acc + (roomDocuments[key] || []).length, 0);
               return [
                 { key: "todos", label: "Todos", badge: totalPending },
                 { key: "couleurs", label: "Couleurs", badge: 0 },
                 { key: "discussions", label: "Discussions", badge: totalUnread },
-                { key: "ressources", label: "Ressources", badge: 0 },
+                { key: "ressources", label: "Ressources", badge: totalDocs },
               ].map(({ key, label, badge }) => (
                 <button
                   key={key}
@@ -5978,9 +6056,10 @@ export default function App() {
               onOpenThread={(id, disc) => setOpenThread({ discussionId: id, discussion: disc })}
             />
           ) : (
-            <GeneralResourcesSection
-              generalResources={generalResources}
-              setGeneralResources={setGeneralResources}
+            <DocumentsGlobalView
+              orderedActiveRooms={orderedActiveRooms}
+              allRoomPresets={allRoomPresets}
+              roomDocuments={roomDocuments}
             />
           )
         ) : roomMode === "couleurs" ? (

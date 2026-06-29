@@ -4199,6 +4199,13 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, newItems);
   };
 
+  const clearDoneItems = (listKey) => {
+    const currentItems = (roomLists[room] || {})[listKey] || [];
+    const newItems = currentItems.filter((item) => !item.done);
+    setRoomLists((prev) => ({ ...prev, [room]: { ...(prev[room] || {}), [listKey]: newItems } }));
+    if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, newItems);
+  };
+
   const updateItemMeta = (listKey, id, patch) => {
     const currentItems = (roomLists[room] || {})[listKey] || [];
     const newItems = currentItems.map(item => item.id === id ? { ...item, ...patch } : item);
@@ -4258,7 +4265,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
               <input type="text" value={linkInput[listKey].label}
                 onChange={(e) => setLinkInput((prev) => ({ ...prev, [listKey]: { ...prev[listKey], label: e.target.value } }))}
                 onKeyDown={(e) => { if (e.key === "Enter") addLinkItem(listKey); }}
-                placeholder="Nom du lien…" className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
+                placeholder={listKey === "shopping" ? "Nom de l'envie…" : "Nom du lien…"} className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
               <input type="url" value={linkInput[listKey].url}
                 onChange={(e) => setLinkInput((prev) => ({ ...prev, [listKey]: { ...prev[listKey], url: e.target.value } }))}
                 onKeyDown={(e) => { if (e.key === "Enter") addLinkItem(listKey); }}
@@ -4336,17 +4343,19 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
           <div className="py-8 text-center text-sm text-slate-400">Aucun élément pour l'instant.</div>
         ) : (
           <ul className="space-y-1.5">
-            {[...pending, ...done].map((item) => (
+            {(listKey === "shopping" ? items : [...pending, ...done]).map((item) => (
               <li key={item.id}
-                className={`group flex items-center gap-2 rounded-lg border px-3 py-2 ${item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"}`}>
+                className={`group flex items-center gap-2 rounded-lg border px-3 py-2 ${item.done && listKey === "shopping" ? "border-amber-200 bg-amber-50" : item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"}`}>
                 <button type="button" onClick={() => toggleItem(listKey, item.id)}
-                  className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
-                  {item.done ? "✓" : ""}
+                  className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done && listKey === "shopping" ? "border-amber-400 bg-amber-100 text-amber-700" : item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
+                  {item.done && listKey === "shopping" ? (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                  ) : item.done ? "✓" : ""}
                 </button>
                 {item.url ? (
                   <LinkPreviewMini item={item} />
                 ) : (
-                  <span className={`min-w-0 flex-1 text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.text}</span>
+                  <span className={`min-w-0 flex-1 text-sm ${item.done && listKey !== "shopping" ? "text-slate-400 line-through" : item.done ? "text-amber-800" : "text-slate-800"}`}>{item.text}</span>
                 )}
                 {/* Badge échéance */}
                 {editingDate === item.id ? (
@@ -4393,6 +4402,12 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
             ))}
           </ul>
         )}
+        {listKey === "shopping" && done.length > 0 && (
+          <button type="button" onClick={() => clearDoneItems("shopping")}
+            className="mt-1 text-xs text-slate-400 hover:text-slate-600 transition-colors">
+            Effacer les sélectionnés ({done.length})
+          </button>
+        )}
       </div>
     );
   };
@@ -4400,7 +4415,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
   return (
     <div className="grid gap-6 xl:grid-cols-2">
       <div className="rounded-xl border border-black/10 bg-white p-4">
-        {renderList("shopping", shopping, shopInput, setShopInput, "Liste des courses", label, "Ajouter un article…")}
+        {renderList("shopping", shopping, shopInput, setShopInput, "Mes envies", label, "Ajouter une envie…")}
       </div>
       <div className="rounded-xl border border-black/10 bg-white p-4">
         {renderList("todos", todos, todoInput, setTodoInput, "À faire", "Tâches", "Ajouter une tâche…")}

@@ -3175,8 +3175,8 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
   );
 }
 
-function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, projectId, saveMessageFn, saveNoteFn, saveRoomItemsFn, onClose }) {
-  const [input, setInput] = useState("");
+function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, projectId, saveMessageFn, saveNoteFn, saveRoomItemsFn, onClose, draft = "", onDraftChange }) {
+  const [input, setInput] = useState(draft);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState(null);
   const [generatingFor, setGeneratingFor] = useState(null);
@@ -3190,6 +3190,13 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (inputRef.current && input) {
+      inputRef.current.style.height = "auto";
+      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 200) + "px";
+    }
+  }, []);
 
   const handleImagePick = (e) => {
     const files = Array.from(e.target.files);
@@ -3209,6 +3216,8 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
     setPendingImages([]);
     setChatHistory((prev) => ({ ...prev, [room]: nextHistory }));
     setInput("");
+    onDraftChange?.("");
+    if (inputRef.current) inputRef.current.style.height = "36px";
     setIsLoading(true);
     if (saveMessageFn && projectId) saveMessageFn(projectId, room, userMsg);
 
@@ -3620,7 +3629,13 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setInput(val);
+              onDraftChange?.(val);
+              e.target.style.height = "auto";
+              e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
@@ -3628,8 +3643,9 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
               }
             }}
             placeholder="Pose une question… (Cmd+Entrée pour envoyer)"
-            rows={2}
-            className="min-w-0 flex-1 resize-none rounded-md border border-black/15 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-900"
+            rows={1}
+            style={{ height: input ? undefined : "36px" }}
+            className="min-w-0 flex-1 resize-none rounded-md border border-black/15 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-900 overflow-hidden"
           />
           <button
             type="button"
@@ -4829,6 +4845,7 @@ export default function App() {
   const [show3D, setShow3D] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatBubbleDismissed, setChatBubbleDismissed] = useState(false);
+  const [chatDrafts, setChatDrafts] = useState({});
   const [discussionsCache, setDiscussionsCache] = useState({});
   const [projectMembers, setProjectMembers] = useState([]);
   const [mentionNotifications, setMentionNotifications] = useState([]);
@@ -6937,6 +6954,8 @@ export default function App() {
                   saveNoteFn={saveRoomNoteToServer}
                   saveRoomItemsFn={saveRoomItemsToServer}
                   onClose={() => setIsChatOpen(false)}
+                  draft={chatDrafts[room] || ""}
+                  onDraftChange={(val) => setChatDrafts((prev) => ({ ...prev, [room]: val }))}
                   roomImages={[
                     ...(roomPlanImages[room] || []).map((src, i) => ({ src: planUploads[`${room}-plan-${i}`] || src, key: `${room}-plan-${i}` })),
                     ...(extraPlanImages[room] || []).map((src, i) => ({ src, key: `${room}-plan-extra-${i}` })),

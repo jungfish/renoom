@@ -252,7 +252,7 @@ createServer(async (req, res) => {
     return;
   }
 
-  const POST_ROUTES = ["/api/generate-image", "/api/analyze-image", "/api/upload-image", "/api/chat", "/api/save-project", "/api/join-project", "/api/restore-snapshot", "/api/save-room"];
+  const POST_ROUTES = ["/api/generate-image", "/api/analyze-image", "/api/upload-image", "/api/chat", "/api/fetch-link-preview", "/api/save-project", "/api/join-project", "/api/restore-snapshot", "/api/save-room"];
   if ((req.method !== "POST" && req.method !== "DELETE") || !POST_ROUTES.includes(req.url)) {
     sendJson(res, 404, { error: "Route inconnue." });
     return;
@@ -428,6 +428,28 @@ createServer(async (req, res) => {
         }
         sendJson(res, 400, { error: "action non reconnue." }); return;
       } catch (err) { sendJson(res, 500, { error: err.message }); return; }
+    }
+
+    if (req.url === "/api/fetch-link-preview") {
+      const { url } = body;
+      if (!url) { sendJson(res, 400, { error: "url requis." }); return; }
+      try {
+        const pageRes = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; bot/1.0)" }, redirect: "follow", signal: AbortSignal.timeout(8000) });
+        const html = await pageRes.text();
+        const getMeta = (prop) => {
+          const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i"))
+            || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i"));
+          return m?.[1] || null;
+        };
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        sendJson(res, 200, {
+          url,
+          title: getMeta("og:title") || getMeta("twitter:title") || titleMatch?.[1]?.trim() || null,
+          description: getMeta("og:description") || getMeta("twitter:description") || getMeta("description") || null,
+          image: getMeta("og:image") || getMeta("twitter:image") || null,
+        });
+      } catch { sendJson(res, 200, { url, title: null, description: null, image: null }); }
+      return;
     }
 
     if (req.url === "/api/upload-image") {

@@ -2660,6 +2660,100 @@ function renderMessageContent(content) {
   });
 }
 
+function parseLinksFromContent(content) {
+  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
+  const links = [];
+  let match;
+  while ((match = linkRegex.exec(content)) !== null) {
+    links.push({ title: match[1], url: match[2] });
+  }
+  return links;
+}
+
+function ProductCard({ title, url }) {
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchLinkPreview(url)
+      .then((data) => setPreview(data))
+      .catch(() => setPreview({ url, title, description: null, image: null }))
+      .finally(() => setLoading(false));
+  }, [url]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex min-w-[148px] max-w-[148px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white text-slate-800 shadow-sm transition-shadow hover:shadow-md"
+    >
+      <div className="relative h-[110px] w-full shrink-0 bg-slate-100">
+        {loading ? (
+          <div className="h-full w-full animate-pulse bg-slate-200" />
+        ) : preview?.image ? (
+          <img src={preview.image} alt={preview.title || title} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-slate-300">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
+            </svg>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-1 flex-col gap-0.5 p-2.5">
+        <p className="line-clamp-2 text-[11px] font-semibold leading-tight text-slate-800">
+          {loading ? <span className="inline-block h-3 w-3/4 animate-pulse rounded bg-slate-200" /> : (preview?.title || title)}
+        </p>
+        {!loading && preview?.description ? (
+          <p className="line-clamp-2 text-[10px] leading-snug text-slate-500">{preview.description}</p>
+        ) : null}
+        <div className="mt-auto pt-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-2.5 text-slate-300">
+            <path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z"/><path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z"/>
+          </svg>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function ProductCarousel({ links }) {
+  const scrollRef = useRef(null);
+  const scroll = (dir) => {
+    if (scrollRef.current) scrollRef.current.scrollBy({ left: dir * 160, behavior: "smooth" });
+  };
+  return (
+    <div className="relative -mx-4 mt-2">
+      <div ref={scrollRef} className="flex gap-2.5 overflow-x-auto px-4 pb-1" style={{ scrollSnapType: "x mandatory", scrollbarWidth: "none", msOverflowStyle: "none" }}>
+        {links.map((link, i) => (
+          <div key={i} style={{ scrollSnapAlign: "start" }}>
+            <ProductCard title={link.title} url={link.url} />
+          </div>
+        ))}
+      </div>
+      {links.length > 2 && (
+        <>
+          <button
+            type="button"
+            onClick={() => scroll(-1)}
+            className="absolute -left-1 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full bg-white shadow-md border border-black/10 text-slate-600 hover:bg-slate-50"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => scroll(1)}
+            className="absolute -right-1 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full bg-white shadow-md border border-black/10 text-slate-600 hover:bg-slate-50"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Collaborative Discussions ─────────────────────────────────────────────
 
 function renderDiscussionContent(content, allRoomPresets, onNavigateToRoom) {
@@ -3453,6 +3547,10 @@ function ChatPanel({ room, aiContext, chatHistory, setChatHistory, roomImages, s
                   </div>
                 ) : null}
                 {msg.content ? <p className="whitespace-pre-wrap leading-relaxed">{renderMessageContent(msg.content)}</p> : null}
+                {msg.role === "assistant" && !msg.error && msg.content && (() => {
+                  const links = parseLinksFromContent(msg.content);
+                  return links.length >= 2 ? <ProductCarousel links={links} /> : null;
+                })()}
                 {msg.generatedImage ? (
                   <div className="mt-2 space-y-2">
                     <img src={msg.generatedImage} alt="Image générée" className="w-full rounded-lg" />
@@ -3784,6 +3882,50 @@ function renderItemText(text, url) {
   return parts.length > 0 ? parts : text;
 }
 
+function LinkPreviewMini({ item }) {
+  const domain = (() => {
+    try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; }
+  })();
+  const textWithoutUrl = item.text.replace(item.url, "").trim();
+  const cardTitle = item.previewTitle || textWithoutUrl || domain;
+
+  if (item.previewLoading) {
+    return (
+      <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-black/8 bg-slate-50 p-2">
+        <div className="h-12 w-12 shrink-0 animate-pulse rounded-md bg-slate-200" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="h-3 w-3/4 animate-pulse rounded bg-slate-200" />
+          <div className="h-2.5 w-1/3 animate-pulse rounded bg-slate-100" />
+        </div>
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-black/8 bg-slate-50 p-2 transition-colors hover:bg-slate-100"
+    >
+      {item.image ? (
+        <img src={item.image} alt={cardTitle} className="h-12 w-12 shrink-0 rounded-md object-cover" />
+      ) : (
+        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-slate-200 text-slate-400">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium leading-tight text-slate-800">{cardTitle}</p>
+        {domain && <p className="mt-0.5 truncate text-[11px] text-slate-400">{domain}</p>}
+      </div>
+    </a>
+  );
+}
+
 function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, saveDocFn, deleteDocFn }) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
@@ -3921,7 +4063,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     const id = `${listKey}-${Date.now()}`;
     const urlMatch = text.trim().match(/https?:\/\/[^\s]+/);
     const url = urlMatch ? urlMatch[0] : null;
-    const newItem = { id, text: text.trim(), url: url || undefined, done: false };
+    const newItem = { id, text: text.trim(), url: url || undefined, done: false, ...(url ? { previewLoading: true } : {}) };
     const currentItems = (roomLists[room] || {})[listKey] || [];
     const newItems = [...currentItems, newItem];
     setRoomLists((prev) => ({
@@ -3933,17 +4075,22 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     if (url) {
       try {
         const preview = await fetchLinkPreview(url);
-        if (preview.image) {
-          setRoomLists((prev) => {
-            const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
-              item.id === id ? { ...item, image: preview.image, previewTitle: preview.title } : item
-            );
-            if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, updatedItems);
-            return { ...prev, [room]: { ...(prev[room] || {}), [listKey]: updatedItems } };
-          });
-        }
+        setRoomLists((prev) => {
+          const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
+            item.id === id
+              ? { ...item, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}) }
+              : item
+          );
+          if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, updatedItems);
+          return { ...prev, [room]: { ...(prev[room] || {}), [listKey]: updatedItems } };
+        });
       } catch {
-        // pas de preview, pas grave
+        setRoomLists((prev) => {
+          const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
+            item.id === id ? { ...item, previewLoading: false } : item
+          );
+          return { ...prev, [room]: { ...(prev[room] || {}), [listKey]: updatedItems } };
+        });
       }
     }
   };
@@ -3970,12 +4117,12 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
 
   const addLinkItem = async (listKey) => {
     const { label: lbl, url } = linkInput[listKey];
-    if (!lbl.trim() || !url.trim()) return;
+    if (!url.trim()) return;
     const id = `${listKey}-${Date.now()}`;
     setLinkInput((prev) => ({ ...prev, [listKey]: { label: "", url: "" } }));
     setLinkMode((prev) => ({ ...prev, [listKey]: false }));
     const currentItems = (roomLists[room] || {})[listKey] || [];
-    const newItem = { id, text: lbl.trim(), url: url.trim(), done: false };
+    const newItem = { id, text: lbl.trim() || url.trim(), url: url.trim(), done: false, previewLoading: true };
     const newItems = [...currentItems, newItem];
     setRoomLists((prev) => ({
       ...prev,
@@ -3984,17 +4131,22 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, newItems);
     try {
       const preview = await fetchLinkPreview(url.trim());
-      if (preview.image) {
-        setRoomLists((prev) => {
-          const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
-            item.id === id ? { ...item, image: preview.image, previewTitle: preview.title } : item
-          );
-          if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, updatedItems);
-          return { ...prev, [room]: { ...(prev[room] || {}), [listKey]: updatedItems } };
-        });
-      }
+      setRoomLists((prev) => {
+        const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
+          item.id === id
+            ? { ...item, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title && !lbl.trim() ? { previewTitle: preview.title } : {}) }
+            : item
+        );
+        if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, updatedItems);
+        return { ...prev, [room]: { ...(prev[room] || {}), [listKey]: updatedItems } };
+      });
     } catch {
-      // pas de preview, pas grave
+      setRoomLists((prev) => {
+        const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
+          item.id === id ? { ...item, previewLoading: false } : item
+        );
+        return { ...prev, [room]: { ...(prev[room] || {}), [listKey]: updatedItems } };
+      });
     }
   };
 
@@ -4029,7 +4181,8 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
               <button
                 type="button"
                 onClick={() => addLinkItem(listKey)}
-                className="shrink-0 rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+                disabled={!linkInput[listKey].url.trim()}
+                className="shrink-0 rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
               >
                 Ajouter
               </button>
@@ -4092,14 +4245,11 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                 >
                   {item.done ? "✓" : ""}
                 </button>
-                {item.image && (
-                  <img
-                    src={item.image}
-                    alt={item.previewTitle || item.text}
-                    className="h-10 w-10 shrink-0 rounded-md object-cover border border-black/10"
-                  />
+                {item.url ? (
+                  <LinkPreviewMini item={item} />
+                ) : (
+                  <span className={`min-w-0 flex-1 text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.text}</span>
                 )}
-                <span className={`min-w-0 flex-1 text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{renderItemText(item.text, item.url)}</span>
                 <button
                   type="button"
                   onClick={() => removeItem(listKey, item.id)}
@@ -4723,6 +4873,7 @@ export default function App() {
   const [chatDrafts, setChatDrafts] = useState({});
   const [discussionsCache, setDiscussionsCache] = useState({});
   const [projectMembers, setProjectMembers] = useState([]);
+  const [persons, setPersons] = useState([]);
   const [mentionNotifications, setMentionNotifications] = useState([]);
   const [openThread, setOpenThread] = useState(null);
   const [showMembersModal, setShowMembersModal] = useState(false);
@@ -4976,6 +5127,15 @@ export default function App() {
     }).catch(() => {});
   };
 
+  const savePersonsToServer = (pid, newPersons) => {
+    if (!pid) return;
+    authedFetch(`${API_BASE}/save-room`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "save-persons", projectId: pid, persons: newPersons }),
+    }).catch(() => {});
+  };
+
   const updateDiscussionsCache = (roomKey, discussions) => {
     setDiscussionsCache(prev => ({ ...prev, [roomKey]: discussions }));
   };
@@ -5107,6 +5267,7 @@ export default function App() {
     if (cfg.roomOrder) setRoomOrder(cfg.roomOrder);
     if (typeof cfg.generalContext === "string") setGeneralContext(cfg.generalContext);
     if (Array.isArray(cfg.generalResources)) setGeneralResources(cfg.generalResources);
+    if (Array.isArray(cfg.persons)) setPersons(cfg.persons);
     if (cfg.savedAt) setLastSavedAt(cfg.savedAt);
 
     // Médias — source normalisée (room_media) ou blob (snapshot restore)
@@ -5146,6 +5307,8 @@ export default function App() {
           url: item.url || undefined,
           image: item.image || undefined,
           previewTitle: item.preview_title || undefined,
+          dueDate: item.due_date || undefined,
+          assignee: item.assignee || undefined,
         });
       }
       setRoomLists(built);
@@ -5263,6 +5426,46 @@ export default function App() {
         if (!hydratedRef.current) hydratedRef.current = true;
         setLoadingFromUrl(false);
       });
+  };
+
+  const handleCreateNewProject = async () => {
+    hydratedRef.current = false;
+    setUploadedImages({});
+    setInspirationLinks({});
+    setMaterialUploads({});
+    setMaterialLinks({});
+    setPlanUploads({});
+    setPlanLinks({});
+    setExtraPlanImages({});
+    setExtraMaterialImages({});
+    setExtraMaterialMeta({});
+    setAiInspirations({});
+    setInstagramItems({});
+    setImageAnalysis({});
+    setDeletedImages({});
+    setRoomNuances({});
+    setRoomNotes({});
+    setRoomLists({});
+    setRoomDocuments({});
+    setHiddenRooms([]);
+    setCustomRooms([]);
+    setGlobalAccent("butter");
+    setRoomOrder(null);
+    setChatHistory({});
+    setShowProjectPicker(false);
+    setProjectId(null);
+    window.history.replaceState({}, "", "/");
+    const res = await authedFetch(`${API_BASE}/save-project`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: { version: 1, savedAt: new Date().toISOString() } }),
+    });
+    const data = await res.json();
+    if (data.id) {
+      setProjectId(data.id);
+      window.history.replaceState({}, "", `/?p=${data.id}`);
+      hydratedRef.current = true;
+    }
   };
 
   const handleCreateSnapshot = async (label) => {
@@ -5748,10 +5951,8 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
-                if (userProjectCount > 1) {
-                  loadUserProjects();
-                  setShowProjectPicker(v => !v);
-                }
+                loadUserProjects();
+                setShowProjectPicker(v => !v);
               }}
               className="flex w-full items-center gap-2 rounded-md px-2 py-[7px] text-left transition-colors hover:bg-black/[0.04]"
             >
@@ -5760,11 +5961,9 @@ export default function App() {
                 style={{ background: "linear-gradient(135deg,#CDAA73 10%,#A8B5A2 90%)" }}
               />
               <span className="flex-1 truncate text-[12.5px] font-semibold text-[#1C1A17]">{userProjects.find(p => p.id === projectId)?.name || "Appartement"}</span>
-              {userProjectCount > 1 && (
-                <svg className="h-3.5 w-3.5 flex-shrink-0 text-[#8A8680]" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 5.5L7 2.5L10 5.5M4 8.5L7 11.5L10 8.5" />
-                </svg>
-              )}
+              <svg className="h-3.5 w-3.5 flex-shrink-0 text-[#8A8680]" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 5.5L7 2.5L10 5.5M4 8.5L7 11.5L10 8.5" />
+              </svg>
             </button>
             {showProjectPicker && userProjects.length > 0 && (
               <div className="absolute bottom-full left-2 right-2 mb-1 overflow-hidden rounded-lg border border-black/[0.08] bg-white shadow-lg">
@@ -5827,6 +6026,18 @@ export default function App() {
                     )}
                   </div>
                 ))}
+                <div className="border-t border-black/[0.06] px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={handleCreateNewProject}
+                    className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-[12.5px] text-[#8A8680] transition-colors hover:bg-[#F5F3EE] hover:text-[#1C1A17]"
+                  >
+                    <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                      <path d="M7 2v10M2 7h10" />
+                    </svg>
+                    Nouveau projet
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -6515,6 +6726,10 @@ export default function App() {
               setRoomLists={setRoomLists}
               projectId={projectId}
               saveRoomItemsFn={saveRoomItemsToServer}
+              projectMembers={projectMembers}
+              persons={persons}
+              setPersons={setPersons}
+              savePersonsFn={savePersonsToServer}
             />
             <DocumentsSection
               room={room}

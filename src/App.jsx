@@ -1614,9 +1614,16 @@ function PlanPreview({
           )
         ) : (
           <div className="grid h-full place-items-center bg-[#f8f5ef] p-6 text-center">
-            <div className="flex flex-col items-center gap-2">
-              <p className="text-sm font-semibold text-slate-600">Pas encore de plan</p>
-              <p className="text-xs text-slate-400">Ajoute un plan d'architecte, une photo ou un PDF via le bouton ci-dessus.</p>
+            <div className="flex flex-col items-center gap-3">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#b0a89a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 9 12 2 21 9"/>
+                <path d="M3 9v11a2 2 0 002 2h14a2 2 0 002-2V9"/>
+                <rect x="9" y="12" width="6" height="9"/>
+              </svg>
+              <div>
+                <p className="text-sm font-semibold text-slate-600">Pas encore de plan</p>
+                <p className="mt-0.5 text-xs text-slate-400">Ajoute un plan d'architecte, une photo ou un PDF via le bouton ci-dessus.</p>
+              </div>
             </div>
           </div>
         )}
@@ -2002,9 +2009,16 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
 
         if (!item0) {
           return (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-black/15 bg-[#faf7f2] py-12 text-center">
-              <p className="text-sm font-semibold text-slate-600">Pas encore d'inspirations</p>
-              <p className="text-xs text-slate-400">Ajoute tes photos, captures Pinterest ou posts Instagram via les boutons ci-dessus.</p>
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-black/15 bg-[#faf7f2] py-12 text-center">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#b0a89a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <path d="m21 15-5-5L5 21"/>
+              </svg>
+              <div>
+                <p className="text-sm font-semibold text-slate-600">Pas encore d'inspirations</p>
+                <p className="mt-0.5 text-xs text-slate-400">Ajoute tes photos, captures Pinterest ou posts Instagram via les boutons ci-dessus.</p>
+              </div>
             </div>
           );
         }
@@ -2340,9 +2354,15 @@ function MaterialsSection({
         </div>
       </div>
       {visibleItems.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-black/15 bg-[#faf7f2] py-12 text-center">
-          <p className="text-sm font-semibold text-slate-600">Pas encore de matériaux</p>
-          <p className="text-xs text-slate-400">Ajoute des matériaux, revêtements ou références produit via le bouton +.</p>
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-black/15 bg-[#faf7f2] py-12 text-center">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#b0a89a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2H2v10l9.29 9.29a1 1 0 001.42 0l6.58-6.58a1 1 0 000-1.42L12 2z"/>
+            <circle cx="7" cy="7" r="1.5" fill="#b0a89a" stroke="none"/>
+          </svg>
+          <div>
+            <p className="text-sm font-semibold text-slate-600">Pas encore de matériaux</p>
+            <p className="mt-0.5 text-xs text-slate-400">Ajoute des matériaux, revêtements ou références produit via le bouton +.</p>
+          </div>
         </div>
       )}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

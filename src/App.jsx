@@ -42,87 +42,87 @@ const rooms = [
 const roomPresets = {
   bureau: {
     label: "Bureau",
-    dominant: "bleu",
-    secondary: "bois",
+    dominant: "dominante",
+    secondary: "sol",
     line: "Bureau calme et concentré : base claire, touches de bleu doux et bois chaleureux.",
     notes: ["Accent olive ou beurre en petite touche pour la personnalité."],
   },
   sdb: {
     label: "Salle de bain",
-    dominant: "creme",
-    secondary: "bleu",
+    dominant: "secondaire",
+    secondary: "dominante",
     line: "Salle de bain douce et lumineuse : base claire, détails rétro et matières naturelles.",
     notes: ["Le chêne clair apporte une touche vintage chaleureuse."],
   },
   salon: {
     label: "Salon",
-    dominant: "bleu",
-    secondary: "creme",
+    dominant: "dominante",
+    secondary: "secondaire",
     line: "Salon nord : base claire, bibliothèque colorée, ambiance rétro lumineuse.",
-    notes: ["Le bleu clair fonctionne mieux sur la bibliothèque que sur tous les murs."],
+    notes: ["La couleur dominante fonctionne mieux sur la bibliothèque que sur tous les murs."],
   },
   cuisine: {
     label: "Cuisine",
-    dominant: "bleu",
-    secondary: "bois",
-    line: "Cuisine rétro colorée : bleu clair grisé, chêne clair, accents beurre ou olive.",
-    notes: ["Le jaune beurre est parfait en petite touche sur assise, luminaire ou détail."],
+    dominant: "dominante",
+    secondary: "sol",
+    line: "Cuisine rétro colorée : couleur principale, sol chaleureux, accents vintage.",
+    notes: ["Un accent beurre ou olive est parfait en petite touche sur assise ou luminaire."],
   },
   entree: {
     label: "Entrée",
-    dominant: "vert",
-    secondary: "bois",
+    dominant: "dominante",
+    secondary: "secondaire",
     line: "Entrée signature : plus enveloppante, architecturée, avec menuiserie et niche fortes.",
-    notes: ["Le vert sauge donne du caractère sans durcir l'entrée."],
+    notes: ["La couleur dominante donne du caractère sans durcir l'entrée."],
   },
   parents: {
     label: "Chambre parents",
-    dominant: "vert",
-    secondary: "creme",
+    dominant: "dominante",
+    secondary: "secondaire",
     line: "Chambre parent : calme, douce, colorée par touches structurées.",
-    notes: ["Le reste des murs gagne à rester crème chaud."],
+    notes: ["Le reste des murs gagne à rester dans la couleur secondaire."],
   },
   enfant: {
     label: "Chambre enfant",
-    dominant: "vert",
-    secondary: "bleu",
+    dominant: "dominante",
+    secondary: "secondaire",
     line: "Chambre enfant : plus joueuse, rétro et graphique, mais toujours lisible.",
-    notes: ["Le fond crème calme le jeu si vous ajoutez du motif ou des rayures."],
+    notes: ["La secondaire calme le jeu si vous ajoutez du motif ou des rayures."],
   },
   vinyle: {
     label: "Coin vinyle",
-    dominant: "creme",
-    secondary: "bois",
+    dominant: "secondaire",
+    secondary: "sol",
     line: "Coin vinyle : plus simple, chaleureux, avec les objets et pochettes comme décor.",
-    notes: ["Le chêne clair donne tout de suite le côté vintage."],
+    notes: ["Le ton sol donne tout de suite le côté vintage."],
   },
   cellier: {
     label: "Cellier",
-    dominant: "vert",
-    secondary: "creme",
+    dominant: "dominante",
+    secondary: "secondaire",
     line: "Cellier : pièce parfaite pour un décor plus éditorial et des motifs discrets.",
-    notes: ["Le jaune beurre est très juste pour donner une lumière vintage."],
+    notes: ["Un accent clair est très juste pour donner une lumière vintage."],
   },
   sanitaires: {
     label: "Sanitaires",
-    dominant: "creme",
-    secondary: "creme",
+    dominant: "secondaire",
+    secondary: "dominante",
     line: "Sanitaires : fonctionnel et soigné, avec des matières qui résistent bien à l'humidité.",
     notes: ["Le carrelage de métro blanc reste la valeur sûre."],
   },
 };
 
 const INITIAL_ROOM_NUANCES = {
-  bureau: { dominant: "moyen", secondary: "moyen", accent: "olive", dominantColor: "bleu", secondaryColor: "bois" },
-  sdb: { dominant: "clair", secondary: "clair", accent: "bois", dominantColor: "creme", secondaryColor: "bleu" },
-  salon: { dominant: "moyen", secondary: "moyen", accent: "bois", dominantColor: "bleu", secondaryColor: "creme" },
-  cuisine: { dominant: "moyen", secondary: "moyen", accent: "butter", dominantColor: "bleu", secondaryColor: "bois" },
-  entree: { dominant: "moyen", secondary: "moyen", accent: "butter", dominantColor: "vert", secondaryColor: "bois" },
-  parents: { dominant: "soutenu", secondary: "moyen", accent: "bois", dominantColor: "vert", secondaryColor: "creme" },
-  enfant: { dominant: "moyen", secondary: "clair", accent: "butter", dominantColor: "vert", secondaryColor: "bleu" },
-  vinyle: { dominant: "moyen", secondary: "moyen", accent: "olive", dominantColor: "creme", secondaryColor: "bois" },
-  cellier: { dominant: "soutenu", secondary: "moyen", accent: "butter", dominantColor: "vert", secondaryColor: "creme" },
-  sanitaires: { dominant: "clair", secondary: "clair", accent: "bois", dominantColor: "creme", secondaryColor: "creme" },
+  bureau:     { dominantColor: "dominante", secondaryColor: "sol" },
+  sdb:        { dominantColor: "secondaire", secondaryColor: "dominante" },
+  salon:      { dominantColor: "dominante", secondaryColor: "secondaire" },
+  cuisine:    { dominantColor: "dominante", secondaryColor: "sol" },
+  entree:     { dominantColor: "dominante", secondaryColor: "secondaire" },
+  parents:    { dominantColor: "dominante", secondaryColor: "secondaire" },
+  enfant:     { dominantColor: "dominante", secondaryColor: "secondaire" },
+  vinyle:     { dominantColor: "secondaire", secondaryColor: "sol" },
+  cellier:    { dominantColor: "dominante", secondaryColor: "secondaire" },
+  sanitaires: { dominantColor: "secondaire", secondaryColor: "dominante" },
 };
 
 const roomInspirationImages = {
@@ -211,21 +211,6 @@ const materialsByRoom = {
 };
 
 const shadeMap = { clair: "light", moyen: "hex", soutenu: "medium", fonce: "dark" };
-
-function getShade(colorKey, level) {
-  if (!colorKey) return "#ddd";
-  if (colorKey.startsWith("#")) return colorKey;
-  const color = baseColors[colorKey];
-  if (!color) return "#ddd";
-  const key = shadeMap[level] || "hex";
-  return color[key] || color.hex;
-}
-
-function getColorName(colorKey) {
-  if (!colorKey) return "Couleur";
-  if (colorKey.startsWith("#")) return colorKey.toUpperCase();
-  return baseColors[colorKey]?.name || "Couleur";
-}
 
 const PALETTE_PRESETS = [
   { hex: "#DCE8ED", name: "Bleu pâle" },
@@ -2978,10 +2963,12 @@ function DiscussionsGlobalView({ orderedActiveRooms, allRoomPresets, discussions
       </div>
 
       {isEmpty ? (
-        <div className="rounded-xl border border-dashed border-black/15 bg-white p-8 text-center">
-          <p className="text-sm text-slate-400">
-            {filter === "mentions" ? "Aucune mention non lue." : filter === "all" ? "Aucune discussion pour l'instant." : `Aucun fil ${filter === "open" ? "ouvert" : "résolu"} pour l'instant.`}
-          </p>
+        <div className="grid place-items-center py-6 text-center">
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-white/70 bg-white/40 px-8 py-10 shadow-sm backdrop-blur-md">
+            <p className="text-sm text-slate-400">
+              {filter === "mentions" ? "Aucune mention non lue." : filter === "all" ? "Aucune discussion pour l'instant." : `Aucun fil ${filter === "open" ? "ouvert" : "résolu"} pour l'instant.`}
+            </p>
+          </div>
         </div>
       ) : allRooms.map((roomKey) => {
         const discussions = (discussionsCache?.[roomKey] || []).filter((d) => {
@@ -3570,12 +3557,11 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
       {loading && (discussions || []).length === 0 ? (
         <div className="rounded-xl border border-black/10 bg-white p-6 text-center text-sm text-slate-400">Chargement…</div>
       ) : filteredDiscussions.length === 0 ? (
-        <div className="rounded-xl border border-black/10 bg-white">
-          <div className="grid place-items-center py-6 text-center">
-            <div
-              className={`flex flex-col items-center gap-3 rounded-xl border border-black/[0.06] bg-slate-50 px-8 py-10 transition-shadow ${filter === 'all' ? 'cursor-pointer hover:shadow-md' : ''}`}
-              onClick={filter === 'all' ? () => setShowCreate(true) : undefined}
-            >
+        <div className="grid place-items-center py-6 text-center">
+          <div
+            className={`flex flex-col items-center gap-3 rounded-xl border border-white/70 bg-white/40 px-8 py-10 shadow-sm backdrop-blur-md transition-shadow ${filter === 'all' ? 'cursor-pointer hover:shadow-lg' : ''}`}
+            onClick={filter === 'all' ? () => setShowCreate(true) : undefined}
+          >
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#b0a89a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
@@ -3587,7 +3573,6 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
               </div>
             </div>
           </div>
-        </div>
       ) : (
         <div className="space-y-2">
           {filteredDiscussions.map((d) => (
@@ -6020,7 +6005,7 @@ function ActivityFeedView({ activityFeed, allRoomPresets, onNavigate }) {
 
   return (
     <div>
-      <div className="rounded-xl border border-black/10 bg-white p-4 mb-4">
+      <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4 mb-4">
         <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Journal</p>
         <h2 className="type-h2">Activité récente</h2>
         <p className="mt-1 text-sm text-slate-500">Ce que les membres ont fait récemment sur ce projet.</p>
@@ -6118,6 +6103,28 @@ export default function App() {
     ],
   });
   const [activePaletteSlot, setActivePaletteSlot] = useState(null);
+
+  function getShade(colorKey, level) {
+    if (!colorKey) return "#ddd";
+    if (colorKey === "dominante") return globalPalette.dominante.hex;
+    if (colorKey === "secondaire") return globalPalette.secondaire.hex;
+    if (colorKey === "sol") return globalPalette.sol.hex;
+    if (colorKey.startsWith("#")) return colorKey;
+    const color = baseColors[colorKey];
+    if (!color) return "#ddd";
+    const key = shadeMap[level] || "hex";
+    return color[key] || color.hex;
+  }
+
+  function getColorName(colorKey) {
+    if (!colorKey) return "Couleur";
+    if (colorKey === "dominante") return globalPalette.dominante.name;
+    if (colorKey === "secondaire") return globalPalette.secondaire.name;
+    if (colorKey === "sol") return globalPalette.sol.name;
+    if (colorKey.startsWith("#")) return colorKey.toUpperCase();
+    return baseColors[colorKey]?.name || "Couleur";
+  }
+
   const [warmth, setWarmth] = useState(60);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -8465,43 +8472,30 @@ export default function App() {
                 <p className="text-sm text-slate-700">{preset.line}</p>
                 <div className="space-y-4">
                   {[
-                    { role: "dominantColor", nuanceRole: "dominant", label: "Couleur dominante" },
-                    { role: "secondaryColor", nuanceRole: "secondary", label: "Couleur secondaire" },
-                  ].map(({ role, nuanceRole, label }) => {
+                    { role: "dominantColor", label: "Couleur dominante" },
+                    { role: "secondaryColor", label: "Couleur secondaire" },
+                  ].map(({ role, label }) => {
                     const selectedColor = activeNuance[role] || (role === "dominantColor" ? preset.dominant : preset.secondary);
-                    const selectedNuance = activeNuance[nuanceRole];
                     return (
                       <div key={role}>
                         <p className="mb-1.5 text-sm font-medium text-slate-700">{label}</p>
                         <div className="flex gap-2">
-                          {Object.entries(baseColors).map(([key, color]) => (
+                          {[
+                            { key: "dominante", hex: globalPalette.dominante.hex, name: globalPalette.dominante.name },
+                            { key: "secondaire", hex: globalPalette.secondaire.hex, name: globalPalette.secondaire.name },
+                            { key: "sol", hex: globalPalette.sol.hex, name: globalPalette.sol.name },
+                          ].map(({ key, hex, name }) => (
                             <button
                               key={key}
                               type="button"
                               onClick={() => updateRoomNuance(role, key)}
-                              title={color.name}
+                              title={name}
                               className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
-                                (selectedColor === key || (selectedColor?.startsWith("#") && Object.values(color).includes(selectedColor))) ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                                selectedColor === key ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
                               }`}
                             >
-                              <span className="block h-6 w-full rounded-md" style={{ backgroundColor: color.hex }} />
-                              <span className="text-[10px] leading-tight text-slate-500">{color.name.split(" ")[0]}</span>
-                            </button>
-                          ))}
-                        </div>
-                        <div className="mt-2 flex gap-1.5">
-                          {[["clair", "Clair"], ["moyen", "Moyen"], ["soutenu", "Soutenu"], ["fonce", "Foncé"]].map(([val, lbl]) => (
-                            <button
-                              key={val}
-                              type="button"
-                              onClick={() => updateRoomNuance(nuanceRole, val)}
-                              className={`flex-1 rounded-md border py-1 text-xs font-medium transition-all ${
-                                selectedNuance === val
-                                  ? "border-slate-900 bg-slate-900 text-white"
-                                  : "border-black/15 bg-white text-slate-600 hover:border-black/30"
-                              }`}
-                            >
-                              {lbl}
+                              <span className="block h-6 w-full rounded-md" style={{ backgroundColor: hex }} />
+                              <span className="text-[10px] leading-tight text-slate-500">{name.split(" ")[0]}</span>
                             </button>
                           ))}
                         </div>

@@ -453,6 +453,66 @@ async function analyzeImageForContext({ image, context, section }) {
   }
 }
 
+function GlobalDragOverlay({ isActive, roomLabel, onDrop }) {
+  return (
+    <div
+      className={`fixed inset-0 z-[200] flex items-center justify-center transition-all duration-200 ${
+        isActive ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+      }`}
+      style={{
+        background: isActive ? "rgba(20,16,10,0.5)" : "transparent",
+        backdropFilter: isActive ? "blur(6px)" : "none",
+      }}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
+    >
+      {isActive && (
+        <div
+          className="flex flex-col items-center gap-6 rounded-3xl bg-white px-20 py-16 shadow-2xl"
+          style={{ animation: "dropFadeIn 0.15s ease-out both" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            className="relative flex h-28 w-28 items-center justify-center rounded-2xl"
+            style={{
+              background: "linear-gradient(135deg, #FCF8D5 0%, #E9DFC8 100%)",
+              outline: "2.5px dashed #CDAA73",
+              outlineOffset: "4px",
+            }}
+          >
+            <svg
+              className="h-14 w-14"
+              style={{ color: "#CDAA73", animation: "dropFloat 1.8s ease-in-out infinite" }}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z"
+              />
+            </svg>
+          </div>
+          <div className="text-center">
+            <p className="text-2xl font-semibold text-slate-900">Lâchez vos photos ici</p>
+            <p className="mt-1.5 text-sm text-slate-400">
+              Inspirations ·{" "}
+              <span className="font-medium text-slate-600">{roomLabel}</span>
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Swatch({ title, hex, subtitle }) {
   return (
     <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
@@ -466,60 +526,101 @@ function Swatch({ title, hex, subtitle }) {
   );
 }
 
-function UploadDropzone({ onFile, compact = false }) {
+function UploadDropzone({ onFile, onFiles, compact = false }) {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef(null);
+  const dragCountRef = useRef(0);
+
+  const processFiles = (fileList) => {
+    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    if (onFiles) {
+      onFiles(files);
+    } else if (onFile) {
+      files.forEach((f) => onFile(f));
+    }
+  };
 
   const handleDrop = (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    dragCountRef.current = 0;
     setIsDragging(false);
-    const file = e.dataTransfer?.files?.[0];
-    if (file) onFile(file);
+    if (e.dataTransfer?.files?.length) processFiles(e.dataTransfer.files);
   };
 
   return (
     <div
-      onDragOver={(e) => {
-        e.preventDefault();
-        setIsDragging(true);
-      }}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDragEnter={(e) => {
         e.preventDefault();
+        e.stopPropagation();
+        dragCountRef.current += 1;
         setIsDragging(true);
       }}
       onDragLeave={(e) => {
-        e.preventDefault();
-        setIsDragging(false);
+        e.stopPropagation();
+        dragCountRef.current -= 1;
+        if (dragCountRef.current <= 0) { dragCountRef.current = 0; setIsDragging(false); }
       }}
       onDrop={handleDrop}
-      className={`rounded-md border border-dashed p-2 text-center ${isDragging ? "border-slate-900 bg-slate-100/70" : "border-black/20 bg-[#faf7f2]"} ${
-        compact ? "text-xs" : "text-sm"
-      }`}
+      onClick={() => inputRef.current?.click()}
+      className={`group relative cursor-pointer select-none rounded-2xl border-2 border-dashed transition-all duration-150 ${
+        isDragging
+          ? "border-[#CDAA73] bg-[#FCF8D5]/60 scale-[1.01]"
+          : "border-black/15 bg-[#faf7f2] hover:border-[#CDAA73]/60 hover:bg-[#faf7f2]"
+      } ${compact ? "py-5 px-4" : "py-10 px-6"}`}
     >
       <input
         ref={inputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onFile(file);
+          if (e.target.files?.length) processFiles(e.target.files);
+          e.target.value = "";
         }}
       />
-      <div>Glisser-déposer une photo ici</div>
-      <button
-        type="button"
-        className="mt-1 rounded border border-black/20 bg-white px-2 py-1 text-xs"
-        onClick={() => inputRef.current?.click()}
-      >
-        Choisir un fichier
-      </button>
+      <div className="flex flex-col items-center gap-3 text-center">
+        <div
+          className={`flex h-12 w-12 items-center justify-center rounded-xl transition-colors ${
+            isDragging ? "bg-[#CDAA73]/20" : "bg-black/5 group-hover:bg-[#CDAA73]/10"
+          }`}
+        >
+          <svg
+            className={`h-6 w-6 transition-colors ${isDragging ? "text-[#CDAA73]" : "text-slate-400 group-hover:text-[#CDAA73]"}`}
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+          </svg>
+        </div>
+        <div>
+          <p className={`font-medium ${isDragging ? "text-[#CDAA73]" : "text-slate-600"} ${compact ? "text-xs" : "text-sm"}`}>
+            {isDragging ? "Lâchez pour ajouter" : "Glissez vos photos ici"}
+          </p>
+          {!compact && (
+            <p className="mt-0.5 text-xs text-slate-400">ou cliquez pour choisir</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function AddImageButton({ onFile, accept = "image/*" }) {
+function AddImageButton({ onFile, onFiles, accept = "image/*" }) {
   const inputRef = useRef(null);
+
+  const processFiles = (fileList) => {
+    const files = Array.from(fileList);
+    if (!files.length) return;
+    if (onFiles) {
+      onFiles(files);
+    } else if (onFile) {
+      files.forEach((f) => onFile(f));
+    }
+  };
 
   return (
     <>
@@ -527,17 +628,17 @@ function AddImageButton({ onFile, accept = "image/*" }) {
         ref={inputRef}
         type="file"
         accept={accept}
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onFile(file);
+          if (e.target.files?.length) processFiles(e.target.files);
           e.target.value = "";
         }}
       />
       <button
         type="button"
-        title="Ajouter une image"
-        aria-label="Ajouter une image"
+        title="Ajouter des images"
+        aria-label="Ajouter des images"
         onClick={() => inputRef.current?.click()}
         className="grid h-11 w-11 place-items-center rounded-full border border-black/15 bg-white text-lg leading-none shadow-sm hover:bg-[#fcf8d5]"
       >
@@ -1650,6 +1751,10 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
     }
   };
 
+  const handleAddImages = async (files) => {
+    await Promise.all(Array.from(files).map((f) => handleAddImage(f)));
+  };
+
   const handleAddImageFromUrl = async (imageUrl) => {
     const nextIndex = (aiInspirations[room] || []).length;
     const nextKey = `${room}-ai-${nextIndex}`;
@@ -1711,7 +1816,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
             </div>
           ) : null}
           <AddUrlButton onUrl={handleAddImageFromUrl} onInstagram={handleAddInstagram} />
-          <AddImageButton onFile={handleAddImage} />
+          <AddImageButton onFiles={handleAddImages} />
         </div>
       </div>
       {(() => {
@@ -4317,7 +4422,9 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
 
 function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, saveDocFn, deleteDocFn }) {
   const [uploading, setUploading] = useState(false);
+  const [docsDragging, setDocsDragging] = useState(false);
   const fileInputRef = useRef(null);
+  const docsDragCountRef = useRef(0);
 
   const docs = roomDocuments[room] || [];
 
@@ -4373,7 +4480,28 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, sa
   };
 
   return (
-    <div className="col-span-full rounded-xl border border-black/10 bg-white p-4">
+    <div
+      className={`col-span-full rounded-xl border bg-white p-4 transition-colors ${
+        docsDragging ? "border-[#CDAA73] bg-[#FCF8D5]/30" : "border-black/10"
+      }`}
+      onDragOver={(e) => e.preventDefault()}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        docsDragCountRef.current += 1;
+        setDocsDragging(true);
+      }}
+      onDragLeave={() => {
+        docsDragCountRef.current -= 1;
+        if (docsDragCountRef.current <= 0) { docsDragCountRef.current = 0; setDocsDragging(false); }
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        docsDragCountRef.current = 0;
+        setDocsDragging(false);
+        if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
+      }}
+    >
       <div className="mb-4 flex items-center justify-between">
         <div>
           <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Documents</p>
@@ -5664,6 +5792,9 @@ export default function App() {
   const [roomDocuments, setRoomDocuments] = useState({});
   const [roomOrder, setRoomOrder] = useState(null);
   const [draggingRoom, setDraggingRoom] = useState(null);
+  const [fileDragActive, setFileDragActive] = useState(false);
+  const [pasteToast, setPasteToast] = useState(false);
+  const dragCounterRef = useRef(0);
   const [chatHistory, setChatHistory] = useState({});
   const [generalContext, setGeneralContext] = useState("");
   const [generalResources, setGeneralResources] = useState([]);
@@ -5861,6 +5992,68 @@ export default function App() {
       [targetRoom]: [...(prev[targetRoom] || []), image],
     }));
   };
+
+  const handleAddImagesGlobal = async (files) => {
+    const fileArray = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (!fileArray.length) return;
+    await Promise.all(
+      fileArray.map(async (file) => {
+        const data = await readFileAsDataUrl(file);
+        if (typeof data !== "string") return;
+        const url = await uploadToBlob(data, `inspo-${room}-${Date.now()}-${Math.random().toString(36).slice(2)}.${extFromDataUrl(data)}`);
+        addAiInspiration(room, url);
+        const analysis = await analyzeImageForContext({ image: url, context: `Inspiration ${preset.label}`, section: "inspiration" });
+        if (analysis) setImageAnalysis((prev) => ({ ...prev, [`${room}-ai-${(aiInspirations[room] || []).length}`]: analysis }));
+      })
+    );
+  };
+
+  useEffect(() => {
+    const handleDragEnter = (e) => {
+      if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
+      dragCounterRef.current += 1;
+      setFileDragActive(true);
+    };
+    const handleDragLeave = () => {
+      dragCounterRef.current -= 1;
+      if (dragCounterRef.current <= 0) {
+        dragCounterRef.current = 0;
+        setFileDragActive(false);
+      }
+    };
+    const handleDragOver = (e) => e.preventDefault();
+    const handleWindowDrop = (e) => {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setFileDragActive(false);
+      const files = e.dataTransfer?.files;
+      if (files?.length) handleAddImagesGlobal(files);
+    };
+    const handlePaste = (e) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageFiles = items
+        .filter((item) => item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter(Boolean);
+      if (!imageFiles.length) return;
+      e.preventDefault();
+      handleAddImagesGlobal(imageFiles);
+      setPasteToast(true);
+      setTimeout(() => setPasteToast(false), 2500);
+    };
+    window.addEventListener("dragenter", handleDragEnter);
+    window.addEventListener("dragleave", handleDragLeave);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("drop", handleWindowDrop);
+    document.addEventListener("paste", handlePaste);
+    return () => {
+      window.removeEventListener("dragenter", handleDragEnter);
+      window.removeEventListener("dragleave", handleDragLeave);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("drop", handleWindowDrop);
+      document.removeEventListener("paste", handlePaste);
+    };
+  }, [room, preset, aiInspirations]);
 
   const logActivity = async (actionType, roomKey, metadata = {}) => {
     if (!projectId || !user || !import.meta.env.VITE_SUPABASE_URL) return;
@@ -7908,6 +8101,27 @@ export default function App() {
             onSkip={() => setShowNewProjectWizard(false)}
             signOut={signOut}
           />
+        </div>
+      )}
+
+      <GlobalDragOverlay
+        isActive={fileDragActive}
+        roomLabel={preset.label}
+        onDrop={(e) => {
+          e.preventDefault();
+          dragCounterRef.current = 0;
+          setFileDragActive(false);
+          const files = e.dataTransfer?.files;
+          if (files?.length) handleAddImagesGlobal(files);
+        }}
+      />
+
+      {pasteToast && (
+        <div
+          className="fixed bottom-6 left-1/2 z-[300] -translate-x-1/2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white shadow-xl"
+          style={{ animation: "toastSlideUp 0.2s ease-out both" }}
+        >
+          Photo collée dans les inspirations ✓
         </div>
       )}
     </div>

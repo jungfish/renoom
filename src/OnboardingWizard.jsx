@@ -600,6 +600,33 @@ function StepInspo({
   onNext, onBack,
 }) {
   const hasContent = inspoFiles.length > 0 || inspoUrlAdded.length > 0;
+  const [stepDragging, setStepDragging] = useState(false);
+  const stepDragCountRef = useRef(0);
+
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageFiles = items
+        .filter((item) => item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter(Boolean);
+      if (!imageFiles.length) return;
+      e.preventDefault();
+      const dt = { target: { files: imageFiles } };
+      onFileChange(dt);
+    };
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [onFileChange]);
+
+  const handleStepDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    stepDragCountRef.current = 0;
+    setStepDragging(false);
+    const files = e.dataTransfer?.files;
+    if (files?.length) onFileChange({ target: { files: Array.from(files) } });
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -615,12 +642,40 @@ function StepInspo({
       <div>
         <input type="file" ref={fileInputRef} accept="image/*" multiple className="hidden" onChange={onFileChange} />
         <button
+          type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="w-full rounded-xl border-2 border-dashed border-black/15 bg-white py-5 px-4 hover:border-slate-400 hover:text-slate-700 transition-all flex flex-col items-center gap-1.5 text-slate-500"
+          onDragOver={(e) => e.preventDefault()}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            stepDragCountRef.current += 1;
+            setStepDragging(true);
+          }}
+          onDragLeave={() => {
+            stepDragCountRef.current -= 1;
+            if (stepDragCountRef.current <= 0) { stepDragCountRef.current = 0; setStepDragging(false); }
+          }}
+          onDrop={handleStepDrop}
+          className={`w-full rounded-xl border-2 border-dashed transition-all flex flex-col items-center gap-2 py-8 px-4 ${
+            stepDragging
+              ? "border-[#CDAA73] bg-[#FCF8D5]/60 scale-[1.01]"
+              : "border-black/15 bg-white hover:border-[#CDAA73]/60 hover:bg-[#faf7f2] text-slate-500"
+          }`}
         >
-          <span className="text-2xl">📷</span>
-          <span className="text-sm font-medium">Ajouter des photos</span>
-          <span className="text-xs text-slate-400">Depuis votre appareil</span>
+          <div className={`flex h-12 w-12 items-center justify-center rounded-xl transition-colors ${stepDragging ? "bg-[#CDAA73]/20" : "bg-black/5"}`}>
+            <svg
+              className={`h-6 w-6 ${stepDragging ? "text-[#CDAA73]" : "text-slate-400"}`}
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+            </svg>
+          </div>
+          <div className="text-center">
+            <span className={`text-sm font-medium block ${stepDragging ? "text-[#CDAA73]" : ""}`}>
+              {stepDragging ? "Lâchez pour ajouter" : "Glissez vos photos ici"}
+            </span>
+            <span className="text-xs text-slate-400 mt-0.5 block">ou cliquez · ou collez (Ctrl+V)</span>
+          </div>
         </button>
 
         {inspoFiles.length > 0 && (

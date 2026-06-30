@@ -6000,6 +6000,7 @@ export default function App() {
         if (typeof data !== "string") return;
         const url = await uploadToBlob(data, `inspo-${room}-${Date.now()}-${Math.random().toString(36).slice(2)}.${extFromDataUrl(data)}`);
         addAiInspiration(room, url);
+        logActivity("inspiration_added", room, {});
         const analysis = await analyzeImageForContext({ image: url, context: `Inspiration ${preset.label}`, section: "inspiration" });
         if (analysis) setImageAnalysis((prev) => ({ ...prev, [`${room}-ai-${(aiInspirations[room] || []).length}`]: analysis }));
       })

@@ -57,7 +57,11 @@ Deno.serve(async (req) => {
       return m ? decodeHtmlEntities(m[1].trim()) : null;
     };
 
-    let image = getOgTag("image");
+    let image =
+      getOgTag("image") ||
+      getOgTag("image:url") ||
+      getMetaName("twitter:image") ||
+      getMetaName("twitter:image:src");
     if (image && !image.startsWith("http")) {
       try {
         image = new URL(image, new URL(url).origin).href;

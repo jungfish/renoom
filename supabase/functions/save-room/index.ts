@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
   try {
     // --- items ---
     if (action === "items" && req.method === "POST") {
-      const { projectId, roomKey, listKey, items } = body;
+      const { projectId, roomKey, listKey, items, allowClearAll } = body;
       if (!projectId || !roomKey || !listKey || !Array.isArray(items))
         return corsResponse(400, { error: "projectId, roomKey, listKey et items requis." });
       if (!["todos", "shopping"].includes(listKey))
@@ -45,6 +45,8 @@ Deno.serve(async (req) => {
 
       const ids = rows.map((r) => r.id).filter(Boolean) as string[];
       if (ids.length === 0) {
+        // Garde absolue : ne jamais vider une liste sans intention explicite
+        if (!allowClearAll) return corsResponse(200, { ok: true });
         const { error: delErr } = await supabase.from("room_items").delete().eq("project_id", projectId).eq("room_key", roomKey).eq("list_key", listKey);
         if (delErr) throw new Error(delErr.message);
       } else {

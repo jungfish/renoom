@@ -1350,7 +1350,10 @@ function PlanPreview({
   onImageClick,
 }) {
   const items = [
-    ...(roomPlanImages[room] || []).map((src, i) => ({ src, key: `${room}-plan-${i}` })),
+    ...(roomPlanImages[room] || []).flatMap((src, i) => {
+      const key = `${room}-plan-${i}`;
+      return planUploads[key] ? [{ src, key }] : [];
+    }),
     ...(extraPlanImages[room] || []).map((src, i) => ({ src, key: `${room}-plan-extra-${i}` })),
   ].filter((item) => !deletedImages[item.key]);
   const [missingCards, setMissingCards] = useState({});
@@ -1592,7 +1595,10 @@ function PlanPreview({
 
 function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirationLinks, setInspirationLinks, aiContext, aiInspirations, addAiInspiration, imageAnalysis, setImageAnalysis, deletedImages, setDeletedImages, onImageClick, instagramItems, setInstagramItems, onLogActivity }) {
   const items = [
-    ...(roomInspirationImages[room] || []).map((src, i) => ({ src, cardKey: `${room}-${i}`, index: i })),
+    ...(roomInspirationImages[room] || []).flatMap((src, i) => {
+      const cardKey = `${room}-${i}`;
+      return uploadedImages[cardKey] ? [{ src, cardKey, index: i }] : [];
+    }),
     ...(aiInspirations[room] || []).map((src, i) => ({ src, cardKey: `${room}-ai-${i}`, index: i })),
     ...(instagramItems[room] || []).map((ig) => ({ ...ig, cardKey: `${room}-ig-${ig.id}`, itemType: "instagram" })),
   ].filter((item) => !deletedImages[item.cardKey]);
@@ -5933,7 +5939,7 @@ export default function App() {
     authedFetch(`${API_BASE}/save-room`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "items", projectId: pid, roomKey, listKey, items }),
+      body: JSON.stringify({ action: "items", projectId: pid, roomKey, listKey, items, allowClearAll: items.length === 0 }),
     }).catch(() => {});
   };
 
@@ -6042,6 +6048,8 @@ export default function App() {
   // snapshot=true uniquement via le bouton "Point de sauvegarde", pas l'auto-save
   const saveProject = async ({ snapshot = false, snapshotLabel = "" } = {}) => {
     const savedAt = new Date().toISOString();
+    // Capturer l'ID du projet au début — projectId peut changer pendant l'await (race condition si l'utilisateur switche de projet)
+    const currentProjectId = projectId;
     const projectState = {
       version: 1,
       savedAt,
@@ -6085,24 +6093,16 @@ export default function App() {
       const res = await authedFetch(`${API_BASE}/save-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: projectState, id: projectId, snapshot, snapshotLabel }),
+        body: JSON.stringify({ state: projectState, id: currentProjectId, snapshot, snapshotLabel }),
       });
       const data = await res.json();
       const { id } = data;
-      const savedProjectId = id || projectId;
+      const savedProjectId = id || currentProjectId;
       if (id) {
         setProjectId(id);
         window.history.replaceState({}, "", `/?p=${id}`);
       }
       if (!res.ok) return;
-      // Dual-write : synchro room_items dans la table normalisée
-      if (savedProjectId) {
-        for (const [rk, lists] of Object.entries(roomLists)) {
-          for (const [lk, items] of Object.entries(lists)) {
-            if (Array.isArray(items)) saveRoomItemsToServer(savedProjectId, rk, lk, items);
-          }
-        }
-      }
     } catch {
       // ignore — server errors don't block the UI
     } finally {
@@ -6228,9 +6228,14 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId, snapshotId }),
       });
-      const { state } = await res.json();
-      if (state) {
-        hydrateState(state);
+      const data = await res.json();
+      if (data.ok) {
+        // Nouveau format : reload depuis la DB
+        setShowSnapshotHistory(false);
+        switchProject(projectId);
+      } else if (data.state) {
+        // Ancien format blob (vieux snapshots)
+        hydrateState(data.state);
         setShowSnapshotHistory(false);
       }
     } catch {
@@ -7869,9 +7874,15 @@ export default function App() {
                   addAiInspiration={addAiInspiration}
                   addExtraPlanImage={addExtraPlanImage}
                   roomImages={[
-                    ...(roomPlanImages[room] || []).map((src, i) => ({ src: planUploads[`${room}-plan-${i}`] || src, key: `${room}-plan-${i}` })),
+                    ...(roomPlanImages[room] || []).flatMap((src, i) => {
+                      const key = `${room}-plan-${i}`;
+                      return planUploads[key] ? [{ src: planUploads[key], key }] : [];
+                    }),
                     ...(extraPlanImages[room] || []).map((src, i) => ({ src, key: `${room}-plan-extra-${i}` })),
-                    ...(roomInspirationImages[room] || []).map((src, i) => ({ src: uploadedImages[`${room}-${i}`] || src, key: `${room}-${i}` })),
+                    ...(roomInspirationImages[room] || []).flatMap((src, i) => {
+                      const key = `${room}-${i}`;
+                      return uploadedImages[key] ? [{ src: uploadedImages[key], key }] : [];
+                    }),
                     ...(materialsByRoom[room] || []).map((m, i) => ({ src: materialUploads[`${room}-material-${i}`] || m.src, key: `${room}-material-${i}` })),
                     ...(aiInspirations[room] || []).map((src, i) => ({ src, key: `${room}-ai-${i}` })),
                   ].filter((img) => img.src && !deletedImages[img.key])}

@@ -104,12 +104,37 @@ Deno.serve(async (req) => {
     await writeChangeLog(projectId, user.id, "save");
 
     if (snapshot) {
-      await supabaseAdmin.rpc("save_snapshot", {
-        p_project_id: projectId,
-        p_user_id: user.id,
-        p_state: stripBinaryData(state),
-        p_label: snapshotLabel || "Sauvegarde",
-      });
+      // Créer l'entrée snapshot sans blob
+      const { data: snap, error: snapErr } = await supabaseAdmin
+        .from("project_snapshots")
+        .insert({ project_id: projectId, user_id: user.id, label: snapshotLabel || "Sauvegarde", saved_at: new Date().toISOString() })
+        .select("id")
+        .single();
+      if (snapErr) throw new Error(snapErr.message);
+
+      // Copier les room_items actuels dans room_items_snapshots
+      const { data: currentItems } = await supabaseAdmin
+        .from("room_items")
+        .select("*")
+        .eq("project_id", projectId);
+      if (currentItems && currentItems.length > 0) {
+        const snapshotRows = currentItems.map((item) => ({
+          snapshot_id: snap.id,
+          project_id: projectId,
+          room_key: item.room_key,
+          list_key: item.list_key,
+          original_id: item.id,
+          text: item.text || "",
+          done: item.done || false,
+          position: item.position ?? 0,
+          url: item.url || null,
+          image: item.image || null,
+          preview_title: item.preview_title || null,
+          due_date: item.due_date || null,
+          assignee: item.assignee || null,
+        }));
+        await supabaseAdmin.from("room_items_snapshots").insert(snapshotRows);
+      }
     }
 
     return corsResponse(200, { id: projectId });

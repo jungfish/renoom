@@ -221,6 +221,12 @@ function getShade(colorKey, level) {
   return color[key] || color.hex;
 }
 
+function getColorName(colorKey) {
+  if (!colorKey) return "Couleur";
+  if (colorKey.startsWith("#")) return colorKey.toUpperCase();
+  return baseColors[colorKey]?.name || "Couleur";
+}
+
 const PALETTE_PRESETS = [
   { hex: "#DCE8ED", name: "Bleu pâle" },
   { hex: "#b8c9d0", name: "Bleu grisé" },
@@ -6098,9 +6104,9 @@ export default function App() {
   const aiContext = {
     roomLabel: preset.label,
     line: preset.line,
-    dominantName: baseColors[activeDominantColor].name,
+    dominantName: getColorName(activeDominantColor),
     dominantHex,
-    secondaryName: baseColors[activeSecondaryColor].name,
+    secondaryName: getColorName(activeSecondaryColor),
     secondaryHex,
     accentName,
     accentHex,
@@ -7175,7 +7181,7 @@ export default function App() {
     const sHex = getShade(sColor, nuance.secondary);
     const aHex = nuance.accent === "bois" ? baseColors.bois.hex : accents[nuance.accent]?.hex || accents[globalAccent].hex;
     const aName = nuance.accent === "bois" ? "Chêne clair" : accents[nuance.accent]?.name || accents[globalAccent].name;
-    return { dominant: { name: baseColors[dColor].name, hex: dHex }, secondary: { name: baseColors[sColor].name, hex: sHex }, accent: { name: aName, hex: aHex } };
+    return { dominant: { name: getColorName(dColor), hex: dHex }, secondary: { name: getColorName(sColor), hex: sHex }, accent: { name: aName, hex: aHex } };
   };
 
   const roomPendingCount = (key) => {
@@ -8133,8 +8139,8 @@ export default function App() {
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <Swatch title={baseColors[activeDominantColor].name} subtitle="Dominante" hex={dominantHex} />
-                  <Swatch title={baseColors[activeSecondaryColor].name} subtitle="Secondaire" hex={secondaryHex} />
+                  <Swatch title={getColorName(activeDominantColor)} subtitle="Dominante" hex={dominantHex} />
+                  <Swatch title={getColorName(activeSecondaryColor)} subtitle="Secondaire" hex={secondaryHex} />
                   <Swatch title={accentName} subtitle="Accent" hex={accentHex} />
                 </div>
                 <button

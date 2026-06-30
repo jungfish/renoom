@@ -453,18 +453,16 @@ async function analyzeImageForContext({ image, context, section }) {
   }
 }
 
-function GlobalDragOverlay({ isActive, roomLabel, onDrop }) {
+function GlobalDragOverlay({ isActive, roomLabel }) {
   return (
     <div
       className={`fixed inset-0 z-[200] flex items-center justify-center transition-all duration-200 ${
-        isActive ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        isActive ? "pointer-events-none opacity-100" : "pointer-events-none opacity-0"
       }`}
       style={{
         background: isActive ? "rgba(20,16,10,0.5)" : "transparent",
         backdropFilter: isActive ? "blur(6px)" : "none",
       }}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={onDrop}
     >
       {isActive && (
         <div
@@ -8107,13 +8105,6 @@ export default function App() {
       <GlobalDragOverlay
         isActive={fileDragActive}
         roomLabel={preset.label}
-        onDrop={(e) => {
-          e.preventDefault();
-          dragCounterRef.current = 0;
-          setFileDragActive(false);
-          const files = e.dataTransfer?.files;
-          if (files?.length) handleAddImagesGlobal(files);
-        }}
       />
 
       {pasteToast && (

@@ -3369,6 +3369,8 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, ch
   const [pendingPrompt, setPendingPrompt] = useState(null);
   const [generatingFor, setGeneratingFor] = useState(null);
   const [pendingImages, setPendingImages] = useState([]);
+  const [pendingPreviews, setPendingPreviews] = useState([]);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -3391,8 +3393,20 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, ch
   const handleImagePick = (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
-    Promise.all(files.map(readFileAsDataUrl)).then((dataUrls) => {
-      setPendingImages((prev) => [...prev, ...dataUrls]);
+    setUploadingCount((prev) => prev + files.length);
+    Promise.all(
+      files.map(async (file) => {
+        const raw = await readFileAsDataUrl(file);
+        const normalized = await normalizeImageForAi(raw);
+        const url = await uploadToBlob(normalized, `chat-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
+        return { url, preview: normalized };
+      })
+    ).then((results) => {
+      setPendingImages((prev) => [...prev, ...results.map((r) => r.url)]);
+      setPendingPreviews((prev) => [...prev, ...results.map((r) => r.preview)]);
+      setUploadingCount((prev) => prev - files.length);
+    }).catch(() => {
+      setUploadingCount((prev) => prev - files.length);
     });
     e.target.value = "";
   };
@@ -3404,6 +3418,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, ch
     const userMsg = { id: `msg-${Date.now()}`, role: "user", content: trimmed, ...(pendingImages.length > 0 ? { images: pendingImages } : {}) };
     const nextHistory = [...messages, userMsg];
     setPendingImages([]);
+    setPendingPreviews([]);
     setChatHistory((prev) => ({ ...prev, [room]: nextHistory }));
     setInput("");
     onDraftChange?.("");
@@ -3929,20 +3944,28 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, ch
           onChange={handleImagePick}
         />
         <div className="rounded-xl border border-black/12 bg-[#f9f7f3] overflow-hidden focus-within:border-slate-400 focus-within:bg-white transition-colors">
-          {pendingImages.length > 0 ? (
+          {(pendingPreviews.length > 0 || uploadingCount > 0) ? (
             <div className="flex flex-wrap items-end gap-2 px-3 pt-3">
-              {pendingImages.map((img, i) => (
+              {pendingPreviews.map((preview, i) => (
                 <div key={i} className="relative">
-                  <img src={img} alt="preview" className="h-14 w-14 rounded-lg object-cover border border-black/10" />
+                  <img src={preview} alt="preview" className="h-14 w-14 rounded-lg object-cover border border-black/10" />
                   <button
                     type="button"
-                    onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
+                    onClick={() => {
+                      setPendingImages((prev) => prev.filter((_, j) => j !== i));
+                      setPendingPreviews((prev) => prev.filter((_, j) => j !== i));
+                    }}
                     className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-slate-900 text-[9px] text-white leading-none"
                   >
                     ×
                   </button>
                 </div>
               ))}
+              {uploadingCount > 0 && (
+                <div className="h-14 w-14 rounded-lg border border-black/10 bg-slate-100 grid place-items-center">
+                  <svg className="animate-spin text-slate-400" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                </div>
+              )}
             </div>
           ) : null}
           <textarea
@@ -3980,7 +4003,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, ch
             <button
               type="button"
               onClick={() => sendMessage()}
-              disabled={(!input.trim() && !pendingImages.length) || isLoading}
+              disabled={(!input.trim() && !pendingImages.length) || isLoading || uploadingCount > 0}
               className="grid h-7 w-7 place-items-center rounded-full bg-slate-900 text-white disabled:opacity-30 hover:bg-slate-700 transition-colors"
               title="Envoyer (Cmd+Entrée)"
             >

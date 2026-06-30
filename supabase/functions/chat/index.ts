@@ -150,27 +150,22 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
   ];
 }
 
+const SYSTEM_BASE = "Assistant design intérieur, style rétro français. Aide aux décisions déco.\nRègles: français, concis, 3-6 phrases max. Univers rétro, coloré, doux — pas d'accents rouges ni de minimalisme. Pour produits/liens, utilise web_search avec URLs directes.";
+
 function buildSystemPrompt(ctx: Record<string, unknown>): string {
   return [
-    "Tu es un assistant de design intérieur expert en décoration française contemporaine et rétro.",
-    "Tu aides l'utilisateur à prendre des décisions de design pour son appartement.",
+    SYSTEM_BASE,
     "",
-    ctx.generalContext ? `Goûts & contraintes de l'appartement: ${ctx.generalContext}` : null,
-    ctx.generalContext ? "" : null,
-    `Pièce active — ${ctx.label}: ${ctx.line}`,
-    `Palette: dominante ${ctx.dominantName} (${ctx.dominantHex}), secondaire ${ctx.secondaryName} (${ctx.secondaryHex}), accent ${ctx.accentName} (${ctx.accentHex})`,
+    ctx.generalContext ? `Goûts & contraintes: ${ctx.generalContext}` : null,
+    `Pièce: ${ctx.label} — ${ctx.line}`,
+    `Palette: ${ctx.dominantName} (${ctx.dominantHex}) / ${ctx.secondaryName} (${ctx.secondaryHex}) / accent ${ctx.accentName} (${ctx.accentHex})`,
     ctx.roomNote ? `Notes: ${ctx.roomNote}` : null,
-    ctx.imageMetadataSummary ? `Contexte visuel: ${ctx.imageMetadataSummary}` : null,
-    (ctx.todoItems as {id:string,text:string}[])?.length ? `Todos de la pièce: ${(ctx.todoItems as {id:string,text:string}[]).map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}` : null,
-    (ctx.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>,selectedBy?:string[]}[])?.length ? `En liste de courses: ${(ctx.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>,selectedBy?:string[]}[]).map(i => { const rx = i.reactions ? ` (réactions: ${Object.entries(i.reactions).map(([e,u]) => `${e} ${u.join(", ")}`).join(" | ")})` : ""; const sel = i.selectedBy?.length ? ` (sélectionné pour achat par: ${i.selectedBy.join(", ")})` : ""; return (i.id ? `[${i.id}] ` : "") + i.text + rx + sel; }).join(", ")}` : null,
-    (ctx.persons as string[])?.length ? `Personnes disponibles pour assignation: ${(ctx.persons as string[]).join(", ")}` : null,
-    (ctx.materialSummary as string[])?.length ? `Matériaux choisis: ${(ctx.materialSummary as string[]).join("; ")}` : null,
+    ctx.imageMetadataSummary ? `Visuels: ${ctx.imageMetadataSummary}` : null,
+    (ctx.todoItems as {id:string,text:string}[])?.length ? `Todos: ${(ctx.todoItems as {id:string,text:string}[]).map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}` : null,
+    (ctx.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>,selectedBy?:string[]}[])?.length ? `Courses: ${(ctx.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>,selectedBy?:string[]}[]).map(i => { const rx = i.reactions ? ` (${Object.entries(i.reactions).map(([e,u]) => `${e} ${u.join(", ")}`).join(" | ")})` : ""; const sel = i.selectedBy?.length ? ` [achat: ${i.selectedBy.join(", ")}]` : ""; return (i.id ? `[${i.id}] ` : "") + i.text + rx + sel; }).join(", ")}` : null,
+    (ctx.persons as string[])?.length ? `Personnes: ${(ctx.persons as string[]).join(", ")}` : null,
+    (ctx.materialSummary as string[])?.length ? `Matériaux: ${(ctx.materialSummary as string[]).join("; ")}` : null,
     ctx.allRoomsSummary ? `Autres pièces: ${ctx.allRoomsSummary}` : null,
-    "",
-    "Règles:",
-    "- Réponds en français, de façon concise et praticable (3-6 phrases max par réponse)",
-    "- Reste dans l'univers rétro, coloré, doux — jamais d'accents rouges, pas de style minimaliste froid",
-    "- Si l'utilisateur demande des produits, des références ou des liens d'achat, utilise la recherche web pour trouver des résultats réels et inclus des URLs directes",
   ]
     .filter((l) => l !== null)
     .join("\n");
@@ -181,32 +176,24 @@ function buildGeneralSystemPrompt(
   availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: {id:string,text:string}[]; shoppingItems?: {id:string,text:string}[]; materialSummary?: string[] }[],
 ): string {
   const roomsDetail = availableRooms.map((r) => {
-    const parts = [`— ${r.label} (key: "${r.key}"): ${r.line || ""}`];
+    const parts = [`${r.label}|${r.key}: ${r.line || ""}`];
     if (r.roomNote) parts.push(`  Note: ${r.roomNote}`);
     if (r.todoItems?.length) parts.push(`  Todos: ${r.todoItems.map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}`);
-    if (r.shoppingItems?.length) parts.push(`  En liste: ${(r.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>,selectedBy?:string[]}[]).map(i => { const rx = i.reactions ? ` (réactions: ${Object.entries(i.reactions).map(([e,u]) => `${e} ${u.join(", ")}`).join(" | ")})` : ""; const sel = i.selectedBy?.length ? ` (sélectionné par: ${i.selectedBy.join(", ")})` : ""; return (i.id ? `[${i.id}] ` : "") + i.text + rx + sel; }).join(", ")}`);
+    if (r.shoppingItems?.length) parts.push(`  Courses: ${(r.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>,selectedBy?:string[]}[]).map(i => { const rx = i.reactions ? ` (${Object.entries(i.reactions).map(([e,u]) => `${e} ${u.join(", ")}`).join(" | ")})` : ""; const sel = i.selectedBy?.length ? ` [achat: ${i.selectedBy.join(", ")}]` : ""; return (i.id ? `[${i.id}] ` : "") + i.text + rx + sel; }).join(", ")}`);
     if (r.materialSummary?.length) parts.push(`  Matériaux: ${r.materialSummary.join("; ")}`);
     return parts.join("\n");
   }).join("\n");
 
   return [
-    "Tu es un assistant de design intérieur expert en décoration française contemporaine et rétro.",
-    "Tu aides l'utilisateur à prendre des décisions de design pour son appartement.",
+    SYSTEM_BASE,
     "",
-    ctx.generalContext ? `Goûts & contraintes de l'appartement: ${ctx.generalContext}` : null,
+    ctx.generalContext ? `Goûts & contraintes: ${ctx.generalContext}` : null,
+    (ctx.persons as string[])?.length ? `Personnes: ${(ctx.persons as string[]).join(", ")}` : null,
     "",
-    (ctx.persons as string[])?.length ? `Personnes disponibles pour assignation: ${(ctx.persons as string[]).join(", ")}` : null,
+    "Mode Appartement — accès à toutes les pièces. Toujours spécifier room_key dans les outils.",
     "",
-    "Mode Appartement — tu as accès à toutes les pièces et peux agir sur chacune.",
-    "Quand tu utilises un outil (add_to_shopping_list, add_to_todo_list, save_room_note), tu DOIS toujours spécifier room_key.",
-    "",
-    "Pièces disponibles:",
+    "Pièces (label|key: description):",
     roomsDetail,
-    "",
-    "Règles:",
-    "- Réponds en français, de façon concise et praticable (3-6 phrases max par réponse)",
-    "- Reste dans l'univers rétro, coloré, doux — jamais d'accents rouges, pas de style minimaliste froid",
-    "- Si l'utilisateur demande des produits, des références ou des liens d'achat, utilise la recherche web pour trouver des résultats réels et inclus des URLs directes",
   ]
     .filter((l) => l !== null)
     .join("\n");
@@ -300,7 +287,7 @@ Deno.serve(async (req) => {
                   role: m.role,
                   content: [
                     ...(m.content ? [{ type: "input_text", text: m.content }] : []),
-                    ...imgList.map((img) => ({ type: "input_image", image_url: img })),
+                    ...imgList.map((img) => ({ type: "input_image", image_url: img, detail: "low" })),
                   ],
                 };
               }

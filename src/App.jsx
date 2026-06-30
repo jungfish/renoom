@@ -5318,12 +5318,22 @@ function AppMockupContent({ id }) {
 
 function LoginScreen({ onSignIn }) {
   const [slide, setSlide] = useState(0);
-  const isInvite = !!new URLSearchParams(window.location.search).get("invite");
+  const inviteCode = new URLSearchParams(window.location.search).get("invite");
+  const isInvite = !!inviteCode;
+  const [inviteProjectName, setInviteProjectName] = useState(null);
 
   useEffect(() => {
     const id = setInterval(() => setSlide((p) => (p + 1) % LOGIN_SLIDES.length), 4000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!inviteCode) return;
+    fetch(`${API_BASE}/project-info-by-invite?invite=${inviteCode}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.name) setInviteProjectName(d.name); })
+      .catch(() => {});
+  }, [inviteCode]);
 
   const googleSvg = (
     <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -5358,7 +5368,10 @@ function LoginScreen({ onSignIn }) {
                   <span className="text-xs font-medium text-emerald-700">Invitation valide</span>
                 </div>
                 <h1 className="text-[26px] font-semibold leading-snug text-slate-900">
-                  Tu as été invité(e) à rejoindre un projet déco 🏡
+                  {inviteProjectName
+                    ? <>Tu as été invité(e) à rejoindre<br /><span className="text-amber-700">"{inviteProjectName}"</span> 🏡</>
+                    : "Tu as été invité(e) à rejoindre un projet déco 🏡"
+                  }
                 </h1>
                 <p className="mt-3 text-sm leading-relaxed text-slate-500">
                   Connecte-toi pour voir les inspirations, ajouter les tiennes et décider ensemble.
@@ -5810,6 +5823,7 @@ export default function App() {
   const [room, setRoom] = useState("salon");
   const [globalAccent, setGlobalAccent] = useState("butter");
   const [globalShade, setGlobalShade] = useState("moyen");
+  const [globalDominantColor, setGlobalDominantColor] = useState("bleu");
   const [warmth, setWarmth] = useState(60);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -6402,6 +6416,7 @@ export default function App() {
       room,
       globalAccent,
       globalShade,
+      globalDominantColor,
       warmth,
       customRooms,
       hiddenRooms,
@@ -6463,6 +6478,7 @@ export default function App() {
     if (cfg.room && !skipRoomSync) setRoom(cfg.room);
     if (cfg.globalAccent) setGlobalAccent(cfg.globalAccent);
     if (cfg.globalShade) setGlobalShade(cfg.globalShade);
+    if (cfg.globalDominantColor) setGlobalDominantColor(cfg.globalDominantColor);
     if (typeof cfg.warmth === "number") setWarmth(cfg.warmth);
     if (Array.isArray(cfg.customRooms)) setCustomRooms(cfg.customRooms);
     if (Array.isArray(cfg.hiddenRooms)) setHiddenRooms(cfg.hiddenRooms);
@@ -6616,6 +6632,7 @@ export default function App() {
     setCustomRooms([]);
     setGlobalAccent("butter");
     setGlobalShade("moyen");
+    setGlobalDominantColor("bleu");
     setRoomOrder(null);
     setChatHistory({});
     setProjectId(id);
@@ -6659,6 +6676,7 @@ export default function App() {
     setCustomRooms([]);
     setGlobalAccent("butter");
     setGlobalShade("moyen");
+    setGlobalDominantColor("bleu");
     setRoomOrder(null);
     setChatHistory({});
     setShowProjectPicker(false);
@@ -7880,21 +7898,43 @@ export default function App() {
                   <Swatch title="Vert sauge" subtitle="Pilier" hex={baseColors.vert[shadeMap[globalShade]]} />
                   <Swatch title="Chêne clair" subtitle="Fil conducteur" hex={baseColors.bois[shadeMap[globalShade]]} />
                 </div>
+                <div>
+                  <div className="mb-2 text-sm font-medium">Couleur dominante globale</div>
+                  <div className="flex gap-2">
+                    {Object.entries(baseColors).map(([key, color]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setGlobalDominantColor(key)}
+                        title={color.name}
+                        className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                          globalDominantColor === key ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                        }`}
+                      >
+                        <span className="block h-6 w-full rounded-md" style={{ backgroundColor: color[shadeMap[globalShade]] }} />
+                        <span className="text-[10px] leading-tight text-slate-500">{color.name.split(" ")[0]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
                     setRoomNuances(prev => {
                       const updated = { ...prev };
                       orderedActiveRooms.forEach(key => {
-                        updated[key] = { ...(prev[key] || INITIAL_ROOM_NUANCES[key] || {}), dominant: globalShade, secondary: globalShade };
+                        updated[key] = { ...(prev[key] || INITIAL_ROOM_NUANCES[key] || {}), dominantColor: globalDominantColor };
                       });
                       return updated;
                     });
                   }}
                   className="w-full rounded-lg border border-black/15 px-3 py-2 text-xs font-medium text-slate-600 transition-all hover:border-black/30 hover:bg-slate-50"
                 >
-                  Appliquer «&nbsp;{{ clair: "Clair", moyen: "Moyen", soutenu: "Soutenu", fonce: "Foncé" }[globalShade]}&nbsp;» à toutes les pièces
+                  Appliquer «&nbsp;{baseColors[globalDominantColor]?.name.split(" ")[0]}&nbsp;» comme couleur dominante à toutes les pièces
                 </button>
+                <p className="text-[11px] text-amber-600">
+                  ⚠ Écrase la couleur dominante de chaque pièce. Les nuances (clair / moyen…) de chaque pièce sont conservées.
+                </p>
                 <div>
                   <div className="mb-2 text-sm font-medium">Accents autorisés</div>
                   <div className="grid gap-2 sm:grid-cols-2">

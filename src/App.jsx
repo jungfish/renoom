@@ -1613,7 +1613,12 @@ function PlanPreview({
             <RepoImage src={currentSrc} alt={`Plan ${label}`} objectFit="contain" onMissingChange={(missing) => setMissingCards((prev) => ({ ...prev, [currentKey]: missing }))} />
           )
         ) : (
-          <div className="grid h-full place-items-center bg-[#f8f5ef] p-4 text-center text-sm text-slate-500">Ajoute une image ou un PDF de plan.</div>
+          <div className="grid h-full place-items-center bg-[#f8f5ef] p-6 text-center">
+            <div className="flex flex-col items-center gap-2">
+              <p className="text-sm font-semibold text-slate-600">Pas encore de plan</p>
+              <p className="text-xs text-slate-400">Ajoute un plan d'architecte, une photo ou un PDF via le bouton ci-dessus.</p>
+            </div>
+          </div>
         )}
         {pageCount > 1 && index > 0 && !isPdfUrl(currentSrc) && (
           <button
@@ -2334,6 +2339,12 @@ function MaterialsSection({
           </button>
         </div>
       </div>
+      {visibleItems.length === 0 && (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-black/15 bg-[#faf7f2] py-12 text-center">
+          <p className="text-sm font-semibold text-slate-600">Pas encore de matériaux</p>
+          <p className="text-xs text-slate-400">Ajoute des matériaux, revêtements ou références produit via le bouton +.</p>
+        </div>
+      )}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {visibleItems.map(({ item, cardKey, displayIndex: index, isExtra }) => {
           const isLinkPreview = !!item.linkPreview;
@@ -7873,7 +7884,6 @@ export default function App() {
             <>
               {/* Palette globale — vue générale */}
               {(() => {
-                const ROLE_TO_ROOM_KEY = { dominante: "dominantColor", secondaire: "secondaryColor", sol: "solColor" };
                 const applyColor = (slotKey, hex, name) => {
                   setGlobalPalette(prev => {
                     if (slotKey.startsWith("accent-")) {
@@ -7884,16 +7894,20 @@ export default function App() {
                     }
                     return { ...prev, [slotKey]: { hex, name } };
                   });
-                  const roomKey = ROLE_TO_ROOM_KEY[slotKey];
-                  if (roomKey) {
-                    setRoomNuances(prev => {
-                      const updated = { ...prev };
-                      orderedActiveRooms.forEach(k => {
-                        updated[k] = { ...(prev[k] || INITIAL_ROOM_NUANCES[k] || {}), [roomKey]: hex };
-                      });
-                      return updated;
+                };
+                const applyToRooms = (palette) => {
+                  setRoomNuances(prev => {
+                    const updated = { ...prev };
+                    orderedActiveRooms.forEach(k => {
+                      updated[k] = {
+                        ...(prev[k] || INITIAL_ROOM_NUANCES[k] || {}),
+                        dominantColor: palette.dominante.hex,
+                        secondaryColor: palette.secondaire.hex,
+                        solColor: palette.sol.hex,
+                      };
                     });
-                  }
+                    return updated;
+                  });
                 };
                 const mainSlots = [
                   { key: "dominante", label: "Dominante", ...globalPalette.dominante },
@@ -7975,6 +7989,16 @@ export default function App() {
                         </div>
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => applyToRooms(globalPalette)}
+                      className="w-full rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-slate-800"
+                    >
+                      Appliquer la palette à toutes les pièces
+                    </button>
+                    <p className="text-[11px] text-amber-600">
+                      ⚠ Écrase dominante, secondaire et sol de chaque pièce. Les nuances (clair/moyen…) restent inchangées.
+                    </p>
                   </div>
                 );
               })()}
@@ -8088,7 +8112,6 @@ export default function App() {
           <>
             <section className="grid gap-6 xl:grid-cols-2">
               {(() => {
-                const ROLE_TO_ROOM_KEY = { dominante: "dominantColor", secondaire: "secondaryColor", sol: "solColor" };
                 const applyColor = (slotKey, hex, name) => {
                   setGlobalPalette(prev => {
                     if (slotKey.startsWith("accent-")) {
@@ -8099,16 +8122,20 @@ export default function App() {
                     }
                     return { ...prev, [slotKey]: { hex, name } };
                   });
-                  const roomKey = ROLE_TO_ROOM_KEY[slotKey];
-                  if (roomKey) {
-                    setRoomNuances(prev => {
-                      const updated = { ...prev };
-                      orderedActiveRooms.forEach(k => {
-                        updated[k] = { ...(prev[k] || INITIAL_ROOM_NUANCES[k] || {}), [roomKey]: hex };
-                      });
-                      return updated;
+                };
+                const applyToRooms = (palette) => {
+                  setRoomNuances(prev => {
+                    const updated = { ...prev };
+                    orderedActiveRooms.forEach(k => {
+                      updated[k] = {
+                        ...(prev[k] || INITIAL_ROOM_NUANCES[k] || {}),
+                        dominantColor: palette.dominante.hex,
+                        secondaryColor: palette.secondaire.hex,
+                        solColor: palette.sol.hex,
+                      };
                     });
-                  }
+                    return updated;
+                  });
                 };
                 const mainSlots = [
                   { key: "dominante", label: "Dominante", ...globalPalette.dominante },
@@ -8199,7 +8226,16 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    <p className="text-[11px] text-slate-400">Chaque changement s'applique automatiquement à toutes les pièces.</p>
+                    <button
+                      type="button"
+                      onClick={() => applyToRooms(globalPalette)}
+                      className="w-full rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-slate-800"
+                    >
+                      Appliquer la palette à toutes les pièces
+                    </button>
+                    <p className="text-[11px] text-amber-600">
+                      ⚠ Écrase dominante, secondaire et sol de chaque pièce. Les nuances (clair/moyen…) restent inchangées.
+                    </p>
                   </div>
                 );
               })()}

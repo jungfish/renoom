@@ -3570,9 +3570,21 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
       {loading && (discussions || []).length === 0 ? (
         <div className="rounded-xl border border-black/10 bg-white p-6 text-center text-sm text-slate-400">Chargement…</div>
       ) : filteredDiscussions.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-black/15 bg-white p-8 text-center">
-          <p className="text-sm text-slate-400">{filter === 'all' ? "Aucune discussion pour l'instant." : 'Aucun fil dans cette catégorie.'}</p>
-          {filter === 'all' && <p className="mt-1 text-xs text-slate-300">Créez un fil pour commencer à échanger.</p>}
+        <div className="grid place-items-center py-6 text-center">
+          <div
+            className={`flex flex-col items-center gap-3 rounded-xl border border-white/70 bg-white/40 px-8 py-10 shadow-sm backdrop-blur-md transition-shadow ${filter === 'all' ? 'cursor-pointer hover:shadow-lg' : ''}`}
+            onClick={filter === 'all' ? () => setShowCreate(true) : undefined}
+          >
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#b0a89a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <div>
+              <p className="text-sm font-semibold text-slate-600">
+                {filter === 'all' ? "Pas encore de discussions" : 'Aucun fil dans cette catégorie.'}
+              </p>
+              {filter === 'all' && <p className="mt-0.5 text-xs text-slate-400">Clique pour créer le premier fil d'échange.</p>}
+            </div>
+          </div>
         </div>
       ) : (
         <div className="space-y-2">

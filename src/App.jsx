@@ -1613,8 +1613,8 @@ function PlanPreview({
             <RepoImage src={currentSrc} alt={`Plan ${label}`} objectFit="contain" onMissingChange={(missing) => setMissingCards((prev) => ({ ...prev, [currentKey]: missing }))} />
           )
         ) : (
-          <div className="grid h-full place-items-center bg-[#f8f5ef] p-6 text-center">
-            <div className="flex flex-col items-center gap-3">
+          <div className="grid h-full place-items-center p-6 text-center">
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-white/70 bg-white/40 px-8 py-10 shadow-sm backdrop-blur-md">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#b0a89a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="3 9 12 2 21 9"/>
                 <path d="M3 9v11a2 2 0 002 2h14a2 2 0 002-2V9"/>
@@ -2009,7 +2009,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
 
         if (!item0) {
           return (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-black/15 bg-[#faf7f2] py-12 text-center">
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-white/70 bg-white/50 py-12 text-center shadow-sm backdrop-blur-md">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#b0a89a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2"/>
                 <circle cx="8.5" cy="8.5" r="1.5"/>
@@ -8307,7 +8307,7 @@ export default function App() {
                               onClick={() => updateRoomNuance(role, key)}
                               title={color.name}
                               className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
-                                selectedColor === key ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                                (selectedColor === key || (selectedColor?.startsWith("#") && Object.values(color).includes(selectedColor))) ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
                               }`}
                             >
                               <span className="block h-6 w-full rounded-md" style={{ backgroundColor: color.hex }} />
@@ -8344,7 +8344,7 @@ export default function App() {
                           onClick={() => updateRoomNuance("accent", accent.hex)}
                           title={accent.name}
                           className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
-                            activeNuance.accent === accent.hex ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                            (activeNuance.accent === accent.hex || accents[activeNuance.accent]?.hex === accent.hex || (activeNuance.accent === "bois" && accent.hex === baseColors.bois.hex)) ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
                           }`}
                         >
                           <span className="block h-6 w-full rounded-md" style={{ backgroundColor: accent.hex }} />
@@ -8447,7 +8447,7 @@ export default function App() {
               setDeletedImages={setDeletedImages}
               onImageClick={(images, idx) => setLightbox({ images, index: idx ?? 0 })}
             />
-            <section className="rounded-xl border border-black/10 bg-white p-4">
+            <section className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
               <Inspirations
                 room={room}
                 label={preset.label}
@@ -8468,7 +8468,7 @@ export default function App() {
                 onLogActivity={logActivity}
               />
             </section>
-            <section className="rounded-xl border border-black/10 bg-white p-4">
+            <section className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
               <MaterialsSection
                 room={room}
                 materialUploads={materialUploads}

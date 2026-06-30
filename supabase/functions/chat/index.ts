@@ -162,7 +162,7 @@ function buildSystemPrompt(ctx: Record<string, unknown>): string {
     ctx.roomNote ? `Notes: ${ctx.roomNote}` : null,
     ctx.imageMetadataSummary ? `Contexte visuel: ${ctx.imageMetadataSummary}` : null,
     (ctx.todoItems as {id:string,text:string}[])?.length ? `Todos de la pièce: ${(ctx.todoItems as {id:string,text:string}[]).map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}` : null,
-    (ctx.shoppingItems as {id:string,text:string}[])?.length ? `En liste de courses: ${(ctx.shoppingItems as {id:string,text:string}[]).map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}` : null,
+    (ctx.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>}[])?.length ? `En liste de courses: ${(ctx.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>}[]).map(i => { const rx = i.reactions ? ` (réactions: ${Object.entries(i.reactions).map(([e,u]) => `${e} ${u.join(", ")}`).join(" | ")})` : ""; return (i.id ? `[${i.id}] ` : "") + i.text + rx; }).join(", ")}` : null,
     (ctx.persons as string[])?.length ? `Personnes disponibles pour assignation: ${(ctx.persons as string[]).join(", ")}` : null,
     (ctx.materialSummary as string[])?.length ? `Matériaux choisis: ${(ctx.materialSummary as string[]).join("; ")}` : null,
     ctx.allRoomsSummary ? `Autres pièces: ${ctx.allRoomsSummary}` : null,
@@ -184,7 +184,7 @@ function buildGeneralSystemPrompt(
     const parts = [`— ${r.label} (key: "${r.key}"): ${r.line || ""}`];
     if (r.roomNote) parts.push(`  Note: ${r.roomNote}`);
     if (r.todoItems?.length) parts.push(`  Todos: ${r.todoItems.map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}`);
-    if (r.shoppingItems?.length) parts.push(`  En liste: ${r.shoppingItems.map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}`);
+    if (r.shoppingItems?.length) parts.push(`  En liste: ${(r.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>}[]).map(i => { const rx = i.reactions ? ` (réactions: ${Object.entries(i.reactions).map(([e,u]) => `${e} ${u.join(", ")}`).join(" | ")})` : ""; return (i.id ? `[${i.id}] ` : "") + i.text + rx; }).join(", ")}`);
     if (r.materialSummary?.length) parts.push(`  Matériaux: ${r.materialSummary.join("; ")}`);
     return parts.join("\n");
   }).join("\n");

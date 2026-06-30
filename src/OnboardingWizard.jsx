@@ -66,13 +66,12 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
     setStep(nextStep);
   };
 
-  // Auto-join if invite code in URL on mount
+  // Show invite landing instead of auto-joining — gives context before action
   useEffect(() => {
     const invite = new URLSearchParams(window.location.search).get("invite");
     if (invite) {
       setJoinCode(invite);
-      goTo("join");
-      doJoin(invite);
+      goTo("invite-landing");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -277,7 +276,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
   };
 
   const handleWhatsApp = () => {
-    const text = encodeURIComponent(`Je t'invite à rejoindre mon projet déco sur Renoom : ${inviteLink}`);
+    const projectLabel = projectName ? ` "${projectName}"` : "";
+    const text = encodeURIComponent(`🏠 ${firstName} t'invite à rejoindre son projet déco${projectLabel} sur Renoom — inspirations, wishlist et décisions ensemble 👉 ${inviteLink}`);
     window.open(`https://wa.me/?text=${text}`, "_blank");
     setInviteSent(true);
     if (createdProjectId) {
@@ -377,6 +377,15 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
               onCopy={handleCopyInvite}
               onWhatsApp={handleWhatsApp}
               onEnter={() => onComplete(createdProjectId)}
+              projectName={projectName}
+            />
+          )}
+
+          {step === "invite-landing" && (
+            <StepInviteLanding
+              onJoin={() => doJoin()}
+              isSubmitting={isSubmitting}
+              joinError={joinError}
             />
           )}
 

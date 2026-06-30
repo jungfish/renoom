@@ -4700,7 +4700,7 @@ function PersonPicker({ allPersons, value, onSelect, onCreatePerson, onClose }) 
 
 // ─── Section listes (tâches + courses) ───────────────────────────────────────
 
-function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoomItemsFn, projectMembers = [], persons = [], setPersons, savePersonsFn, onLogActivity, itemReactions = {}, currentUserId = null, onToggleReaction = null }) {
+function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoomItemsFn, projectMembers = [], persons = [], setPersons, savePersonsFn, onLogActivity, itemReactions = {}, currentUserId = null, onToggleReaction = null, itemSelections = {}, onToggleSelection = null }) {
   const [shopInput, setShopInput] = useState("");
   const [todoInput, setTodoInput] = useState("");
   const [linkMode, setLinkMode] = useState({ shopping: false, todos: false });
@@ -4710,6 +4710,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
   const [editingDate, setEditingDate] = useState(null);
   const [editingTitleId, setEditingTitleId] = useState(null);
   const [editingTitleValue, setEditingTitleValue] = useState("");
+  const [showMySelections, setShowMySelections] = useState(false);
   const migratedItemIds = useRef(new Set());
 
   const list = roomLists[room] || {};
@@ -4879,9 +4880,20 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     const pickerKey = `new-${listKey}`;
     return (
       <div className="space-y-3">
-        <div>
-          <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{eyebrow}</p>
-          <h3 className="type-h3">{title}</h3>
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{eyebrow}</p>
+            <h3 className="type-h3">{title}</h3>
+          </div>
+          {listKey === "shopping" && (() => {
+            const myCount = items.filter(item => (itemSelections[item.id] || []).some(s => s.userId === currentUserId)).length;
+            return (myCount > 0 || showMySelections) ? (
+              <button type="button" onClick={() => setShowMySelections(v => !v)}
+                className={`mb-0.5 shrink-0 rounded-full border px-2 py-0.5 text-xs transition-colors ${showMySelections ? "border-amber-300 bg-amber-100 text-amber-700" : "border-black/15 text-slate-500 hover:bg-slate-50"}`}>
+                {showMySelections ? "Tout afficher" : `Mes sélections (${myCount})`}
+              </button>
+            ) : null;
+          })()}
         </div>
         {listKey !== "shopping" && !linkMode[listKey] ? (
           <div className="flex gap-2">
@@ -4969,7 +4981,10 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
           <div className="py-8 text-center text-sm text-slate-400">Aucun élément pour l'instant.</div>
         ) : (
           <ul className="space-y-1.5">
-            {(listKey === "shopping" ? items : [...pending, ...done]).map((item) => (
+            {(listKey === "shopping" && showMySelections
+              ? items.filter(item => (itemSelections[item.id] || []).some(s => s.userId === currentUserId))
+              : listKey === "shopping" ? items : [...pending, ...done]
+            ).map((item) => (
               <li key={item.id}
                 className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${item.done && listKey === "shopping" ? "border-amber-200 bg-amber-50" : item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"}`}>
                 <div className="flex items-center gap-2">
@@ -5040,6 +5055,31 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                       onClose={() => setOpenPicker(null)} />
                   )}
                 </div>
+                {listKey === "shopping" && (() => {
+                  const selectors = itemSelections[item.id] || [];
+                  const isMine = selectors.some(s => s.userId === currentUserId);
+                  return (
+                    <div className="relative shrink-0 flex items-center gap-0.5">
+                      {selectors.slice(0, 3).map(s => (
+                        <span key={s.userId}
+                          className={`grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white${isMine && s.userId === currentUserId ? " ring-2 ring-amber-400" : ""}`}
+                          style={{ background: personColor(s.userName) }}
+                          title={s.userName}>
+                          {personInitials(s.userName)}
+                        </span>
+                      ))}
+                      <button type="button"
+                        onClick={() => onToggleSelection && onToggleSelection(item.id)}
+                        className={`grid h-5 w-5 place-items-center rounded-full border text-slate-400 transition-opacity hover:border-amber-500 hover:text-amber-500 opacity-0 group-hover:opacity-100${selectors.length === 0 ? " border-dashed border-slate-400" : " border-transparent"}`}
+                        title={isMine ? "Annuler ma sélection" : "Je sélectionne pour l'achat"}>
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })()}
                 <button type="button" onClick={() => removeItem(listKey, item.id)}
                   className="shrink-0 px-1 text-slate-400 opacity-0 transition-opacity hover:text-slate-700 group-hover:opacity-100">×</button>
                 </div>
@@ -5792,6 +5832,7 @@ export default function App() {
   const [showNewProjectWizard, setShowNewProjectWizard] = useState(false);
   const [roomLists, setRoomLists] = useState({});
   const [itemReactions, setItemReactions] = useState({});
+  const [itemSelections, setItemSelections] = useState({});
   const [roomDocuments, setRoomDocuments] = useState({});
   const [roomOrder, setRoomOrder] = useState(null);
   const [draggingRoom, setDraggingRoom] = useState(null);
@@ -6195,6 +6236,43 @@ export default function App() {
         setItemReactions(map);
       })
       .catch(() => {});
+  };
+
+  const loadSelections = (pid) => {
+    if (!pid) return;
+    authedFetch(`${API_BASE}/load-room-items?projectId=${encodeURIComponent(pid)}&type=selections`)
+      .then(r => r.json())
+      .then(({ selections }) => {
+        if (!Array.isArray(selections)) return;
+        const map = {};
+        for (const s of selections) {
+          if (!map[s.item_id]) map[s.item_id] = [];
+          map[s.item_id].push({ id: s.id, userId: s.user_id, userName: s.user_name });
+        }
+        setItemSelections(map);
+      })
+      .catch(() => {});
+  };
+
+  const toggleSelection = (itemId) => {
+    if (!projectId || !user) return;
+    const userId = user.id;
+    const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email || "Moi";
+    setItemSelections(prev => {
+      const existing = prev[itemId] || [];
+      const alreadySelected = existing.some(s => s.userId === userId);
+      return {
+        ...prev,
+        [itemId]: alreadySelected
+          ? existing.filter(s => s.userId !== userId)
+          : [...existing, { id: `optimistic-${Date.now()}`, userId, userName }],
+      };
+    });
+    authedFetch(`${API_BASE}/save-room`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "selection", projectId, itemId }),
+    }).catch(() => loadSelections(projectId));
   };
 
   const toggleReaction = (itemId, emoji) => {
@@ -6795,6 +6873,11 @@ export default function App() {
   // Charger les réactions emoji des envies
   useEffect(() => {
     if (projectId && user) loadReactions(projectId);
+  }, [projectId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Charger les sélections pour l'achat
+  useEffect(() => {
+    if (projectId && user) loadSelections(projectId);
   }, [projectId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Demander la permission pour les notifications desktop (une seule fois)
@@ -7976,6 +8059,8 @@ export default function App() {
               itemReactions={itemReactions}
               currentUserId={user?.id}
               onToggleReaction={toggleReaction}
+              itemSelections={itemSelections}
+              onToggleSelection={toggleSelection}
             />
             <DocumentsSection
               room={room}

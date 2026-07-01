@@ -342,7 +342,7 @@ async function uploadToBlob(dataUrl, filename) {
     const { url } = await res.json();
     return url;
   } catch {
-    return dataUrl;
+    return null;
   }
 }
 
@@ -1350,7 +1350,7 @@ function AiImageEditor({ imageSrc, imageKind, imageTitle, aiContext, imageMetada
                     onClick={async () => {
                       setIsApplying(true);
                       const url = await uploadToBlob(generatedImage, `ai-${Date.now()}.webp`);
-                      onAddToInspirations(url);
+                      if (url) onAddToInspirations(url);
                       setIsApplying(false);
                       closePanel();
                     }}
@@ -1364,7 +1364,7 @@ function AiImageEditor({ imageSrc, imageKind, imageTitle, aiContext, imageMetada
                     onClick={async () => {
                       setIsApplying(true);
                       const url = await uploadToBlob(generatedImage, `ai-${Date.now()}.webp`);
-                      onApply(url);
+                      if (url) onApply(url);
                       setIsApplying(false);
                       closePanel();
                     }}
@@ -1586,6 +1586,7 @@ function PlanPreview({
   deletedImages,
   setDeletedImages,
   onImageClick,
+  saveMediaKey,
 }) {
   const items = [
     ...(roomPlanImages[room] || []).flatMap((src, i) => {
@@ -1615,7 +1616,9 @@ function PlanPreview({
     const data = await readFileAsDataUrl(file);
     if (typeof data === "string") {
       const url = await uploadToBlob(data, `${currentKey}-${Date.now()}.${extFromDataUrl(data)}`);
+      if (!url) { alert("Échec de l'upload. Réessaie."); return; }
       setPlanUploads((prev) => ({ ...prev, [currentKey]: url }));
+      if (saveMediaKey) saveMediaKey("planUploads", currentKey, url);
       if (!isPdfUrl(url)) {
         const analysis = await analyzeImageForContext({
           image: url,
@@ -1634,7 +1637,12 @@ function PlanPreview({
       const nextIndex = (extraPlanImages[room] || []).length;
       const nextKey = `${room}-plan-extra-${nextIndex}`;
       const url = await uploadToBlob(data, `${nextKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      setExtraPlanImages((prev) => ({ ...prev, [room]: [...(prev[room] || []), url] }));
+      if (!url) { alert("Échec de l'upload. Réessaie."); return; }
+      setExtraPlanImages((prev) => {
+        const newList = [...(prev[room] || []), url];
+        if (saveMediaKey) saveMediaKey("extraPlanImages", room, newList);
+        return { ...prev, [room]: newList };
+      });
       if (!isPdfUrl(url)) {
         const analysis = await analyzeImageForContext({
           image: url,
@@ -1862,7 +1870,7 @@ function PlanPreview({
   );
 }
 
-function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirationLinks, setInspirationLinks, aiContext, aiInspirations, addAiInspiration, imageAnalysis, setImageAnalysis, deletedImages, setDeletedImages, onImageClick, instagramItems, setInstagramItems, onLogActivity }) {
+function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirationLinks, setInspirationLinks, aiContext, aiInspirations, addAiInspiration, imageAnalysis, setImageAnalysis, deletedImages, setDeletedImages, onImageClick, instagramItems, setInstagramItems, onLogActivity, saveMediaKey }) {
   const items = [
     ...(roomInspirationImages[room] || []).flatMap((src, i) => {
       const cardKey = `${room}-${i}`;
@@ -1892,7 +1900,9 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
     const data = await readFileAsDataUrl(file);
     if (typeof data === "string") {
       const url = await uploadToBlob(data, `${cardKey}-${Date.now()}.${extFromDataUrl(data)}`);
+      if (!url) { alert("Échec de l'upload. Réessaie."); return; }
       setUploadedImages((prev) => ({ ...prev, [cardKey]: url }));
+      if (saveMediaKey) saveMediaKey("uploadedImages", cardKey, url);
       const analysis = await analyzeImageForContext({
         image: url,
         context: `Inspiration ${label}, pièce ${label}`,
@@ -1909,7 +1919,8 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
       const nextIndex = (aiInspirations[room] || []).length;
       const nextKey = `${room}-ai-${nextIndex}`;
       const url = await uploadToBlob(data, `${nextKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      addAiInspiration(room, url);
+      if (!url) { alert("Échec de l'upload. Réessaie."); return; }
+      addAiInspiration(room, url);  // addAiInspiration calls saveMediaKey internally
       if (onLogActivity) onLogActivity("inspiration_added", room, {});
       const analysis = await analyzeImageForContext({
         image: url,
@@ -1943,10 +1954,11 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
 
   const handleAddInstagram = (igData) => {
     const id = `${Date.now()}`;
-    setInstagramItems((prev) => ({
-      ...prev,
-      [room]: [...(prev[room] || []), { id, ...igData }],
-    }));
+    setInstagramItems((prev) => {
+      const newList = [...(prev[room] || []), { id, ...igData }];
+      if (saveMediaKey) saveMediaKey("instagramItems", room, newList);
+      return { ...prev, [room]: newList };
+    });
   };
 
   const visibleItems = items
@@ -2101,7 +2113,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
                   imageTitle={`${label} inspiration ${i + 1}`}
                   aiContext={aiContext}
                   imageMetadata={imageAnalysis[cardKey]}
-                  onApply={(image) => setUploadedImages((prev) => ({ ...prev, [cardKey]: image }))}
+                  onApply={(image) => { setUploadedImages((prev) => ({ ...prev, [cardKey]: image })); if (saveMediaKey) saveMediaKey("uploadedImages", cardKey, image); }}
                   onAddToInspirations={(image) => addAiInspiration(room, image)}
                 />
                 <LinkAction
@@ -2193,12 +2205,13 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
                 type="button"
                 onClick={() => {
                   if (deleteConfirm.startsWith(`${room}-ig-`)) {
-                    setInstagramItems((prev) => ({
-                      ...prev,
-                      [room]: (prev[room] || []).filter((ig) => `${room}-ig-${ig.id}` !== deleteConfirm),
-                    }));
+                    setInstagramItems((prev) => {
+                      const newList = (prev[room] || []).filter((ig) => `${room}-ig-${ig.id}` !== deleteConfirm);
+                      if (saveMediaKey) saveMediaKey("instagramItems", room, newList);
+                      return { ...prev, [room]: newList };
+                    });
                   } else {
-                    setDeletedImages((prev) => ({ ...prev, [deleteConfirm]: true }));
+                    setDeletedImages((prev) => { if (saveMediaKey) saveMediaKey("deletedImages", deleteConfirm, true); return { ...prev, [deleteConfirm]: true }; });
                     setUploadedImages((prev) => removeObjectKey(prev, deleteConfirm));
                     setInspirationLinks((prev) => removeObjectKey(prev, deleteConfirm));
                     setImageAnalysis((prev) => removeObjectKey(prev, deleteConfirm));
@@ -2380,6 +2393,7 @@ function MaterialsSection({
   deletedImages,
   setDeletedImages,
   onImageClick,
+  saveMediaKey,
 }) {
   const items = [
     ...(materialsByRoom[room] || []).flatMap((item, i) => {
@@ -2425,7 +2439,9 @@ function MaterialsSection({
     const data = await readFileAsDataUrl(file);
     if (typeof data === "string") {
       const url = await uploadToBlob(data, `${cardKey}-${Date.now()}.${extFromDataUrl(data)}`);
+      if (!url) { alert("Échec de l'upload. Réessaie."); return; }
       setMaterialUploads((prev) => ({ ...prev, [cardKey]: url }));
+      if (saveMediaKey) saveMediaKey("materialUploads", cardKey, url);
       const analysis = await analyzeImageForContext({
         image: url,
         context: `Matériau ${room}, ${cardKey}`,
@@ -2438,10 +2454,11 @@ function MaterialsSection({
   const handleAddFromModal = (linkEntry, meta) => {
     const nextIndex = (extraMaterialImages[room] || []).length;
     const nextKey = `${room}-material-extra-${nextIndex}`;
-    setExtraMaterialImages((prev) => ({
-      ...prev,
-      [room]: [...(prev[room] || []), { type: "link", ...linkEntry }],
-    }));
+    setExtraMaterialImages((prev) => {
+      const newList = [...(prev[room] || []), { type: "link", ...linkEntry }];
+      if (saveMediaKey) saveMediaKey("extraMaterialImages", room, newList);
+      return { ...prev, [room]: newList };
+    });
     if (Object.keys(meta).length) {
       setExtraMaterialMeta((prev) => ({ ...prev, [nextKey]: meta }));
     }
@@ -2557,7 +2574,7 @@ function MaterialsSection({
                       imageTitle={`${item.label} - ${item.value}`}
                       aiContext={aiContext}
                       imageMetadata={imageAnalysis[cardKey]}
-                      onApply={(image) => setMaterialUploads((prev) => ({ ...prev, [cardKey]: image }))}
+                      onApply={(image) => { setMaterialUploads((prev) => ({ ...prev, [cardKey]: image })); if (saveMediaKey) saveMediaKey("materialUploads", cardKey, image); }}
                       onAddToInspirations={(image) => addAiInspiration(room, image)}
                     />
                   )}
@@ -2651,7 +2668,7 @@ function MaterialsSection({
               <button
                 type="button"
                 onClick={() => {
-                  setDeletedImages((prev) => ({ ...prev, [deleteConfirm]: true }));
+                  setDeletedImages((prev) => { if (saveMediaKey) saveMediaKey("deletedImages", deleteConfirm, true); return { ...prev, [deleteConfirm]: true }; });
                   setMaterialUploads((prev) => removeObjectKey(prev, deleteConfirm));
                   setMaterialLinks((prev) => removeObjectKey(prev, deleteConfirm));
                   setImageAnalysis((prev) => removeObjectKey(prev, deleteConfirm));
@@ -4704,6 +4721,7 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, sa
         const ext = file.name.split(".").pop() || "bin";
         const filename = `doc-${room}-${Date.now()}.${ext}`;
         const url = await uploadToBlob(dataUrl, filename);
+        if (!url) { alert("Échec de l'upload. Réessaie."); continue; }
         const doc = {
           id: `doc-${room}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           name: file.name,
@@ -6418,10 +6436,12 @@ export default function App() {
   };
 
   const addAiInspiration = (targetRoom, image) => {
-    setAiInspirations((prev) => ({
-      ...prev,
-      [targetRoom]: [...(prev[targetRoom] || []), image],
-    }));
+    if (!image) return;
+    setAiInspirations((prev) => {
+      const newList = [...(prev[targetRoom] || []), image];
+      saveMediaKey("aiInspirations", targetRoom, newList);
+      return { ...prev, [targetRoom]: newList };
+    });
   };
 
   const handleAddImagesGlobal = async (files) => {
@@ -6432,6 +6452,7 @@ export default function App() {
         const data = await readFileAsDataUrl(file);
         if (typeof data !== "string") return;
         const url = await uploadToBlob(data, `inspo-${room}-${Date.now()}-${Math.random().toString(36).slice(2)}.${extFromDataUrl(data)}`);
+        if (!url) { alert("Échec de l'upload. Réessaie."); return; }
         addAiInspiration(room, url);
         logActivity("inspiration_added", room, {});
         const analysis = await analyzeImageForContext({ image: url, context: `Inspiration ${preset.label}`, section: "inspiration" });
@@ -6719,7 +6740,7 @@ export default function App() {
   };
 
   // snapshot=true uniquement via le bouton "Point de sauvegarde", pas l'auto-save
-  const saveProject = async ({ snapshot = false, snapshotLabel = "" } = {}) => {
+  const saveProject = async ({ snapshot = false, snapshotLabel = "", metaOnly = false } = {}) => {
     const savedAt = new Date().toISOString();
     // Capturer l'ID du projet au début — projectId peut changer pendant l'await (race condition si l'utilisateur switche de projet)
     const currentProjectId = projectId;
@@ -6734,19 +6755,22 @@ export default function App() {
       warmth,
       customRooms,
       hiddenRooms,
-      uploadedImages,
-      inspirationLinks,
-      materialUploads,
-      materialLinks,
-      planUploads,
-      planLinks,
-      extraPlanImages,
-      extraMaterialImages,
-      extraMaterialMeta,
-      aiInspirations,
-      instagramItems,
-      imageAnalysis,
-      deletedImages,
+      // En mode metaOnly, on n'inclut pas le blob média (évite d'écraser les saves atomiques)
+      ...(metaOnly ? {} : {
+        uploadedImages,
+        inspirationLinks,
+        materialUploads,
+        materialLinks,
+        planUploads,
+        planLinks,
+        extraPlanImages,
+        extraMaterialImages,
+        extraMaterialMeta,
+        aiInspirations,
+        instagramItems,
+        imageAnalysis,
+        deletedImages,
+      }),
       roomNuances,
       roomNotes,
       roomLists,
@@ -6769,7 +6793,7 @@ export default function App() {
       const res = await authedFetch(`${API_BASE}/save-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: projectState, id: currentProjectId, snapshot, snapshotLabel }),
+        body: JSON.stringify({ state: projectState, id: currentProjectId, snapshot, snapshotLabel, metaOnly }),
       });
       const data = await res.json();
       const { id } = data;
@@ -6786,7 +6810,16 @@ export default function App() {
     }
   };
 
-  const hydrateState = (saved, { skipRoomSync = false } = {}) => {
+  const saveMediaKey = (mediaType, key, value) => {
+    if (!projectId) return;
+    authedFetch(`${API_BASE}/save-room`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "media-upsert", projectId, mediaType, key, value }),
+    }).catch(() => {});
+  };
+
+  const hydrateState = (saved, { skipRoomSync = false, mergeMedia = false } = {}) => {
     // Scalaires projet — priorité projectConfig (load-project normalisé) puis blob (snapshot restore)
     const cfg = saved.projectConfig || saved;
     if (cfg.room && !skipRoomSync) setRoom(cfg.room);
@@ -6807,19 +6840,37 @@ export default function App() {
 
     // Médias — source normalisée (room_media) ou blob (snapshot restore)
     const media = saved.roomMediaNormalized || saved;
-    if (media.uploadedImages      && Object.keys(media.uploadedImages).length)      setUploadedImages(media.uploadedImages);
-    if (media.inspirationLinks    && Object.keys(media.inspirationLinks).length)    setInspirationLinks(media.inspirationLinks);
-    if (media.materialUploads     && Object.keys(media.materialUploads).length)     setMaterialUploads(media.materialUploads);
-    if (media.materialLinks       && Object.keys(media.materialLinks).length)       setMaterialLinks(media.materialLinks);
-    if (media.planUploads         && Object.keys(media.planUploads).length)         setPlanUploads(media.planUploads);
-    if (media.planLinks           && Object.keys(media.planLinks).length)           setPlanLinks(media.planLinks);
-    if (media.extraPlanImages     && Object.keys(media.extraPlanImages).length)     setExtraPlanImages(media.extraPlanImages);
-    if (media.extraMaterialImages && Object.keys(media.extraMaterialImages).length) setExtraMaterialImages(media.extraMaterialImages);
-    if (media.extraMaterialMeta   && Object.keys(media.extraMaterialMeta).length)   setExtraMaterialMeta(media.extraMaterialMeta);
-    if (media.aiInspirations      && Object.keys(media.aiInspirations).length)      setAiInspirations(media.aiInspirations);
-    if (media.instagramItems      && Object.keys(media.instagramItems).length)      setInstagramItems(media.instagramItems);
-    if (media.imageAnalysis       && Object.keys(media.imageAnalysis).length)       setImageAnalysis(media.imageAnalysis);
-    if (media.deletedImages       && Object.keys(media.deletedImages).length)       setDeletedImages(media.deletedImages);
+    if (mergeMedia) {
+      // Mode sync realtime : merge — remote est la base, local gagne (protège les uploads non encore persistés)
+      if (media.uploadedImages)      setUploadedImages(prev      => ({ ...media.uploadedImages,      ...prev }));
+      if (media.inspirationLinks)    setInspirationLinks(prev    => ({ ...media.inspirationLinks,    ...prev }));
+      if (media.materialUploads)     setMaterialUploads(prev     => ({ ...media.materialUploads,     ...prev }));
+      if (media.materialLinks)       setMaterialLinks(prev       => ({ ...media.materialLinks,       ...prev }));
+      if (media.planUploads)         setPlanUploads(prev         => ({ ...media.planUploads,         ...prev }));
+      if (media.planLinks)           setPlanLinks(prev           => ({ ...media.planLinks,           ...prev }));
+      if (media.extraPlanImages)     setExtraPlanImages(prev     => ({ ...media.extraPlanImages,     ...prev }));
+      if (media.extraMaterialImages) setExtraMaterialImages(prev => ({ ...media.extraMaterialImages, ...prev }));
+      if (media.extraMaterialMeta)   setExtraMaterialMeta(prev   => ({ ...media.extraMaterialMeta,   ...prev }));
+      if (media.aiInspirations)      setAiInspirations(prev      => ({ ...media.aiInspirations,      ...prev }));
+      if (media.instagramItems)      setInstagramItems(prev      => ({ ...media.instagramItems,      ...prev }));
+      if (media.imageAnalysis)       setImageAnalysis(prev       => ({ ...media.imageAnalysis,       ...prev }));
+      if (media.deletedImages)       setDeletedImages(prev       => ({ ...media.deletedImages,       ...prev }));
+    } else {
+      // Mode load initial / snapshot restore : remplacement complet
+      if (media.uploadedImages      && Object.keys(media.uploadedImages).length)      setUploadedImages(media.uploadedImages);
+      if (media.inspirationLinks    && Object.keys(media.inspirationLinks).length)    setInspirationLinks(media.inspirationLinks);
+      if (media.materialUploads     && Object.keys(media.materialUploads).length)     setMaterialUploads(media.materialUploads);
+      if (media.materialLinks       && Object.keys(media.materialLinks).length)       setMaterialLinks(media.materialLinks);
+      if (media.planUploads         && Object.keys(media.planUploads).length)         setPlanUploads(media.planUploads);
+      if (media.planLinks           && Object.keys(media.planLinks).length)           setPlanLinks(media.planLinks);
+      if (media.extraPlanImages     && Object.keys(media.extraPlanImages).length)     setExtraPlanImages(media.extraPlanImages);
+      if (media.extraMaterialImages && Object.keys(media.extraMaterialImages).length) setExtraMaterialImages(media.extraMaterialImages);
+      if (media.extraMaterialMeta   && Object.keys(media.extraMaterialMeta).length)   setExtraMaterialMeta(media.extraMaterialMeta);
+      if (media.aiInspirations      && Object.keys(media.aiInspirations).length)      setAiInspirations(media.aiInspirations);
+      if (media.instagramItems      && Object.keys(media.instagramItems).length)      setInstagramItems(media.instagramItems);
+      if (media.imageAnalysis       && Object.keys(media.imageAnalysis).length)       setImageAnalysis(media.imageAnalysis);
+      if (media.deletedImages       && Object.keys(media.deletedImages).length)       setDeletedImages(media.deletedImages);
+    }
 
     // Nuances — source normalisée ou blob (snapshot)
     if (saved.roomNuancesNormalized) setRoomNuances(saved.roomNuancesNormalized);
@@ -7053,8 +7104,9 @@ export default function App() {
       window.history.replaceState({}, "", `/?p=${data.projectId}`);
       // Charger le projet
       const loaded = await authedFetch(`${API_BASE}/load-project?id=${data.projectId}`).then((r) => r.json());
-      if (loaded.state) {
-        hydrateState(loaded.roomItems?.length ? { ...loaded.state, roomItems: loaded.roomItems } : loaded.state);
+      const loadedCfg = loaded.projectConfig || loaded.state;
+      if (loadedCfg) {
+        hydrateState(loaded.roomItems?.length ? { projectConfig: loadedCfg, roomItems: loaded.roomItems, roomNotesNormalized: loaded.roomNotesNormalized, roomDocumentsNormalized: loaded.roomDocumentsNormalized, roomNuancesNormalized: loaded.roomNuancesNormalized, roomMediaNormalized: loaded.roomMediaNormalized } : { projectConfig: loadedCfg });
         if (typeof loaded.isOwner === "boolean") setIsOwner(loaded.isOwner);
         if (loaded.inviteCode) setInviteCode(loaded.inviteCode);
       }
@@ -7077,7 +7129,7 @@ export default function App() {
             .then((r) => r.json())
             .then(({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }) => {
               if (projectConfig) {
-                hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }, { skipRoomSync: true });
+                hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }, { skipRoomSync: true, mergeMedia: true });
               }
             })
             .catch(() => {})
@@ -7375,22 +7427,14 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-save debounce — silently push changes to Supabase for real-time sharing
+  // Save métadonnées projet dès qu'elles changent (sans le blob média pour ne pas écraser les saves atomiques)
   useEffect(() => {
-    if (!projectId || isApplyingRemoteUpdate.current) return;
-    if (!hydratedRef.current) return;
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(() => {
-      if (!isApplyingRemoteUpdate.current) saveProject();
-    }, 5000);
-    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+    if (!projectId || !hydratedRef.current || isApplyingRemoteUpdate.current) return;
+    saveProject({ metaOnly: true });
   }, [ // eslint-disable-line react-hooks/exhaustive-deps
-    projectId, room, globalAccent, warmth, customRooms, hiddenRooms,
-    uploadedImages, inspirationLinks, materialUploads, materialLinks,
-    planUploads, planLinks, extraPlanImages, extraMaterialImages, extraMaterialMeta,
-    aiInspirations, instagramItems, imageAnalysis, deletedImages,
-    roomNuances, roomNotes, roomLists, roomDocuments, roomOrder,
-    generalContext, generalResources, chatHistory,
+    projectId, globalAccent, globalShade, globalDominantColor, globalPalette,
+    warmth, customRooms, hiddenRooms, roomNuances, roomOrder,
+    generalContext, generalResources,
   ]);
 
   useEffect(() => {
@@ -8614,6 +8658,7 @@ export default function App() {
               deletedImages={deletedImages}
               setDeletedImages={setDeletedImages}
               onImageClick={(images, idx) => setLightbox({ images, index: idx ?? 0 })}
+              saveMediaKey={saveMediaKey}
             />
             <section className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
               <Inspirations
@@ -8634,6 +8679,7 @@ export default function App() {
                 instagramItems={instagramItems}
                 setInstagramItems={setInstagramItems}
                 onLogActivity={logActivity}
+                saveMediaKey={saveMediaKey}
               />
             </section>
             <section className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
@@ -8654,6 +8700,7 @@ export default function App() {
                 deletedImages={deletedImages}
                 setDeletedImages={setDeletedImages}
                 onImageClick={(images, idx) => setLightbox({ images, index: idx ?? 0 })}
+                saveMediaKey={saveMediaKey}
               />
             </section>
           </>

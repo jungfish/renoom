@@ -159,7 +159,7 @@ createServer(async (req, res) => {
         const sbH = getSupabaseHeaders(req, true);
         const eid = encodeURIComponent(id);
         const [projRes, itemsRes, chatRes, notesRes, docsRes, nuancesRes, mediaRes] = await Promise.all([
-          fetch(`${SUPABASE_URL}/rest/v1/projects?id=eq.${eid}&select=state,name,invite_code,owner_id`, { headers: sbH }),
+          fetch(`${SUPABASE_URL}/rest/v1/projects?id=eq.${eid}&select=name,invite_code,owner_id,active_room,global_accent,warmth,general_context,custom_rooms,hidden_rooms,room_order,general_resources,persons,updated_at`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${eid}&select=id,room_key,list_key,text,done,url,image,preview_title,position&order=position.asc`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/chat_messages?project_id=eq.${eid}&select=id,room_key,role,content,image_prompt,error,created_at&order=created_at.asc`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_notes?project_id=eq.${eid}&select=room_key,content`, { headers: sbH }),
@@ -196,8 +196,20 @@ createServer(async (req, res) => {
         }
 
         const mediaRow = (mediaRows || [])[0];
+        const projectConfig = {
+          room: row.active_room || null,
+          globalAccent: row.global_accent || null,
+          warmth: typeof row.warmth === "number" ? row.warmth : null,
+          generalContext: row.general_context || null,
+          customRooms: row.custom_rooms || [],
+          hiddenRooms: row.hidden_rooms || [],
+          roomOrder: row.room_order || null,
+          generalResources: row.general_resources || [],
+          persons: row.persons || [],
+          savedAt: row.updated_at || null,
+        };
         sendJson(res, 200, {
-          state: row.state,
+          projectConfig,
           name: row.name,
           inviteCode: row.invite_code,
           isOwner: row.owner_id === user.id,
@@ -276,7 +288,7 @@ createServer(async (req, res) => {
       const projectId = id || Math.random().toString(36).slice(2, 10);
       const isNew = !id;
       const upsertData = {
-        id: projectId, state, updated_at: new Date().toISOString(),
+        id: projectId, updated_at: new Date().toISOString(),
         active_room:       state.room           || null,
         global_accent:     state.globalAccent   || null,
         warmth:            typeof state.warmth === "number" ? state.warmth : null,
@@ -285,6 +297,7 @@ createServer(async (req, res) => {
         hidden_rooms:      state.hiddenRooms    || [],
         room_order:        state.roomOrder      || null,
         general_resources: state.generalResources || [],
+        persons:           state.persons        || [],
       };
       if (isNew) upsertData.owner_id = user.id;
       const sbRes = await fetch(`${SUPABASE_URL}/rest/v1/projects`, {
@@ -300,7 +313,7 @@ createServer(async (req, res) => {
           body: JSON.stringify({ project_id: projectId, user_id: user.id, role: "owner" }),
         });
       }
-      // Dual-write room_media — fire-and-forget
+      // Dual-write room_media — fire-and-forget, only if there's actual media content and not metaOnly
       const mediaData = {
         uploadedImages: state.uploadedImages || {}, inspirationLinks: state.inspirationLinks || {},
         aiInspirations: state.aiInspirations || {}, instagramItems: state.instagramItems || {},
@@ -309,11 +322,14 @@ createServer(async (req, res) => {
         extraMaterialImages: state.extraMaterialImages || {}, extraMaterialMeta: state.extraMaterialMeta || {},
         planUploads: state.planUploads || {}, planLinks: state.planLinks || {}, extraPlanImages: state.extraPlanImages || {},
       };
-      fetch(`${SUPABASE_URL}/rest/v1/room_media`, {
-        method: "POST",
-        headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" },
-        body: JSON.stringify({ project_id: projectId, data: mediaData, updated_at: new Date().toISOString() }),
-      }).catch(() => {});
+      const hasMedia = !body.metaOnly && Object.values(mediaData).some(v => v && Object.keys(v).length > 0);
+      if (hasMedia) {
+        fetch(`${SUPABASE_URL}/rest/v1/room_media`, {
+          method: "POST",
+          headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" },
+          body: JSON.stringify({ project_id: projectId, data: mediaData, updated_at: new Date().toISOString() }),
+        }).catch(() => {});
+      }
       // Dual-write room_nuances — fire-and-forget
       if (state.roomNuances && typeof state.roomNuances === "object") {
         const nuanceRows = Object.entries(state.roomNuances).map(([roomKey, n]) => ({
@@ -424,6 +440,30 @@ createServer(async (req, res) => {
           const { roomKey, document: doc } = body;
           if (!roomKey || !doc?.id || !doc?.url || !doc?.name) { sendJson(res, 400, { error: "roomKey et document requis." }); return; }
           await fetch(`${SUPABASE_URL}/rest/v1/room_documents`, { method: "POST", headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ id: doc.id, project_id: projectId, room_key: roomKey, name: doc.name, url: doc.url, type: doc.type || null, size: doc.size || null, uploaded_at: doc.uploadedAt || new Date().toISOString() }) });
+          sendJson(res, 200, { ok: true }); return;
+        }
+        if (action === "media-upsert" && req.method === "POST") {
+          const { mediaType, key, value } = body;
+          if (!mediaType || key === undefined) { sendJson(res, 400, { error: "mediaType et key requis." }); return; }
+          const eid = encodeURIComponent(projectId);
+          const existRes = await fetch(`${SUPABASE_URL}/rest/v1/room_media?project_id=eq.${eid}&select=data`, { headers: getSupabaseHeaders(req, true) });
+          const existRows = await existRes.json();
+          const currentData = (existRows[0]?.data) || {};
+          let merged;
+          if (value === null) {
+            const { [key]: _removed, ...rest } = currentData[mediaType] || {};
+            merged = { ...currentData, [mediaType]: rest };
+          } else if (Array.isArray(value)) {
+            merged = { ...currentData, [mediaType]: { ...(currentData[mediaType] || {}), [key]: value } };
+          } else {
+            merged = { ...currentData, [mediaType]: { ...(currentData[mediaType] || {}), [key]: value } };
+          }
+          const uRes = await fetch(`${SUPABASE_URL}/rest/v1/room_media`, {
+            method: "POST",
+            headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify({ project_id: projectId, data: merged, updated_at: new Date().toISOString() }),
+          });
+          if (!uRes.ok) { sendJson(res, 500, { error: await uRes.text() }); return; }
           sendJson(res, 200, { ok: true }); return;
         }
         sendJson(res, 400, { error: "action non reconnue." }); return;

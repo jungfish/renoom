@@ -6674,6 +6674,14 @@ export default function App() {
   };
 
   useEffect(() => {
+    // The onboarding wizard has its own drop zone that stops propagation on
+    // drop, so this window-level listener would set fileDragActive but never
+    // get the matching drop event to clear it — leaving the overlay stuck open.
+    if (showNewProjectWizard) {
+      dragCounterRef.current = 0;
+      setFileDragActive(false);
+      return;
+    }
     const handleDragEnter = (e) => {
       if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
       dragCounterRef.current += 1;
@@ -6718,7 +6726,7 @@ export default function App() {
       window.removeEventListener("drop", handleWindowDrop);
       document.removeEventListener("paste", handlePaste);
     };
-  }, [room, preset, aiInspirations]);
+  }, [room, preset, aiInspirations, showNewProjectWizard]);
 
   const logActivity = async (actionType, roomKey, metadata = {}) => {
     if (!projectId || !user || !import.meta.env.VITE_SUPABASE_URL) return;

@@ -85,8 +85,13 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files || []);
-    const newEntries = files.map(file => ({ file, preview: URL.createObjectURL(file), name: file.name }));
+    const defaultRoom = selectedRooms[0] || "salon";
+    const newEntries = files.map(file => ({ file, preview: URL.createObjectURL(file), name: file.name, room: defaultRoom }));
     setInspoFiles(prev => [...prev, ...newEntries].slice(0, 6));
+  };
+
+  const setFileRoom = (idx, room) => {
+    setInspoFiles(prev => prev.map((f, i) => (i === idx ? { ...f, room } : f)));
   };
 
   const removeFile = (idx) => {
@@ -119,8 +124,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
       const activeRoom = selectedRooms[0] || "salon";
       const generalContext = `${projectName || "Appartement"}, style ${selectedStyle?.label || "moderne"}, pièces : ${selectedRooms.map(r => ROOM_LABELS[r]).join(", ")}.`;
 
-      // Upload local inspiration files
-      const uploadedImages = {};
+      // Upload local inspiration files, grouped by the room each photo was assigned to
+      const aiInspirations = {};
       if (inspoFiles.length > 0) {
         setLoadingMessage("Upload des inspirations…");
         for (let i = 0; i < inspoFiles.length; i++) {
@@ -133,7 +138,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
             });
             if (res.ok) {
               const { url } = await res.json();
-              uploadedImages[`${activeRoom}-${i}`] = url;
+              const targetRoom = inspoFiles[i].room || activeRoom;
+              aiInspirations[targetRoom] = [...(aiInspirations[targetRoom] || []), url];
             }
           } catch {}
         }
@@ -158,9 +164,9 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
         roomOrder: null,
         generalContext,
         generalResources: [],
-        uploadedImages,
+        uploadedImages: {},
         inspirationLinks,
-        aiInspirations: {},
+        aiInspirations,
         instagramItems: {},
         imageAnalysis: {},
         deletedImages: {},
@@ -359,6 +365,9 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
               setInspoUrlInput={setInspoUrlInput}
               onFileChange={handleFileChange}
               onRemoveFile={removeFile}
+              onFileRoomChange={setFileRoom}
+              selectedRooms={selectedRooms}
+              roomLabels={ROOM_LABELS}
               onAddUrl={addInspoUrl}
               onRemoveUrl={(i) => setInspoUrlAdded(prev => prev.filter((_, idx) => idx !== i))}
               fileInputRef={fileInputRef}
@@ -605,7 +614,8 @@ function StepStyle({ decoStyle, setDecoStyle, onNext, onBack }) {
 
 function StepInspo({
   inspoFiles, inspoUrlAdded, inspoUrlInput, setInspoUrlInput,
-  onFileChange, onRemoveFile, onAddUrl, onRemoveUrl, fileInputRef,
+  onFileChange, onRemoveFile, onFileRoomChange, selectedRooms, roomLabels,
+  onAddUrl, onRemoveUrl, fileInputRef,
   onNext, onBack,
 }) {
   const hasContent = inspoFiles.length > 0 || inspoUrlAdded.length > 0;
@@ -690,14 +700,27 @@ function StepInspo({
         {inspoFiles.length > 0 && (
           <div className="mt-2 flex gap-2 flex-wrap">
             {inspoFiles.map((f, i) => (
-              <div key={i} className="relative h-16 w-16 rounded-lg overflow-hidden border border-black/10 shrink-0">
-                <img src={f.preview} alt="" className="h-full w-full object-cover" />
-                <button
-                  onClick={() => onRemoveFile(i)}
-                  className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-black/60 text-white text-xs flex items-center justify-center leading-none"
-                >
-                  ×
-                </button>
+              <div key={i} className="flex flex-col gap-1 shrink-0">
+                <div className="relative h-16 w-16 rounded-lg overflow-hidden border border-black/10">
+                  <img src={f.preview} alt="" className="h-full w-full object-cover" />
+                  <button
+                    onClick={() => onRemoveFile(i)}
+                    className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-black/60 text-white text-xs flex items-center justify-center leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+                {selectedRooms.length > 1 && (
+                  <select
+                    value={f.room}
+                    onChange={(e) => onFileRoomChange(i, e.target.value)}
+                    className="w-16 rounded-md border border-black/10 bg-white px-0.5 py-0.5 text-[10px] text-slate-600 focus:outline-none focus:border-slate-400"
+                  >
+                    {selectedRooms.map((r) => (
+                      <option key={r} value={r}>{roomLabels[r] || r}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             ))}
           </div>

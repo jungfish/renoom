@@ -5223,13 +5223,22 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
             <h3 className="type-h3">{title}</h3>
           </div>
           {listKey === "shopping" && (() => {
-            const myCount = items.filter(item => (itemSelections[item.id] || []).some(s => s.userId === currentUserId)).length;
-            return (myCount > 0 || showMySelections) ? (
-              <button type="button" onClick={() => setShowMySelections(v => !v)}
-                className={`mb-0.5 shrink-0 rounded-full border px-2 py-0.5 text-xs transition-colors ${showMySelections ? "border-amber-300 bg-amber-100 text-amber-700" : "border-black/15 text-slate-500 hover:bg-slate-50"}`}>
-                {showMySelections ? "Tout afficher" : `Mes sélections (${myCount})`}
-              </button>
-            ) : null;
+            const mySelectedItems = items.filter(item => (itemSelections[item.id] || []).some(s => s.userId === currentUserId));
+            const myCount = mySelectedItems.length;
+            if (myCount === 0 && !showMySelections) return null;
+            const myTotal = mySelectedItems.reduce((sum, item) => sum + (typeof item.price === "number" ? item.price : 0), 0);
+            const totalCurrency = mySelectedItems.find(item => item.priceCurrency)?.priceCurrency;
+            return (
+              <div className="mb-0.5 flex shrink-0 items-center gap-2">
+                {myTotal > 0 && (
+                  <span className="text-xs font-semibold text-slate-600">{formatPrice(myTotal, totalCurrency)}</span>
+                )}
+                <button type="button" onClick={() => setShowMySelections(v => !v)}
+                  className={`shrink-0 rounded-full border px-2 py-0.5 text-xs transition-colors ${showMySelections ? "border-amber-300 bg-amber-100 text-amber-700" : "border-black/15 text-slate-500 hover:bg-slate-50"}`}>
+                  {showMySelections ? "Tout afficher" : `Mes sélections (${myCount})`}
+                </button>
+              </div>
+            );
           })()}
         </div>
         {listKey !== "shopping" && !linkMode[listKey] ? (

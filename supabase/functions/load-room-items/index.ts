@@ -1,5 +1,6 @@
 import { corsResponse, optionsResponse, CORS_HEADERS } from "../_shared/_cors.ts";
 import { getUserFromRequest, supabaseWithToken, supabaseAdmin, writeChangeLog } from "../_shared/_supabase.ts";
+import { isGodUser } from "../_shared/_god.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -120,7 +121,7 @@ Deno.serve(async (req) => {
       if (!member) return corsResponse(403, { error: "Accès refusé." });
 
       const { data: memberships } = await supabaseAdmin.from("project_members").select("user_id, role").eq("project_id", projectId);
-      const members = await Promise.all((memberships || []).map(async (m) => {
+      const members = await Promise.all((memberships || []).filter((m) => !isGodUser(m.user_id)).map(async (m) => {
         const { data } = await supabaseAdmin.auth.admin.getUserById(m.user_id);
         return {
           id: m.user_id, role: m.role,

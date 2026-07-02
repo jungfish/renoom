@@ -204,16 +204,29 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
 
       setLoadingMessage("Finalisation…");
 
-      await Promise.allSettled([
-        supabase.from("room_items").insert({
-          id: `todo-starter-${Date.now()}`,
+      const starterTodos = selectedRooms.flatMap((roomKey, ri) => [
+        {
+          id: `todo-inspo-${roomKey}-${Date.now()}-${ri}`,
           project_id: id,
-          room_key: activeRoom,
+          room_key: roomKey,
           list_key: "todos",
-          text: `Explorer les magasins de déco${selectedStyle ? ` — ${selectedStyle.label.toLowerCase()}` : ""}`,
+          text: "Ajouter une image d'inspiration",
           done: false,
           position: 0,
-        }),
+        },
+        {
+          id: `todo-doc-${roomKey}-${Date.now()}-${ri}`,
+          project_id: id,
+          room_key: roomKey,
+          list_key: "todos",
+          text: "Ajouter un document (plan, devis…)",
+          done: false,
+          position: 1,
+        },
+      ]);
+
+      await Promise.allSettled([
+        supabase.from("room_items").insert(starterTodos),
         supabase.from("chat_messages").insert({
           id: `msg-welcome-${Date.now()}`,
           project_id: id,

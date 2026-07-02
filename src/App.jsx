@@ -13,18 +13,93 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 // Comptes "god" : accès à tous les appartements + suppression depuis "Mon espace".
 const GOD_EMAILS = ["matjungfer@gmail.com"];
 
+// Références Farrow & Ball. F&B ne publie pas de codes hexadécimaux officiels : ces valeurs
+// sont des approximations d'écran destinées à l'aperçu, pas des références d'achat de peinture.
+const FB = {
+  pointing: { number: "2003", name: "Pointing", hex: "#F1EDE1" },
+  newWhite: { number: "59", name: "New White", hex: "#F0E9D6" },
+  string: { number: "8", name: "String", hex: "#E9DFC9" },
+  wevet: { number: "273", name: "Wevet", hex: "#E4DED2" },
+  houseWhite: { number: "2012", name: "House White", hex: "#E7E0D0" },
+  oldWhite: { number: "4", name: "Old White", hex: "#E2D9C2" },
+  slipperSatin: { number: "2004", name: "Slipper Satin", hex: "#E0D6C6" },
+  clunch: { number: "2009", name: "Clunch", hex: "#DED3C0" },
+  joasWhite: { number: "226", name: "Joa's White", hex: "#D6C7B0" },
+  oxfordStone: { number: "264", name: "Oxford Stone", hex: "#D2C1AA" },
+  elephantsBreath: { number: "229", name: "Elephant's Breath", hex: "#C4B49E" },
+  farrowsCream: { number: "67", name: "Farrow's Cream", hex: "#F2E7B0" },
+  hay: { number: "37", name: "Hay", hex: "#E8D093" },
+  borrowedLight: { number: "235", name: "Borrowed Light", hex: "#D9E1DE" },
+  parmaGray: { number: "27", name: "Parma Gray", hex: "#B7C0C2" },
+  stoneBlue: { number: "86", name: "Stone Blue", hex: "#7E9291" },
+  ovalRoomBlue: { number: "85", name: "Oval Room Blue", hex: "#7B99A0" },
+  greenGround: { number: "206", name: "Green Ground", hex: "#CDD9C7" },
+  cookingAppleGreen: { number: "32", name: "Cooking Apple Green", hex: "#C3CBAA" },
+  yeabridgeGreen: { number: "287", name: "Yeabridge Green", hex: "#B4BB98" },
+  vertDeTerre: { number: "234", name: "Vert de Terre", hex: "#A6B597" },
+  lichen: { number: "19", name: "Lichen", hex: "#99AA8C" },
+  cardRoomGreen: { number: "79", name: "Card Room Green", hex: "#7F8F74" },
+  bancha: { number: "298", name: "Bancha", hex: "#6C7F5C" },
+  calkeGreen: { number: "34", name: "Calke Green", hex: "#54634E" },
+  printRoomYellow: { number: "69", name: "Print Room Yellow", hex: "#E4C77A" },
+  yellowGround: { number: "218", name: "Yellow Ground", hex: "#D2A857" },
+  indiaYellow: { number: "66", name: "India Yellow", hex: "#BE8A3E" },
+  tannersBrown: { number: "255", name: "Tanner's Brown", hex: "#7A5230" },
+  settingPlaster: { number: "231", name: "Setting Plaster", hex: "#E0BDAC" },
+  deadSalmon: { number: "28", name: "Dead Salmon", hex: "#D9AE8E" },
+  cinderRose: { number: "246", name: "Cinder Rose", hex: "#C39686" },
+  charlottesLocks: { number: "268", name: "Charlotte's Locks", hex: "#B26F52" },
+  londonClay: { number: "244", name: "London Clay", hex: "#7D6A55" },
+  downPipe: { number: "26", name: "Down Pipe", hex: "#585B5C" },
+  offBlack: { number: "57", name: "Off-Black", hex: "#2C2B29" },
+};
+
+const FARROW_BALL_LIBRARY = Object.values(FB);
+const FARROW_BALL_BY_HEX = Object.fromEntries(FARROW_BALL_LIBRARY.map(entry => [entry.hex.toUpperCase(), entry]));
+
+function fbLabel(entry) {
+  return `${entry.name} N°${entry.number}`;
+}
+
+function hexToRgbTriplet(hex) {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function nearestFarrowBall(hex) {
+  const [r, g, b] = hexToRgbTriplet(hex);
+  let best = null;
+  let bestDist = Infinity;
+  for (const entry of FARROW_BALL_LIBRARY) {
+    const [er, eg, eb] = hexToRgbTriplet(entry.hex);
+    const dist = (r - er) ** 2 + (g - eg) ** 2 + (b - eb) ** 2;
+    if (dist < bestDist) { bestDist = dist; best = entry; }
+  }
+  return best;
+}
+
+// Décrit un hex avec sa référence Farrow & Ball (exacte si connue, sinon la plus proche) :
+// on n'affiche jamais un code hexadécimal brut à l'utilisateur.
+function describeColor(hex) {
+  if (!hex) return "";
+  const exact = FARROW_BALL_BY_HEX[hex.toUpperCase()];
+  if (exact) return fbLabel(exact);
+  const near = nearestFarrowBall(hex);
+  return near ? `≈ ${fbLabel(near)}` : hex.toUpperCase();
+}
+
 const baseColors = {
-  creme: { name: "Crème chaud", light: "#FAF6F0", hex: "#F4F1EA", medium: "#E8DFD3", dark: "#D8CEC1" },
-  bleu: { name: "Bleu clair grisé", light: "#DCE8ED", hex: "#b8c9d0", medium: "#9fb7bf", dark: "#7f9ea8" },
-  vert: { name: "Vert sauge", light: "#C8D1C4", hex: "#A8B5A2", medium: "#7A8F7A", dark: "#5F7463" },
-  bois: { name: "Chêne clair", light: "#E4C896", hex: "#D0AA6C", medium: "#B98945", dark: "#8B6232" },
+  creme: { name: fbLabel(FB.string), light: FB.newWhite.hex, hex: FB.string.hex, medium: FB.slipperSatin.hex, dark: FB.oxfordStone.hex },
+  bleu: { name: fbLabel(FB.parmaGray), light: FB.borrowedLight.hex, hex: FB.parmaGray.hex, medium: FB.stoneBlue.hex, dark: FB.ovalRoomBlue.hex },
+  vert: { name: fbLabel(FB.vertDeTerre), light: FB.cookingAppleGreen.hex, hex: FB.vertDeTerre.hex, medium: FB.cardRoomGreen.hex, dark: FB.calkeGreen.hex },
+  bois: { name: fbLabel(FB.printRoomYellow), light: FB.printRoomYellow.hex, hex: FB.yellowGround.hex, medium: FB.indiaYellow.hex, dark: FB.tannersBrown.hex },
 };
 
 const accents = {
-  butter: { name: "Jaune beurre", hex: "#FCF8D5" },
-  olive: { name: "Olive doux", hex: "#B7C3A5" },
-  sky: { name: "Bleu ciel très pâle", hex: "#DCE8ED" },
-  lin: { name: "Lin sable", hex: "#E9DFC8" },
+  butter: { name: fbLabel(FB.farrowsCream), hex: FB.farrowsCream.hex },
+  olive: { name: fbLabel(FB.yeabridgeGreen), hex: FB.yeabridgeGreen.hex },
+  sky: { name: fbLabel(FB.borrowedLight), hex: FB.borrowedLight.hex },
+  lin: { name: fbLabel(FB.oldWhite), hex: FB.oldWhite.hex },
 };
 
 const CHAT_HISTORY_MAX = 50;
@@ -216,35 +291,35 @@ const materialsByRoom = {
 const shadeMap = { clair: "light", moyen: "hex", soutenu: "medium", fonce: "dark" };
 
 const PALETTE_PRESETS = [
-  { hex: "#DCE8ED", name: "Bleu pâle" },
-  { hex: "#b8c9d0", name: "Bleu grisé" },
-  { hex: "#9fb7bf", name: "Bleu doux" },
-  { hex: "#7f9ea8", name: "Bleu soutenu" },
-  { hex: "#C5D5C0", name: "Vert pâle" },
-  { hex: "#A8B5A2", name: "Vert sauge" },
-  { hex: "#8B9E85", name: "Vert soutenu" },
-  { hex: "#6B8F71", name: "Vert forêt" },
-  { hex: "#F4F1EA", name: "Crème chaud" },
-  { hex: "#EDE8DE", name: "Lin naturel" },
-  { hex: "#E8DDD0", name: "Sable doux" },
-  { hex: "#D4C5B0", name: "Taupe clair" },
-  { hex: "#C2B09A", name: "Taupe moyen" },
-  { hex: "#E4C896", name: "Chêne clair" },
-  { hex: "#D0AA6C", name: "Chêne doré" },
-  { hex: "#B98945", name: "Ambre" },
-  { hex: "#FCF8D5", name: "Beurre" },
-  { hex: "#F5E6C8", name: "Miel pâle" },
-  { hex: "#B7C3A5", name: "Olive doux" },
-  { hex: "#F2D5C4", name: "Blush" },
-  { hex: "#E8C4A0", name: "Pêche rosé" },
-  { hex: "#C9A89A", name: "Terracotta pâle" },
-  { hex: "#B07D6E", name: "Terracotta" },
-  { hex: "#8B7355", name: "Brun chaud" },
-  { hex: "#4A5568", name: "Ardoise" },
-  { hex: "#2D3748", name: "Anthracite" },
-  { hex: "#E8E4DE", name: "Blanc cassé" },
-  { hex: "#F8F6F2", name: "Blanc chaud" },
-];
+  FB.borrowedLight,
+  FB.parmaGray,
+  FB.stoneBlue,
+  FB.ovalRoomBlue,
+  FB.greenGround,
+  FB.vertDeTerre,
+  FB.lichen,
+  FB.bancha,
+  FB.string,
+  FB.clunch,
+  FB.houseWhite,
+  FB.joasWhite,
+  FB.elephantsBreath,
+  FB.printRoomYellow,
+  FB.yellowGround,
+  FB.indiaYellow,
+  FB.farrowsCream,
+  FB.hay,
+  FB.yeabridgeGreen,
+  FB.settingPlaster,
+  FB.deadSalmon,
+  FB.cinderRose,
+  FB.charlottesLocks,
+  FB.londonClay,
+  FB.downPipe,
+  FB.offBlack,
+  FB.wevet,
+  FB.pointing,
+].map(entry => ({ hex: entry.hex, name: fbLabel(entry) }));
 
 function textColor(hex) {
   const c = hex.replace("#", "");
@@ -4345,8 +4420,8 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
     setRoomInputOpen((prev) => ({ ...prev, [roomKey]: false }));
   };
 
-  // Collect all items across all rooms
-  const allItemsFlat = orderedActiveRooms.flatMap((roomKey) => {
+  // Collect all items across all rooms + the room-agnostic "Appartement" bucket
+  const allItemsFlat = ["general", ...orderedActiveRooms].flatMap((roomKey) => {
     const list = roomLists[roomKey] || {};
     const shopping = filter !== "todos" ? (list.shopping || []).map((i) => ({ ...i, listKey: "shopping", roomKey })) : [];
     const todos = filter !== "shopping" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey })) : [];
@@ -4425,7 +4500,7 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
           )}
           {showRoom && (
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
-              {allRoomPresets[roomKey]?.label}
+              {roomKey === "general" ? "Appartement" : allRoomPresets[roomKey]?.label}
             </span>
           )}
           {/* Due date */}
@@ -4524,9 +4599,9 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
         </div>
       </div>
 
-      {/* Vue par pièce */}
-      {groupBy === "room" && orderedActiveRooms.map((key) => {
-        const preset = allRoomPresets[key];
+      {/* Vue par pièce (+ section "Appartement" pour les éléments non liés à une pièce) */}
+      {groupBy === "room" && ["general", ...orderedActiveRooms].map((key) => {
+        const preset = key === "general" ? { label: "Appartement" } : allRoomPresets[key];
         const list = roomLists[key] || {};
         const shopping = filter !== "todos" ? (list.shopping || []).map((i) => ({ ...i, listKey: "shopping", roomKey: key })) : [];
         const todos = filter !== "shopping" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey: key })) : [];
@@ -4721,7 +4796,7 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, sa
     try {
       for (const file of Array.from(files)) {
         const dataUrl = await readFileAsDataUrl(file);
-        const ext = file.name.split(".").pop() || "bin";
+        const ext = extFromDataUrl(dataUrl);
         const filename = `doc-${room}-${Date.now()}.${ext}`;
         const url = await uploadToBlob(dataUrl, filename);
         if (!url) { alert("Échec de l'upload. Réessaie."); continue; }
@@ -5611,6 +5686,41 @@ function translateAuthError(error) {
   return "Une erreur est survenue. Réessaie.";
 }
 
+function PasswordInput({ value, onChange, placeholder, autoComplete, className }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className={`${className} pr-11`}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        tabIndex={-1}
+        title={visible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+      >
+        {visible ? (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+            <line x1="1" y1="1" x2="23" y2="23" />
+          </svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+}
+
 function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPassword }) {
   const [slide, setSlide] = useState(0);
   const inviteCode = new URLSearchParams(window.location.search).get("invite");
@@ -5837,8 +5947,7 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
                 className="w-full rounded-xl border border-black/12 bg-white px-4 py-3 text-sm text-slate-800 shadow-sm outline-none focus:ring-2 focus:ring-black/20"
               />
               {mode !== "forgot" && (
-                <input
-                  type="password"
+                <PasswordInput
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Mot de passe"
@@ -5988,16 +6097,14 @@ function SetNewPasswordScreen({ onUpdatePassword }) {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3">
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Nouveau mot de passe"
               autoComplete="new-password"
               className="w-full rounded-xl border border-black/12 bg-white px-4 py-3 text-sm text-slate-800 shadow-sm outline-none focus:ring-2 focus:ring-black/20"
             />
-            <input
-              type="password"
+            <PasswordInput
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="Confirmer le mot de passe"
@@ -6015,78 +6122,6 @@ function SetNewPasswordScreen({ onUpdatePassword }) {
             </button>
           </form>
         )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Écran rejoindre ou créer un appartement ─────────────────────────────────
-
-function JoinOrCreateScreen({ user, onJoin, onCreateNew, signOut }) {
-  const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleJoin = async () => {
-    const cleaned = code.trim().toLowerCase();
-    if (!cleaned) return;
-    setLoading(true);
-    setError("");
-    try {
-      const result = await onJoin(cleaned);
-      if (!result?.ok) setError(result?.error || "Code invalide.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-[#FAF6F0] flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-sm space-y-4">
-        <div className="mb-6 text-center">
-          <p className="font-sans text-xs font-semibold uppercase tracking-[0.25em] text-slate-400 mb-3">Renoom</p>
-          <h1 className="text-2xl font-semibold text-slate-900">Quel appartement ?</h1>
-          <p className="mt-2 text-sm text-slate-500">Rejoignez un projet existant ou créez le vôtre.</p>
-        </div>
-
-        {/* Rejoindre par code */}
-        <div className="rounded-xl border border-black/10 bg-white p-5 space-y-3">
-          <h2 className="text-sm font-semibold text-slate-700">Rejoindre avec un code</h2>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-              placeholder="abc123"
-              maxLength={12}
-              className="flex-1 rounded-lg border border-black/15 bg-[#fafaf8] px-3 py-2 text-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-slate-900/20"
-            />
-            <button
-              onClick={() => handleJoin()}
-              disabled={loading || !code.trim()}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
-            >
-              {loading ? "…" : "Rejoindre"}
-            </button>
-          </div>
-          {error ? <p className="text-xs text-red-500">{error}</p> : null}
-        </div>
-
-        {/* Créer un nouveau projet */}
-        <div className="rounded-xl border border-black/10 bg-white p-5 space-y-3">
-          <h2 className="text-sm font-semibold text-slate-700">Nouveau projet</h2>
-          <button
-            onClick={onCreateNew}
-            className="w-full rounded-lg border border-black/15 bg-[#fafaf8] px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
-          >
-            + Créer un appartement vide
-          </button>
-        </div>
-
-        <button onClick={signOut} className="w-full text-center text-xs text-slate-400 hover:text-slate-600 py-2">
-          Se déconnecter ({user?.email})
-        </button>
       </div>
     </div>
   );
@@ -6391,7 +6426,7 @@ export default function App() {
   const [roomNuances, setRoomNuances] = useState(INITIAL_ROOM_NUANCES);
   const [roomNotes, setRoomNotes] = useState({});
   const [viewMode, setViewMode] = useState("room");
-  const [roomMode, setRoomMode] = useState("inspirations");
+  const [roomMode, setRoomMode] = useState("liste");
   const [generalMode, setGeneralMode] = useState("todos");
   const lastRoomModeRef = useRef({});
 
@@ -6613,6 +6648,14 @@ export default function App() {
     setCustomRooms((prev) => [...prev, newRoom]);
     setRoomNuances((prev) => ({ ...prev, [key]: { dominant: "moyen", secondary: "moyen", accent: globalAccent } }));
     setRoomNotes((prev) => ({ ...prev, [key]: "" }));
+
+    const defaultTodos = [
+      { id: `todos-${Date.now()}-1`, text: "Ajouter une image d'inspiration", done: false },
+      { id: `todos-${Date.now()}-2`, text: "Ajouter un document (plan, devis…)", done: false },
+    ];
+    setRoomLists((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), todos: defaultTodos } }));
+    if (projectId) saveRoomItemsToServer(projectId, key, "todos", defaultTodos);
+
     setRoom(key);
     setMobileMenuOpen(false);
   };
@@ -7253,58 +7296,6 @@ export default function App() {
       });
   };
 
-  const handleCreateNewProject = async () => {
-    hydratedRef.current = false;
-    setUploadedImages({});
-    setInspirationLinks({});
-    setMaterialUploads({});
-    setMaterialLinks({});
-    setPlanUploads({});
-    setPlanLinks({});
-    setExtraPlanImages({});
-    setExtraMaterialImages({});
-    setExtraMaterialMeta({});
-    setAiInspirations({});
-    setInstagramItems({});
-    setImageAnalysis({});
-    setDeletedImages({});
-    setRoomNuances({});
-    setRoomNotes({});
-    setRoomLists({});
-    setRoomDocuments({});
-    setHiddenRooms([]);
-    setCustomRooms([]);
-    setGlobalAccent("butter");
-    setGlobalShade("moyen");
-    setGlobalDominantColor("bleu");
-    setGlobalPalette({
-      dominante: { hex: "#b8c9d0", name: "Bleu grisé" },
-      secondaire: { hex: "#F4F1EA", name: "Crème chaud" },
-      sol: { hex: "#C2B09A", name: "Taupe moyen" },
-      accents: [
-        { hex: "#D0AA6C", name: "Chêne doré" },
-        { hex: "#FCF8D5", name: "Beurre" },
-        { hex: "#B7C3A5", name: "Olive doux" },
-      ],
-    });
-    setRoomOrder(null);
-    setChatHistory({});
-    setShowProjectPicker(false);
-    setProjectId(null);
-    window.history.replaceState({}, "", "/");
-    const res = await authedFetch(`${API_BASE}/save-project`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ state: { version: 1, savedAt: new Date().toISOString() } }),
-    });
-    const data = await res.json();
-    if (data.id) {
-      setProjectId(data.id);
-      window.history.replaceState({}, "", `/?p=${data.id}`);
-      hydratedRef.current = true;
-    }
-  };
-
   const handleCreateSnapshot = async (label) => {
     if (!hydratedRef.current) return;
     setIsSavingSnapshot(true);
@@ -7717,7 +7708,7 @@ export default function App() {
   }, [showProjectPicker]);
 
   useEffect(() => {
-    setRoomMode(lastRoomModeRef.current[room] || "inspirations");
+    setRoomMode(lastRoomModeRef.current[room] || "liste");
   }, [room]);
 
   const getRoomColors = (roomKey) => {
@@ -7754,12 +7745,16 @@ export default function App() {
   if (!projectId) {
     if (!showOnboarding) return <div className="min-h-screen bg-[#FAF6F0]" />;
     return (
-      <JoinOrCreateScreen
-        user={user}
-        onJoin={handleJoinProject}
-        onCreateNew={handleCreateNewProject}
-        signOut={signOut}
-      />
+      <div className="fixed inset-0 z-[60] bg-[#FAF6F0]">
+        <OnboardingWizard
+          user={user}
+          session={session}
+          initialStep="path"
+          onComplete={(newId) => { setShowOnboarding(false); switchProject(newId); }}
+          onJoinProject={handleJoinProject}
+          signOut={signOut}
+        />
+      </div>
     );
   }
 
@@ -8055,16 +8050,13 @@ export default function App() {
                     )}
                   </div>
                 ))}
-                <div className="border-t border-black/[0.06] px-3 py-2">
+                <div className="border-t border-black/[0.06] px-3 py-1.5">
                   <button
                     type="button"
                     onClick={() => { setShowProjectPicker(false); setShowNewProjectWizard(true); }}
-                    className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-[12.5px] text-[#8A8680] transition-colors hover:bg-[#F5F3EE] hover:text-[#1C1A17]"
+                    className="w-full rounded-md px-1 py-1 text-left text-[11px] text-[#ADA89E] transition-colors hover:text-[#8A8680]"
                   >
-                    <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                      <path d="M7 2v10M2 7h10" />
-                    </svg>
-                    Nouveau projet
+                    Créer un tout nouvel appartement
                   </button>
                 </div>
               </div>
@@ -8317,9 +8309,10 @@ export default function App() {
             <div className="mr-2 h-3.5 w-px flex-shrink-0 bg-black/10 lg:hidden" />
             <div className="flex gap-1">
               {[
+                { key: "liste", label: "Liste" },
                 { key: "inspirations", label: "Inspirations" },
                 { key: "couleurs", label: "Couleurs" },
-                { key: "liste", label: "Liste" },
+                { key: "documents", label: "Documents" },
                 { key: "discussions", label: "Discussions" },
               ].map(({ key, label }) => {
                 const pending = key === "liste" ? roomPendingCount(room) : key === "discussions" ? (discussionsCache[room] || []).reduce((sum, d) => sum + (d.unread_count || 0), 0) : 0;
@@ -8624,11 +8617,26 @@ export default function App() {
               )}
             </>
           ) : generalMode === "ressources" ? (
-            <DocumentsGlobalView
-              orderedActiveRooms={orderedActiveRooms}
-              allRoomPresets={allRoomPresets}
-              roomDocuments={roomDocuments}
-            />
+            <div className="space-y-5">
+              <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
+                <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Appartement</p>
+                <h2 className="type-h2">Documents généraux</h2>
+                <p className="mt-1 text-sm text-slate-600">Devis ou plans qui concernent tout l'appartement, sans lien avec une pièce précise.</p>
+              </div>
+              <DocumentsSection
+                room="general"
+                roomDocuments={roomDocuments}
+                setRoomDocuments={setRoomDocuments}
+                projectId={projectId}
+                saveDocFn={saveRoomDocumentToServer}
+                deleteDocFn={deleteRoomDocumentFromServer}
+              />
+              <DocumentsGlobalView
+                orderedActiveRooms={orderedActiveRooms}
+                allRoomPresets={allRoomPresets}
+                roomDocuments={roomDocuments}
+              />
+            </div>
           ) : (
             <ActivityFeedView
               activityFeed={activityFeed.filter(e => e.user_id !== user?.id)}
@@ -9001,15 +9009,16 @@ export default function App() {
               itemSelections={itemSelections}
               onToggleSelection={toggleSelection}
             />
-            <DocumentsSection
-              room={room}
-              roomDocuments={roomDocuments}
-              setRoomDocuments={setRoomDocuments}
-              projectId={projectId}
-              saveDocFn={saveRoomDocumentToServer}
-              deleteDocFn={deleteRoomDocumentFromServer}
-            />
           </div>
+        ) : roomMode === "documents" ? (
+          <DocumentsSection
+            room={room}
+            roomDocuments={roomDocuments}
+            setRoomDocuments={setRoomDocuments}
+            projectId={projectId}
+            saveDocFn={saveRoomDocumentToServer}
+            deleteDocFn={deleteRoomDocumentFromServer}
+          />
         ) : roomMode === "discussions" ? (
           <DiscussionsPanel
             room={room}

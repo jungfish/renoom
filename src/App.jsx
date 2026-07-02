@@ -3781,13 +3781,17 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelec
           if (saveNoteFn && projectId) saveNoteFn(projectId, targetRoom, call.args.note);
           notices.push(`Note mise à jour${roomSuffix}.`);
         } else if (call.name === "update_item" && setRoomLists) {
-          const { item_id, list_type, due_date, assignee } = call.args;
+          const { item_id, list_type, due_date, assignee, price, price_currency } = call.args;
           const listKey = list_type === "shopping" ? "shopping" : "todos";
           setRoomLists((prev) => {
             const currentItems = (prev[targetRoom] || {})[listKey] || [];
             const patch = {};
             if ("due_date" in call.args) patch.dueDate = due_date || undefined;
             if ("assignee" in call.args) patch.assignee = assignee || undefined;
+            if ("price" in call.args) {
+              patch.price = typeof price === "number" ? price : undefined;
+              patch.priceCurrency = typeof price === "number" ? (price_currency || "EUR") : undefined;
+            }
             const newItems = currentItems.map((item) => item.id === item_id ? { ...item, ...patch } : item);
             if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, targetRoom, listKey, newItems);
             return { ...prev, [targetRoom]: { ...(prev[targetRoom] || {}), [listKey]: newItems } };
@@ -3795,6 +3799,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelec
           const parts = [];
           if ("due_date" in call.args) parts.push(due_date ? `échéance ${due_date}` : "échéance supprimée");
           if ("assignee" in call.args) parts.push(assignee ? `assigné à ${assignee}` : "responsable retiré");
+          if ("price" in call.args) parts.push(typeof price === "number" ? `prix ${formatPrice(price, price_currency)}` : "prix supprimé");
           if (parts.length) notices.push(`Item mis à jour (${parts.join(", ")})${roomSuffix}.`);
         }
       }

@@ -71,7 +71,7 @@ const ROOM_TOOLS = [
   {
     type: "function",
     name: "update_item",
-    description: "Modifie la due date ou le responsable d'un todo ou d'une envie existant. Utilise l'ID exact fourni dans le contexte. N'inclus que les champs à modifier.",
+    description: "Modifie la due date, le responsable ou le prix d'un todo ou d'une envie existant. Utilise l'ID exact fourni dans le contexte. N'inclus que les champs à modifier.",
     parameters: {
       type: "object",
       properties: {
@@ -79,6 +79,8 @@ const ROOM_TOOLS = [
         item_id: { type: "string", description: "ID exact de l'item tel qu'il apparaît dans le contexte entre crochets" },
         due_date: { type: "string", description: "Date d'échéance au format YYYY-MM-DD, ou chaîne vide '' pour supprimer l'échéance" },
         assignee: { type: "string", description: "Nom exact du responsable (doit figurer dans la liste des personnes), ou chaîne vide '' pour retirer" },
+        price: { type: "number", description: "Nouveau prix de l'article (uniquement pour les envies/achats)" },
+        price_currency: { type: "string", description: "Devise du prix, ex: EUR, USD. Par défaut EUR." },
       },
       required: ["list_type", "item_id"],
     },
@@ -134,7 +136,7 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
     {
       type: "function",
       name: "update_item",
-      description: "Modifie la due date ou le responsable d'un todo ou d'une envie existant. Utilise l'ID exact fourni dans le contexte. N'inclus que les champs à modifier.",
+      description: "Modifie la due date, le responsable ou le prix d'un todo ou d'une envie existant. Utilise l'ID exact fourni dans le contexte. N'inclus que les champs à modifier.",
       parameters: {
         type: "object",
         properties: {
@@ -143,6 +145,8 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
           item_id: { type: "string", description: "ID exact de l'item tel qu'il apparaît dans le contexte entre crochets" },
           due_date: { type: "string", description: "Date d'échéance au format YYYY-MM-DD, ou chaîne vide '' pour supprimer l'échéance" },
           assignee: { type: "string", description: "Nom exact du responsable (doit figurer dans la liste des personnes), ou chaîne vide '' pour retirer" },
+          price: { type: "number", description: "Nouveau prix de l'article (uniquement pour les envies/achats)" },
+          price_currency: { type: "string", description: "Devise du prix, ex: EUR, USD. Par défaut EUR." },
         },
         required: ["room_key", "list_type", "item_id"],
       },

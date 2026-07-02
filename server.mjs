@@ -159,7 +159,7 @@ createServer(async (req, res) => {
         const sbH = getSupabaseHeaders(req, true);
         const eid = encodeURIComponent(id);
         const [projRes, itemsRes, chatRes, notesRes, docsRes, nuancesRes, mediaRes] = await Promise.all([
-          fetch(`${SUPABASE_URL}/rest/v1/projects?id=eq.${eid}&select=name,invite_code,owner_id,active_room,global_accent,warmth,general_context,custom_rooms,hidden_rooms,room_order,general_resources,persons,updated_at`, { headers: sbH }),
+          fetch(`${SUPABASE_URL}/rest/v1/projects?id=eq.${eid}&select=name,invite_code,owner_id,active_room,view_mode,general_mode,global_accent,warmth,general_context,custom_rooms,hidden_rooms,room_order,general_resources,persons,updated_at`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${eid}&select=id,room_key,list_key,text,done,url,image,preview_title,position&order=position.asc`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/chat_messages?project_id=eq.${eid}&select=id,room_key,role,content,image_prompt,error,created_at&order=created_at.asc`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_notes?project_id=eq.${eid}&select=room_key,content`, { headers: sbH }),
@@ -198,6 +198,8 @@ createServer(async (req, res) => {
         const mediaRow = (mediaRows || [])[0];
         const projectConfig = {
           room: row.active_room || null,
+          viewMode: row.view_mode || null,
+          generalMode: row.general_mode || null,
           globalAccent: row.global_accent || null,
           warmth: typeof row.warmth === "number" ? row.warmth : null,
           generalContext: row.general_context || null,
@@ -290,6 +292,8 @@ createServer(async (req, res) => {
       const upsertData = {
         id: projectId, updated_at: new Date().toISOString(),
         active_room:       state.room           || null,
+        view_mode:         state.viewMode       || null,
+        general_mode:      state.generalMode    || null,
         global_accent:     state.globalAccent   || null,
         warmth:            typeof state.warmth === "number" ? state.warmth : null,
         general_context:   state.generalContext || null,
@@ -436,6 +440,12 @@ createServer(async (req, res) => {
           await fetch(`${SUPABASE_URL}/rest/v1/room_documents?id=eq.${encodeURIComponent(documentId)}&project_id=eq.${encodeURIComponent(projectId)}`, { method: "DELETE", headers: getSupabaseHeaders(req, true) });
           sendJson(res, 200, { ok: true }); return;
         }
+        if (action === "chat-message" && req.method === "DELETE") {
+          const { roomKey } = body;
+          if (!roomKey) { sendJson(res, 400, { error: "roomKey requis." }); return; }
+          await fetch(`${SUPABASE_URL}/rest/v1/chat_messages?project_id=eq.${encodeURIComponent(projectId)}&room_key=eq.${encodeURIComponent(roomKey)}`, { method: "DELETE", headers: getSupabaseHeaders(req, true) });
+          sendJson(res, 200, { ok: true }); return;
+        }
         if (action === "document" && req.method === "POST") {
           const { roomKey, document: doc } = body;
           if (!roomKey || !doc?.id || !doc?.url || !doc?.name) { sendJson(res, 400, { error: "roomKey et document requis." }); return; }
@@ -475,6 +485,10 @@ createServer(async (req, res) => {
       if (!url) { sendJson(res, 400, { error: "url requis." }); return; }
       try {
         const pageRes = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; bot/1.0)" }, redirect: "follow", signal: AbortSignal.timeout(8000) });
+        if (!pageRes.ok) {
+          sendJson(res, 200, { url, ok: false, status: pageRes.status, title: null, description: null, image: null });
+          return;
+        }
         const html = await pageRes.text();
         const getMeta = (prop) => {
           const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i"))
@@ -484,11 +498,12 @@ createServer(async (req, res) => {
         const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
         sendJson(res, 200, {
           url,
+          ok: true,
           title: getMeta("og:title") || getMeta("twitter:title") || titleMatch?.[1]?.trim() || null,
           description: getMeta("og:description") || getMeta("twitter:description") || getMeta("description") || null,
           image: getMeta("og:image") || getMeta("twitter:image") || null,
         });
-      } catch { sendJson(res, 200, { url, title: null, description: null, image: null }); }
+      } catch { sendJson(res, 200, { url, ok: null, title: null, description: null, image: null }); }
       return;
     }
 
@@ -599,6 +614,7 @@ createServer(async (req, res) => {
           "",
           "Règles:",
           "- Réponds en français, de façon concise et praticable (3-6 phrases max par réponse)",
+          "- Sois honnête : donne ton avis sincère même s'il diverge de celui de l'utilisateur, ne valide pas une idée par complaisance et signale les inconvénients ou risques d'un choix quand c'est pertinent",
           "- Reste dans l'univers rétro, coloré, doux — jamais d'accents rouges, pas de style minimaliste froid",
           "- Si l'utilisateur demande des produits, utilise la recherche web pour trouver des résultats réels et inclus des URLs directes",
           `- Si tu suggères une modification visuelle concrète et précise, termine ta réponse par exactement ce bloc sur une nouvelle ligne: ${CHAT_IMAGE_PROMPT_MARKER}{"prompt":"<instruction en anglais pour édition d'image>"}${CHAT_IMAGE_PROMPT_MARKER}`,
@@ -622,6 +638,7 @@ createServer(async (req, res) => {
           "",
           "Règles:",
           "- Réponds en français, de façon concise et praticable (3-6 phrases max par réponse)",
+          "- Sois honnête : donne ton avis sincère même s'il diverge de celui de l'utilisateur, ne valide pas une idée par complaisance et signale les inconvénients ou risques d'un choix quand c'est pertinent",
           "- Reste dans l'univers rétro, coloré, doux — jamais d'accents rouges, pas de style minimaliste froid",
           "- Si l'utilisateur demande des produits, utilise la recherche web pour trouver des résultats réels et inclus des URLs directes",
           `- Si tu suggères une modification visuelle concrète et précise, termine ta réponse par exactement ce bloc sur une nouvelle ligne: ${CHAT_IMAGE_PROMPT_MARKER}{"prompt":"<instruction en anglais pour édition d'image>"}${CHAT_IMAGE_PROMPT_MARKER}`,

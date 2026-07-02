@@ -3061,15 +3061,18 @@ function parseLinksFromContent(content) {
   return links;
 }
 
-function ProductCard({ title, url }) {
+function ProductCard({ title, url, onInvalid }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchLinkPreview(url)
-      .then((data) => setPreview(data))
-      .catch(() => setPreview({ url, title, description: null, image: null }))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (data?.ok === false) { onInvalid?.(); return; }
+        setPreview(data);
+        setLoading(false);
+      })
+      .catch(() => { setPreview({ url, title, description: null, image: null }); setLoading(false); });
   }, [url]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -3111,19 +3114,25 @@ function ProductCard({ title, url }) {
 
 function ProductCarousel({ links }) {
   const scrollRef = useRef(null);
+  const [invalidUrls, setInvalidUrls] = useState(() => new Set());
+  const markInvalid = (url) => {
+    setInvalidUrls((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
+  };
   const scroll = (dir) => {
     if (scrollRef.current) scrollRef.current.scrollBy({ left: dir * 160, behavior: "smooth" });
   };
+  const visibleLinks = links.filter((link) => !invalidUrls.has(link.url));
+  if (!visibleLinks.length) return null;
   return (
     <div className="relative -mx-4 mt-2">
       <div ref={scrollRef} className="flex gap-2.5 overflow-x-auto px-4 pb-1" style={{ scrollSnapType: "x mandatory", scrollbarWidth: "none", msOverflowStyle: "none" }}>
-        {links.map((link, i) => (
-          <div key={i} style={{ scrollSnapAlign: "start" }}>
-            <ProductCard title={link.title} url={link.url} />
+        {visibleLinks.map((link) => (
+          <div key={link.url} style={{ scrollSnapAlign: "start" }}>
+            <ProductCard title={link.title} url={link.url} onInvalid={() => markInvalid(link.url)} />
           </div>
         ))}
       </div>
-      {links.length > 2 && (
+      {visibleLinks.length > 2 && (
         <>
           <button
             type="button"
@@ -3597,7 +3606,7 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
   );
 }
 
-function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, projectId, saveMessageFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
+function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, projectId, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
   const [input, setInput] = useState(draft);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState(null);
@@ -3935,7 +3944,10 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, ch
           {messages.length > 0 ? (
             <button
               type="button"
-              onClick={() => setChatHistory((prev) => ({ ...prev, [room]: [] }))}
+              onClick={() => {
+                setChatHistory((prev) => ({ ...prev, [room]: [] }));
+                if (clearChatFn && projectId) clearChatFn(projectId, room);
+              }}
               className="text-xs text-slate-400 hover:text-slate-500 transition-colors"
             >
               Effacer
@@ -6755,6 +6767,15 @@ export default function App() {
     }).catch(() => {});
   };
 
+  const clearChatMessagesFromServer = (pid, roomKey) => {
+    if (!pid) return;
+    authedFetch(`${API_BASE}/save-room`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "chat-message", projectId: pid, roomKey }),
+    }).catch(() => {});
+  };
+
   const saveRoomItemsToServer = (pid, roomKey, listKey, items) => {
     if (!pid) return;
     authedFetch(`${API_BASE}/save-room`, {
@@ -6923,6 +6944,8 @@ export default function App() {
       version: 1,
       savedAt,
       room,
+      viewMode,
+      generalMode,
       globalAccent,
       globalShade,
       globalDominantColor,
@@ -6998,6 +7021,8 @@ export default function App() {
     // Scalaires projet — priorité projectConfig (load-project normalisé) puis blob (snapshot restore)
     const cfg = saved.projectConfig || saved;
     if (cfg.room && !skipRoomSync) setRoom(cfg.room);
+    if (cfg.viewMode && !skipRoomSync) setViewMode(cfg.viewMode);
+    if (cfg.generalMode && !skipRoomSync) setGeneralMode(cfg.generalMode);
     if (cfg.globalAccent) setGlobalAccent(cfg.globalAccent);
     if (cfg.globalShade) setGlobalShade(cfg.globalShade);
     if (cfg.globalDominantColor) setGlobalDominantColor(cfg.globalDominantColor);
@@ -7585,7 +7610,7 @@ export default function App() {
     if (!projectId || !hydratedRef.current || isApplyingRemoteUpdate.current) return;
     saveProject({ metaOnly: true });
   }, [ // eslint-disable-line react-hooks/exhaustive-deps
-    projectId, room, globalAccent, globalShade, globalDominantColor, globalPalette,
+    projectId, room, viewMode, generalMode, globalAccent, globalShade, globalDominantColor, globalPalette,
     warmth, customRooms, hiddenRooms, roomNuances, roomOrder,
     generalContext, generalResources,
   ]);
@@ -9072,6 +9097,7 @@ export default function App() {
                   setRoomNotes={setRoomNotes}
                   projectId={projectId}
                   saveMessageFn={saveChatMessageToServer}
+                  clearChatFn={clearChatMessagesFromServer}
                   saveNoteFn={saveRoomNoteToServer}
                   saveRoomItemsFn={saveRoomItemsToServer}
                   onClose={() => setIsChatOpen(false)}

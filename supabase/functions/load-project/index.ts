@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
 
     const { data, error } = await supabaseUser
       .from("projects")
-      .select("name, invite_code, owner_id, active_room, global_accent, warmth, general_context, custom_rooms, hidden_rooms, room_order, general_resources, persons")
+      .select("name, invite_code, owner_id, active_room, view_mode, general_mode, global_accent, warmth, general_context, custom_rooms, hidden_rooms, room_order, general_resources, persons")
       .eq("id", id)
       .maybeSingle();
 
@@ -59,6 +59,8 @@ Deno.serve(async (req) => {
 
     const projectConfig = {
       room:             data.active_room       || null,
+      viewMode:         data.view_mode         || null,
+      generalMode:      data.general_mode      || null,
       globalAccent:     data.global_accent     || null,
       warmth:           data.warmth            ?? null,
       generalContext:   data.general_context   || "",

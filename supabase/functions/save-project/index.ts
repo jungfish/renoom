@@ -33,6 +33,8 @@ Deno.serve(async (req) => {
       id: projectId,
       updated_at: new Date().toISOString(),
       active_room:       state.room             || null,
+      view_mode:         state.viewMode         || null,
+      general_mode:      state.generalMode      || null,
       global_accent:     state.globalAccent     || null,
       warmth:            typeof state.warmth === "number" ? state.warmth : null,
       general_context:   state.generalContext   || null,

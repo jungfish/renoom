@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
+import { FB } from "./farrowBall.js";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
@@ -14,10 +15,10 @@ const DEFAULT_SELECTED = ["salon","cuisine","entree","parents","sdb"];
 const WIZARD_STORAGE_KEY = "renoom_onboarding_state";
 
 const DECO_STYLES = [
-  { key:"chaleureux", label:"Chaleureux & naturel", description:"Bois clair, lin, tons crème et terracotta.", swatches:["#FAF6F0","#D0AA6C","#E9DFC8"], globalAccent:"lin",    warmth:70 },
-  { key:"frais",      label:"Frais & lumineux",     description:"Bleu grisé, blanc cassé, matières épurées.", swatches:["#DCE8ED","#FAF6F0","#B7C3A5"], globalAccent:"sky",    warmth:35 },
-  { key:"vegetal",    label:"Végétal & texturé",    description:"Vert sauge, fibres naturelles, accents olive.", swatches:["#A8B5A2","#FAF6F0","#B7C3A5"], globalAccent:"olive", warmth:55 },
-  { key:"retro",      label:"Rétro & graphique",    description:"Jaune beurre, noir, touches de motif.", swatches:["#FCF8D5","#FAF6F0","#D0AA6C"], globalAccent:"butter", warmth:60 },
+  { key:"chaleureux", label:"Chaleureux & naturel", description:"Bois clair, lin, tons crème et terracotta.", swatches:[FB.newWhite.hex, FB.yellowGround.hex, FB.oldWhite.hex], globalAccent:"lin",    warmth:70 },
+  { key:"frais",      label:"Frais & lumineux",     description:"Bleu grisé, blanc cassé, matières épurées.", swatches:[FB.borrowedLight.hex, FB.newWhite.hex, FB.yeabridgeGreen.hex], globalAccent:"sky",    warmth:35 },
+  { key:"vegetal",    label:"Végétal & texturé",    description:"Vert sauge, fibres naturelles, accents olive.", swatches:[FB.vertDeTerre.hex, FB.newWhite.hex, FB.yeabridgeGreen.hex], globalAccent:"olive", warmth:55 },
+  { key:"retro",      label:"Rétro & graphique",    description:"Jaune beurre, noir, touches de motif.", swatches:[FB.farrowsCream.hex, FB.newWhite.hex, FB.yellowGround.hex], globalAccent:"butter", warmth:60 },
 ];
 
 function fileToDataUrl(file) {
@@ -602,7 +603,7 @@ function StepStyle({ decoStyle, setDecoStyle, onNext, onBack }) {
         <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
           Quelle ambiance vous correspond ?
         </h2>
-        <p className="text-xs text-slate-500">Un point de départ — tout est ajustable ensuite.</p>
+        <p className="text-xs text-slate-500">Nuancier Farrow & Ball — un point de départ, tout est ajustable ensuite.</p>
       </div>
 
       <div className="flex flex-col gap-2">

@@ -6,87 +6,13 @@ import { supabase } from "./supabaseClient";
 import { useAuth } from "./useAuth";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { FB, fbLabel, describeColor, familyOfHex, FARROW_BALL_FAMILIES } from "./farrowBall.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
 // Comptes "god" : accès à tous les appartements + suppression depuis "Mon espace".
 const GOD_EMAILS = ["matjungfer@gmail.com"];
-
-// Références Farrow & Ball. F&B ne publie pas de codes hexadécimaux officiels : ces valeurs
-// sont des approximations d'écran destinées à l'aperçu, pas des références d'achat de peinture.
-const FB = {
-  pointing: { number: "2003", name: "Pointing", hex: "#F1EDE1" },
-  newWhite: { number: "59", name: "New White", hex: "#F0E9D6" },
-  string: { number: "8", name: "String", hex: "#E9DFC9" },
-  wevet: { number: "273", name: "Wevet", hex: "#E4DED2" },
-  houseWhite: { number: "2012", name: "House White", hex: "#E7E0D0" },
-  oldWhite: { number: "4", name: "Old White", hex: "#E2D9C2" },
-  slipperSatin: { number: "2004", name: "Slipper Satin", hex: "#E0D6C6" },
-  clunch: { number: "2009", name: "Clunch", hex: "#DED3C0" },
-  joasWhite: { number: "226", name: "Joa's White", hex: "#D6C7B0" },
-  oxfordStone: { number: "264", name: "Oxford Stone", hex: "#D2C1AA" },
-  elephantsBreath: { number: "229", name: "Elephant's Breath", hex: "#C4B49E" },
-  farrowsCream: { number: "67", name: "Farrow's Cream", hex: "#F2E7B0" },
-  hay: { number: "37", name: "Hay", hex: "#E8D093" },
-  borrowedLight: { number: "235", name: "Borrowed Light", hex: "#D9E1DE" },
-  parmaGray: { number: "27", name: "Parma Gray", hex: "#B7C0C2" },
-  stoneBlue: { number: "86", name: "Stone Blue", hex: "#7E9291" },
-  ovalRoomBlue: { number: "85", name: "Oval Room Blue", hex: "#7B99A0" },
-  greenGround: { number: "206", name: "Green Ground", hex: "#CDD9C7" },
-  cookingAppleGreen: { number: "32", name: "Cooking Apple Green", hex: "#C3CBAA" },
-  yeabridgeGreen: { number: "287", name: "Yeabridge Green", hex: "#B4BB98" },
-  vertDeTerre: { number: "234", name: "Vert de Terre", hex: "#A6B597" },
-  lichen: { number: "19", name: "Lichen", hex: "#99AA8C" },
-  cardRoomGreen: { number: "79", name: "Card Room Green", hex: "#7F8F74" },
-  bancha: { number: "298", name: "Bancha", hex: "#6C7F5C" },
-  calkeGreen: { number: "34", name: "Calke Green", hex: "#54634E" },
-  printRoomYellow: { number: "69", name: "Print Room Yellow", hex: "#E4C77A" },
-  yellowGround: { number: "218", name: "Yellow Ground", hex: "#D2A857" },
-  indiaYellow: { number: "66", name: "India Yellow", hex: "#BE8A3E" },
-  tannersBrown: { number: "255", name: "Tanner's Brown", hex: "#7A5230" },
-  settingPlaster: { number: "231", name: "Setting Plaster", hex: "#E0BDAC" },
-  deadSalmon: { number: "28", name: "Dead Salmon", hex: "#D9AE8E" },
-  cinderRose: { number: "246", name: "Cinder Rose", hex: "#C39686" },
-  charlottesLocks: { number: "268", name: "Charlotte's Locks", hex: "#B26F52" },
-  londonClay: { number: "244", name: "London Clay", hex: "#7D6A55" },
-  downPipe: { number: "26", name: "Down Pipe", hex: "#585B5C" },
-  offBlack: { number: "57", name: "Off-Black", hex: "#2C2B29" },
-};
-
-const FARROW_BALL_LIBRARY = Object.values(FB);
-const FARROW_BALL_BY_HEX = Object.fromEntries(FARROW_BALL_LIBRARY.map(entry => [entry.hex.toUpperCase(), entry]));
-
-function fbLabel(entry) {
-  return `${entry.name} N°${entry.number}`;
-}
-
-function hexToRgbTriplet(hex) {
-  const n = parseInt(hex.replace("#", ""), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function nearestFarrowBall(hex) {
-  const [r, g, b] = hexToRgbTriplet(hex);
-  let best = null;
-  let bestDist = Infinity;
-  for (const entry of FARROW_BALL_LIBRARY) {
-    const [er, eg, eb] = hexToRgbTriplet(entry.hex);
-    const dist = (r - er) ** 2 + (g - eg) ** 2 + (b - eb) ** 2;
-    if (dist < bestDist) { bestDist = dist; best = entry; }
-  }
-  return best;
-}
-
-// Décrit un hex avec sa référence Farrow & Ball (exacte si connue, sinon la plus proche) :
-// on n'affiche jamais un code hexadécimal brut à l'utilisateur.
-function describeColor(hex) {
-  if (!hex) return "";
-  const exact = FARROW_BALL_BY_HEX[hex.toUpperCase()];
-  if (exact) return fbLabel(exact);
-  const near = nearestFarrowBall(hex);
-  return near ? `≈ ${fbLabel(near)}` : hex.toUpperCase();
-}
 
 const baseColors = {
   creme: { name: fbLabel(FB.string), light: FB.newWhite.hex, hex: FB.string.hex, medium: FB.slipperSatin.hex, dark: FB.oxfordStone.hex },
@@ -289,37 +215,6 @@ const materialsByRoom = {
 };
 
 const shadeMap = { clair: "light", moyen: "hex", soutenu: "medium", fonce: "dark" };
-
-const PALETTE_PRESETS = [
-  FB.borrowedLight,
-  FB.parmaGray,
-  FB.stoneBlue,
-  FB.ovalRoomBlue,
-  FB.greenGround,
-  FB.vertDeTerre,
-  FB.lichen,
-  FB.bancha,
-  FB.string,
-  FB.clunch,
-  FB.houseWhite,
-  FB.joasWhite,
-  FB.elephantsBreath,
-  FB.printRoomYellow,
-  FB.yellowGround,
-  FB.indiaYellow,
-  FB.farrowsCream,
-  FB.hay,
-  FB.yeabridgeGreen,
-  FB.settingPlaster,
-  FB.deadSalmon,
-  FB.cinderRose,
-  FB.charlottesLocks,
-  FB.londonClay,
-  FB.downPipe,
-  FB.offBlack,
-  FB.wevet,
-  FB.pointing,
-].map(entry => ({ hex: entry.hex, name: fbLabel(entry) }));
 
 function textColor(hex) {
   const c = hex.replace("#", "");
@@ -620,7 +515,6 @@ function Swatch({ title, hex, subtitle }) {
       <div className="space-y-1 p-3">
         <div className="text-xs text-slate-500">{subtitle}</div>
         <div className="text-sm font-medium">{title}</div>
-        <div className="font-mono text-xs text-slate-500">{hex}</div>
       </div>
     </div>
   );
@@ -2802,11 +2696,11 @@ function GeneralPaletteSection({ orderedActiveRooms, allRoomPresets, getRoomColo
                   { ...colors.dominant, sublabel: "Dom." },
                   { ...colors.secondary, sublabel: "Sec." },
                   { ...colors.accent, sublabel: "Acc." },
-                ].map(({ hex, sublabel }) => (
+                ].map(({ hex, name, sublabel }) => (
                   <div key={sublabel} className="min-w-0 flex-1">
                     <div className="mb-1 h-7 rounded border border-black/10" style={{ backgroundColor: hex }} />
                     <div className="truncate text-[10px] text-slate-400">{sublabel}</div>
-                    <div className="truncate font-mono text-[10px] text-slate-600">{hex}</div>
+                    <div className="truncate text-[10px] text-slate-600">{name}</div>
                   </div>
                 ))}
               </div>
@@ -5482,8 +5376,8 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
 const LOGIN_SLIDES = [
   {
     id: "palette",
-    title: "Palette par pièce",
-    description: "Coordonnez les couleurs de chaque pièce avec des palettes sur mesure.",
+    title: "Palette Farrow & Ball",
+    description: "Coordonnez chaque pièce avec de vraies teintes Farrow & Ball, la référence des peintres.",
   },
   {
     id: "inspirations",
@@ -5519,21 +5413,14 @@ function AppMockupContent({ id }) {
           ))}
         </div>
         <div className="mb-2.5 rounded-xl border border-black/8 bg-white p-3">
-          <p className="mb-2 text-[9px] font-semibold uppercase tracking-widest text-slate-400">Palette de couleurs</p>
+          <p className="mb-2 text-[9px] font-semibold uppercase tracking-widest text-slate-400">Palette Farrow & Ball</p>
           <div className="grid grid-cols-3 gap-1.5">
-            {[
-              { label: "Bleu clair grisé", hex: "#b8c9d0", shade: "Moyen" },
-              { label: "Crème chaud", hex: "#F4F1EA", shade: "Clair" },
-              { label: "Chêne clair", hex: "#D0AA6C", shade: "Moyen" },
-              { label: "Vert sauge", hex: "#A8B5A2", shade: "Moyen" },
-              { label: "Jaune beurre", hex: "#FCF8D5", shade: "Accent" },
-              { label: "Olive doux", hex: "#B7C3A5", shade: "Accent" },
-            ].map((s) => (
+            {[FB.parmaGray, FB.string, FB.yellowGround, FB.vertDeTerre, FB.farrowsCream, FB.yeabridgeGreen].map((s) => (
               <div key={s.hex} className="overflow-hidden rounded-lg border border-black/8">
                 <div className="h-7" style={{ backgroundColor: s.hex }} />
                 <div className="bg-white p-1">
-                  <div className="truncate text-[8px] font-medium text-slate-700">{s.label}</div>
-                  <div className="text-[7px] text-slate-400">{s.shade}</div>
+                  <div className="truncate text-[8px] font-medium text-slate-700">{s.name}</div>
+                  <div className="text-[7px] text-slate-400">N°{s.number}</div>
                 </div>
               </div>
             ))}
@@ -6360,16 +6247,29 @@ export default function App() {
   const [globalShade, setGlobalShade] = useState("moyen");
   const [globalDominantColor, setGlobalDominantColor] = useState("bleu");
   const [globalPalette, setGlobalPalette] = useState({
-    dominante: { hex: "#b8c9d0", name: "Bleu grisé" },
-    secondaire: { hex: "#F4F1EA", name: "Crème chaud" },
-    sol: { hex: "#C2B09A", name: "Taupe moyen" },
+    dominante: { hex: FB.parmaGray.hex, name: fbLabel(FB.parmaGray) },
+    secondaire: { hex: FB.string.hex, name: fbLabel(FB.string) },
+    sol: { hex: FB.elephantsBreath.hex, name: fbLabel(FB.elephantsBreath) },
     accents: [
-      { hex: "#D0AA6C", name: "Chêne doré" },
-      { hex: "#FCF8D5", name: "Beurre" },
-      { hex: "#B7C3A5", name: "Olive doux" },
+      { hex: FB.yellowGround.hex, name: fbLabel(FB.yellowGround) },
+      { hex: FB.farrowsCream.hex, name: fbLabel(FB.farrowsCream) },
+      { hex: FB.yeabridgeGreen.hex, name: fbLabel(FB.yeabridgeGreen) },
     ],
   });
   const [activePaletteSlot, setActivePaletteSlot] = useState(null);
+  const [activePaletteFamily, setActivePaletteFamily] = useState(FARROW_BALL_FAMILIES[0].key);
+
+  const [logoPaletteChanged, setLogoPaletteChanged] = useState(false);
+  const isFirstPaletteRender = useRef(true);
+  useEffect(() => {
+    if (isFirstPaletteRender.current) {
+      isFirstPaletteRender.current = false;
+      return;
+    }
+    setLogoPaletteChanged(true);
+    const t = setTimeout(() => setLogoPaletteChanged(false), 700);
+    return () => clearTimeout(t);
+  }, [globalPalette]);
 
   function getShade(colorKey, level) {
     if (!colorKey) return "#ddd";
@@ -6388,7 +6288,7 @@ export default function App() {
     if (colorKey === "dominante") return globalPalette.dominante.name;
     if (colorKey === "secondaire") return globalPalette.secondaire.name;
     if (colorKey === "sol") return globalPalette.sol.name;
-    if (colorKey.startsWith("#")) return colorKey.toUpperCase();
+    if (colorKey.startsWith("#")) return describeColor(colorKey);
     return baseColors[colorKey]?.name || "Couleur";
   }
 
@@ -6526,8 +6426,8 @@ export default function App() {
   const accentName = (() => {
     const a = activeNuance.accent;
     if (!a) return globalPalette.accents[0].name;
-    if (a.startsWith("#")) return globalPalette.accents.find(ac => ac.hex === a)?.name || a.toUpperCase();
-    if (a === "bois") return "Chêne clair";
+    if (a.startsWith("#")) return globalPalette.accents.find(ac => ac.hex === a)?.name || describeColor(a);
+    if (a === "bois") return baseColors.bois.name;
     return accents[a]?.name || globalPalette.accents[0].name;
   })();
 
@@ -7267,13 +7167,13 @@ export default function App() {
     setGlobalShade("moyen");
     setGlobalDominantColor("bleu");
     setGlobalPalette({
-      dominante: { hex: "#b8c9d0", name: "Bleu grisé" },
-      secondaire: { hex: "#F4F1EA", name: "Crème chaud" },
-      sol: { hex: "#C2B09A", name: "Taupe moyen" },
+      dominante: { hex: FB.parmaGray.hex, name: fbLabel(FB.parmaGray) },
+      secondaire: { hex: FB.string.hex, name: fbLabel(FB.string) },
+      sol: { hex: FB.elephantsBreath.hex, name: fbLabel(FB.elephantsBreath) },
       accents: [
-        { hex: "#D0AA6C", name: "Chêne doré" },
-        { hex: "#FCF8D5", name: "Beurre" },
-        { hex: "#B7C3A5", name: "Olive doux" },
+        { hex: FB.yellowGround.hex, name: fbLabel(FB.yellowGround) },
+        { hex: FB.farrowsCream.hex, name: fbLabel(FB.farrowsCream) },
+        { hex: FB.yeabridgeGreen.hex, name: fbLabel(FB.yeabridgeGreen) },
       ],
     });
     setRoomOrder(null);
@@ -7720,7 +7620,7 @@ export default function App() {
     const dHex = getShade(dColor, nuance.dominant);
     const sHex = getShade(sColor, nuance.secondary);
     const aHex = (() => { const a = nuance.accent; if (!a) return globalPalette.accents[0].hex; if (a.startsWith("#")) return a; if (a === "bois") return baseColors.bois.hex; return accents[a]?.hex || globalPalette.accents[0].hex; })();
-    const aName = (() => { const a = nuance.accent; if (!a) return globalPalette.accents[0].name; if (a.startsWith("#")) return globalPalette.accents.find(ac => ac.hex === a)?.name || a.toUpperCase(); if (a === "bois") return "Chêne clair"; return accents[a]?.name || globalPalette.accents[0].name; })();
+    const aName = (() => { const a = nuance.accent; if (!a) return globalPalette.accents[0].name; if (a.startsWith("#")) return globalPalette.accents.find(ac => ac.hex === a)?.name || describeColor(a); if (a === "bois") return baseColors.bois.name; return accents[a]?.name || globalPalette.accents[0].name; })();
     return { dominant: { name: getColorName(dColor), hex: dHex }, secondary: { name: getColorName(sColor), hex: sHex }, accent: { name: aName, hex: aHex } };
   };
 
@@ -7838,11 +7738,15 @@ export default function App() {
         }`}
       >
         <div className="flex h-14 flex-shrink-0 items-center gap-2.5 border-b border-black/[0.08] bg-[#F2EFE7] px-3.5">
-          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
-            <rect x="0" y="0" width="9.5" height="9.5" rx="2" fill={globalPalette.dominante.hex}/>
-            <rect x="12.5" y="0" width="9.5" height="9.5" rx="2" fill={globalPalette.secondaire.hex}/>
-            <rect x="0" y="12.5" width="9.5" height="9.5" rx="2" fill={globalPalette.sol.hex}/>
-            <rect x="12.5" y="12.5" width="9.5" height="9.5" rx="2" fill={globalPalette.accents[0].hex} stroke="rgba(0,0,0,0.12)" strokeWidth="0.75"/>
+          <svg
+            width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"
+            className="flex-shrink-0"
+            style={logoPaletteChanged ? { animation: "logoPalettePulse 0.7s ease" } : undefined}
+          >
+            <rect x="0" y="0" width="9.5" height="9.5" rx="2" fill={globalPalette.dominante.hex} style={{ transition: "fill 0.5s ease" }}/>
+            <rect x="12.5" y="0" width="9.5" height="9.5" rx="2" fill={globalPalette.secondaire.hex} style={{ transition: "fill 0.5s ease" }}/>
+            <rect x="0" y="12.5" width="9.5" height="9.5" rx="2" fill={globalPalette.sol.hex} style={{ transition: "fill 0.5s ease" }}/>
+            <rect x="12.5" y="12.5" width="9.5" height="9.5" rx="2" fill={globalPalette.accents[0].hex} stroke="rgba(0,0,0,0.12)" strokeWidth="0.75" style={{ transition: "fill 0.5s ease" }}/>
           </svg>
           <span className="text-[15px] font-bold tracking-[-0.02em] text-[#1C1A17]">renoom</span>
         </div>
@@ -8446,10 +8350,16 @@ export default function App() {
                     ? globalPalette.accents[parseInt(activePaletteSlot.split("-")[1])]?.hex
                     : globalPalette[activePaletteSlot]?.hex
                   : null;
+                const openSlot = (slotKey, hex) => {
+                  const next = activePaletteSlot === slotKey ? null : slotKey;
+                  setActivePaletteSlot(next);
+                  if (next) setActivePaletteFamily(familyOfHex(hex) || activePaletteFamily);
+                };
+                const activeFamily = FARROW_BALL_FAMILIES.find(f => f.key === activePaletteFamily) || FARROW_BALL_FAMILIES[0];
                 return (
                   <div className="space-y-3 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
                     <div className="flex items-center justify-between">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Palette de l'appartement</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Palette de l'appartement — teintes Farrow & Ball</p>
                       <p className="text-[11px] text-slate-400">Cliquer une couleur pour la modifier</p>
                     </div>
                     <div className="flex gap-2">
@@ -8457,7 +8367,7 @@ export default function App() {
                         <button
                           key={slot.key}
                           type="button"
-                          onClick={() => setActivePaletteSlot(activePaletteSlot === slot.key ? null : slot.key)}
+                          onClick={() => openSlot(slot.key, slot.hex)}
                           className={`flex flex-1 flex-col overflow-hidden rounded-xl border transition-all ${
                             activePaletteSlot === slot.key ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
                           }`}
@@ -8473,7 +8383,7 @@ export default function App() {
                         <button
                           key={i}
                           type="button"
-                          onClick={() => setActivePaletteSlot(activePaletteSlot === `accent-${i}` ? null : `accent-${i}`)}
+                          onClick={() => openSlot(`accent-${i}`, accent.hex)}
                           className={`flex flex-1 flex-col overflow-hidden rounded-xl border transition-all ${
                             activePaletteSlot === `accent-${i}` ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
                           }`}
@@ -8488,13 +8398,27 @@ export default function App() {
                     </div>
                     {activePaletteSlot !== null && currentHex && (
                       <div className="space-y-3 rounded-xl border border-black/10 bg-slate-50 p-3">
+                        <div className="flex gap-1 overflow-x-auto pb-1">
+                          {FARROW_BALL_FAMILIES.map(family => (
+                            <button
+                              key={family.key}
+                              type="button"
+                              onClick={() => setActivePaletteFamily(family.key)}
+                              className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+                                activePaletteFamily === family.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
+                              }`}
+                            >
+                              {family.label}
+                            </button>
+                          ))}
+                        </div>
                         <div className="grid grid-cols-7 gap-1.5">
-                          {PALETTE_PRESETS.map(preset => (
+                          {activeFamily.colors.map(preset => (
                             <button
                               key={preset.hex}
                               type="button"
-                              onClick={() => applyColor(activePaletteSlot, preset.hex, preset.name)}
-                              title={preset.name}
+                              onClick={() => applyColor(activePaletteSlot, preset.hex, fbLabel(preset))}
+                              title={fbLabel(preset)}
                               className={`h-7 rounded-lg border-2 transition-all ${
                                 currentHex === preset.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
                               }`}
@@ -8507,12 +8431,12 @@ export default function App() {
                             <input
                               type="color"
                               value={currentHex}
-                              onChange={e => applyColor(activePaletteSlot, e.target.value, "Personnalisée")}
+                              onChange={e => applyColor(activePaletteSlot, e.target.value, describeColor(e.target.value))}
                               className="h-7 w-7 cursor-pointer rounded border border-black/15"
                             />
                             <span className="text-xs text-slate-500">Couleur libre</span>
                           </label>
-                          <span className="ml-auto font-mono text-[11px] text-slate-400">{currentHex}</span>
+                          <span className="ml-auto text-[11px] text-slate-400">{describeColor(currentHex)}</span>
                         </div>
                       </div>
                     )}
@@ -8561,11 +8485,11 @@ export default function App() {
                           { ...colors.dominant, sublabel: "Dom." },
                           { ...colors.secondary, sublabel: "Sec." },
                           { ...colors.accent, sublabel: "Acc." },
-                        ].map(({ hex, sublabel }) => (
+                        ].map(({ hex, name, sublabel }) => (
                           <div key={sublabel} className="min-w-0 flex-1">
                             <div className="mb-1 h-7 rounded border border-black/10" style={{ backgroundColor: hex }} />
                             <div className="truncate text-[10px] text-slate-400">{sublabel}</div>
-                            <div className="truncate font-mono text-[10px] text-slate-600">{hex}</div>
+                            <div className="truncate text-[10px] text-slate-600">{name}</div>
                           </div>
                         ))}
                       </div>
@@ -8689,10 +8613,17 @@ export default function App() {
                     ? globalPalette.accents[parseInt(activePaletteSlot.split("-")[1])]?.hex
                     : globalPalette[activePaletteSlot]?.hex
                   : null;
+                const openSlot = (slotKey, hex) => {
+                  const next = activePaletteSlot === slotKey ? null : slotKey;
+                  setActivePaletteSlot(next);
+                  if (next) setActivePaletteFamily(familyOfHex(hex) || activePaletteFamily);
+                };
+                const activeFamily = FARROW_BALL_FAMILIES.find(f => f.key === activePaletteFamily) || FARROW_BALL_FAMILIES[0];
                 return (
                   <div className="space-y-4 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
                     <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Palette globale</p>
                     <h2 className="type-h2">Palette de l'appartement</h2>
+                    <p className="text-sm text-slate-600">Teintes Farrow & Ball, la référence des peintres.</p>
 
                     {/* Rangée 1 : dominante, secondaire, sol */}
                     <div className="grid grid-cols-3 gap-2">
@@ -8700,7 +8631,7 @@ export default function App() {
                         <button
                           key={slot.key}
                           type="button"
-                          onClick={() => setActivePaletteSlot(activePaletteSlot === slot.key ? null : slot.key)}
+                          onClick={() => openSlot(slot.key, slot.hex)}
                           className={`flex flex-col overflow-hidden rounded-xl border transition-all ${
                             activePaletteSlot === slot.key ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
                           }`}
@@ -8722,7 +8653,7 @@ export default function App() {
                           <button
                             key={i}
                             type="button"
-                            onClick={() => setActivePaletteSlot(activePaletteSlot === `accent-${i}` ? null : `accent-${i}`)}
+                            onClick={() => openSlot(`accent-${i}`, accent.hex)}
                             className={`flex flex-col overflow-hidden rounded-xl border transition-all ${
                               activePaletteSlot === `accent-${i}` ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
                             }`}
@@ -8740,13 +8671,27 @@ export default function App() {
                     {/* Picker inline */}
                     {activePaletteSlot !== null && currentHex && (
                       <div className="space-y-3 rounded-xl border border-black/10 bg-slate-50 p-3">
+                        <div className="flex gap-1 overflow-x-auto pb-1">
+                          {FARROW_BALL_FAMILIES.map(family => (
+                            <button
+                              key={family.key}
+                              type="button"
+                              onClick={() => setActivePaletteFamily(family.key)}
+                              className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+                                activePaletteFamily === family.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
+                              }`}
+                            >
+                              {family.label}
+                            </button>
+                          ))}
+                        </div>
                         <div className="grid grid-cols-7 gap-1.5">
-                          {PALETTE_PRESETS.map(preset => (
+                          {activeFamily.colors.map(preset => (
                             <button
                               key={preset.hex}
                               type="button"
-                              onClick={() => applyColor(activePaletteSlot, preset.hex, preset.name)}
-                              title={preset.name}
+                              onClick={() => applyColor(activePaletteSlot, preset.hex, fbLabel(preset))}
+                              title={fbLabel(preset)}
                               className={`h-7 rounded-lg border-2 transition-all ${
                                 currentHex === preset.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
                               }`}
@@ -8759,12 +8704,12 @@ export default function App() {
                             <input
                               type="color"
                               value={currentHex}
-                              onChange={e => applyColor(activePaletteSlot, e.target.value, "Personnalisée")}
+                              onChange={e => applyColor(activePaletteSlot, e.target.value, describeColor(e.target.value))}
                               className="h-7 w-7 cursor-pointer rounded border border-black/15"
                             />
                             <span className="text-xs text-slate-500">Couleur libre</span>
                           </label>
-                          <span className="ml-auto font-mono text-[11px] text-slate-400">{currentHex}</span>
+                          <span className="ml-auto text-[11px] text-slate-400">{describeColor(currentHex)}</span>
                         </div>
                       </div>
                     )}

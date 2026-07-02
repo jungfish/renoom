@@ -3606,7 +3606,7 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
   );
 }
 
-function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, projectId, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
+function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelectedTotal = null, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, projectId, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
   const [input, setInput] = useState(draft);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState(null);
@@ -3701,10 +3701,11 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, ch
         generalContext: aiContext.generalContext,
         allRoomsSummary: aiContext.allRoomsSummary,
         shoppingItems: aiContext.shoppingItems,
+        mySelectedTotal: aiContext.mySelectedTotal,
         todoItems: aiContext.todoItems,
         materialSummary: aiContext.materialSummary,
       },
-      ...(isGeneral ? { isGeneral: true, availableRooms } : {}),
+      ...(isGeneral ? { isGeneral: true, availableRooms, myGlobalSelectedTotal } : {}),
     });
 
     const applyToolCalls = (toolCalls, msg) => {
@@ -6583,11 +6584,24 @@ export default function App() {
           const result = { id: i.id, text: i.text };
           if (Object.keys(grouped).length) result.reactions = grouped;
           if (sels?.length) result.selectedBy = sels.map(s => s.userName);
+          if (typeof i.price === "number") result.price = i.price;
+          if (i.priceCurrency) result.priceCurrency = i.priceCurrency;
           return result;
         }),
       materialSummary: (materialsByRoom[key] || []).map((m) => `${m.label}: ${m.value}`).slice(0, 3),
     };
   }).filter(Boolean) : [];
+
+  const myGlobalSelectedTotal = viewMode === "general" ? (() => {
+    const mine = ["general", ...orderedActiveRooms].flatMap((key) => (roomLists[key]?.shopping || [])).filter(
+      (i) => !i.done && (itemSelections[i.id] || []).some((s) => s.userId === user?.id) && typeof i.price === "number"
+    );
+    if (!mine.length) return null;
+    return {
+      amount: mine.reduce((sum, i) => sum + i.price, 0),
+      currency: mine.find((i) => i.priceCurrency)?.priceCurrency || null,
+    };
+  })() : null;
 
   const aiShoppingItems = (roomLists[room]?.shopping || [])
     .filter((i) => !i.done).slice(0, 5).map((i) => {
@@ -6598,8 +6612,21 @@ export default function App() {
       const result = { id: i.id, text: i.text };
       if (Object.keys(grouped).length) result.reactions = grouped;
       if (sels?.length) result.selectedBy = sels.map(s => s.userName);
+      if (typeof i.price === "number") result.price = i.price;
+      if (i.priceCurrency) result.priceCurrency = i.priceCurrency;
       return result;
     });
+
+  const mySelectedTotal = (() => {
+    const mine = (roomLists[room]?.shopping || []).filter(
+      (i) => !i.done && (itemSelections[i.id] || []).some((s) => s.userId === user?.id) && typeof i.price === "number"
+    );
+    if (!mine.length) return null;
+    return {
+      amount: mine.reduce((sum, i) => sum + i.price, 0),
+      currency: mine.find((i) => i.priceCurrency)?.priceCurrency || null,
+    };
+  })();
 
   const aiTodoItems = (roomLists[room]?.todos || [])
     .filter((i) => !i.done).slice(0, 8).map((i) => ({ id: i.id, text: i.text }));
@@ -6628,6 +6655,7 @@ export default function App() {
     generalContext: generalContext.slice(0, 400),
     allRoomsSummary,
     shoppingItems: aiShoppingItems,
+    mySelectedTotal,
     todoItems: aiTodoItems,
     materialSummary: aiMaterialSummary,
     persons: [...(projectMembers || []), ...(persons || [])].filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i).map(p => p.name),
@@ -9179,6 +9207,7 @@ export default function App() {
                   room={viewMode === "general" ? "general" : room}
                   isGeneral={viewMode === "general"}
                   availableRooms={availableRooms}
+                  myGlobalSelectedTotal={myGlobalSelectedTotal}
                   aiContext={aiContext}
                   chatHistory={chatHistory}
                   setChatHistory={setChatHistory}

@@ -152,7 +152,17 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
 
 const SYSTEM_BASE = "Assistant design intérieur, style rétro français. Aide aux décisions déco.\nRègles: français, concis, 3-6 phrases max. Univers rétro, coloré, doux — pas d'accents rouges ni de minimalisme. Pour produits/liens, utilise web_search avec URLs directes. Écris TOUJOURS une réponse texte à l'utilisateur, même en appelant un outil : un appel d'outil seul (ex: save_room_note) ne remplace jamais une réponse conversationnelle qui traite réellement la demande.";
 
+type ShoppingItemCtx = { id: string; text: string; reactions?: Record<string, string[]>; selectedBy?: string[]; price?: number; priceCurrency?: string };
+
+function formatShoppingItem(i: ShoppingItemCtx): string {
+  const rx = i.reactions ? ` (${Object.entries(i.reactions).map(([e, u]) => `${e} ${u.join(", ")}`).join(" | ")})` : "";
+  const sel = i.selectedBy?.length ? ` [achat: ${i.selectedBy.join(", ")}]` : "";
+  const price = typeof i.price === "number" ? ` — ${i.price}${i.priceCurrency ? ` ${i.priceCurrency}` : ""}` : "";
+  return (i.id ? `[${i.id}] ` : "") + i.text + price + rx + sel;
+}
+
 function buildSystemPrompt(ctx: Record<string, unknown>): string {
+  const total = ctx.mySelectedTotal as { amount: number; currency?: string | null } | null | undefined;
   return [
     SYSTEM_BASE,
     "",
@@ -162,7 +172,8 @@ function buildSystemPrompt(ctx: Record<string, unknown>): string {
     ctx.roomNote ? `Notes: ${ctx.roomNote}` : null,
     ctx.imageMetadataSummary ? `Visuels: ${ctx.imageMetadataSummary}` : null,
     (ctx.todoItems as {id:string,text:string}[])?.length ? `Todos: ${(ctx.todoItems as {id:string,text:string}[]).map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}` : null,
-    (ctx.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>,selectedBy?:string[]}[])?.length ? `Courses: ${(ctx.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>,selectedBy?:string[]}[]).map(i => { const rx = i.reactions ? ` (${Object.entries(i.reactions).map(([e,u]) => `${e} ${u.join(", ")}`).join(" | ")})` : ""; const sel = i.selectedBy?.length ? ` [achat: ${i.selectedBy.join(", ")}]` : ""; return (i.id ? `[${i.id}] ` : "") + i.text + rx + sel; }).join(", ")}` : null,
+    (ctx.shoppingItems as ShoppingItemCtx[])?.length ? `Courses: ${(ctx.shoppingItems as ShoppingItemCtx[]).map(formatShoppingItem).join(", ")}` : null,
+    total ? `Total de mes achats sélectionnés: ${total.amount}${total.currency ? ` ${total.currency}` : ""}` : null,
     (ctx.persons as string[])?.length ? `Personnes: ${(ctx.persons as string[]).join(", ")}` : null,
     (ctx.materialSummary as string[])?.length ? `Matériaux: ${(ctx.materialSummary as string[]).join("; ")}` : null,
     ctx.allRoomsSummary ? `Autres pièces: ${ctx.allRoomsSummary}` : null,
@@ -173,13 +184,14 @@ function buildSystemPrompt(ctx: Record<string, unknown>): string {
 
 function buildGeneralSystemPrompt(
   ctx: Record<string, unknown>,
-  availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: {id:string,text:string}[]; shoppingItems?: {id:string,text:string}[]; materialSummary?: string[] }[],
+  availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: {id:string,text:string}[]; shoppingItems?: ShoppingItemCtx[]; materialSummary?: string[] }[],
+  myGlobalSelectedTotal?: { amount: number; currency?: string | null } | null,
 ): string {
   const roomsDetail = availableRooms.map((r) => {
     const parts = [`${r.label}|${r.key}: ${r.line || ""}`];
     if (r.roomNote) parts.push(`  Note: ${r.roomNote}`);
     if (r.todoItems?.length) parts.push(`  Todos: ${r.todoItems.map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}`);
-    if (r.shoppingItems?.length) parts.push(`  Courses: ${(r.shoppingItems as {id:string,text:string,reactions?:Record<string,string[]>,selectedBy?:string[]}[]).map(i => { const rx = i.reactions ? ` (${Object.entries(i.reactions).map(([e,u]) => `${e} ${u.join(", ")}`).join(" | ")})` : ""; const sel = i.selectedBy?.length ? ` [achat: ${i.selectedBy.join(", ")}]` : ""; return (i.id ? `[${i.id}] ` : "") + i.text + rx + sel; }).join(", ")}`);
+    if (r.shoppingItems?.length) parts.push(`  Courses: ${(r.shoppingItems as ShoppingItemCtx[]).map(formatShoppingItem).join(", ")}`);
     if (r.materialSummary?.length) parts.push(`  Matériaux: ${r.materialSummary.join("; ")}`);
     return parts.join("\n");
   }).join("\n");
@@ -189,6 +201,7 @@ function buildGeneralSystemPrompt(
     "",
     ctx.generalContext ? `Goûts & contraintes: ${ctx.generalContext}` : null,
     (ctx.persons as string[])?.length ? `Personnes: ${(ctx.persons as string[]).join(", ")}` : null,
+    myGlobalSelectedTotal ? `Total de mes achats sélectionnés (toutes pièces): ${myGlobalSelectedTotal.amount}${myGlobalSelectedTotal.currency ? ` ${myGlobalSelectedTotal.currency}` : ""}` : null,
     "",
     "Mode Appartement — accès à toutes les pièces. Toujours spécifier room_key dans les outils.",
     "",
@@ -234,13 +247,14 @@ Deno.serve(async (req) => {
     });
   }
 
-  let messages: unknown[], roomContext: Record<string, unknown>, isGeneral: boolean, availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: string[]; shoppingItems?: string[]; materialSummary?: string[] }[];
+  let messages: unknown[], roomContext: Record<string, unknown>, isGeneral: boolean, availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: string[]; shoppingItems?: string[]; materialSummary?: string[] }[], myGlobalSelectedTotal: { amount: number; currency?: string | null } | null;
   try {
     const body = await req.json();
     messages = body.messages;
     roomContext = body.roomContext || {};
     isGeneral = !!body.isGeneral;
     availableRooms = Array.isArray(body.availableRooms) ? body.availableRooms : [];
+    myGlobalSelectedTotal = body.myGlobalSelectedTotal || null;
   } catch {
     return new Response(JSON.stringify({ error: "JSON invalide." }), {
       status: 400,
@@ -258,7 +272,7 @@ Deno.serve(async (req) => {
   const useGeneralMode = isGeneral && availableRooms.length > 0;
   const chatTools = useGeneralMode ? buildGeneralTools(availableRooms) : ROOM_TOOLS;
   const systemPrompt = useGeneralMode
-    ? buildGeneralSystemPrompt(roomContext, availableRooms)
+    ? buildGeneralSystemPrompt(roomContext, availableRooms, myGlobalSelectedTotal)
     : buildSystemPrompt(roomContext);
 
   const enc = new TextEncoder();

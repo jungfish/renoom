@@ -4863,7 +4863,7 @@ function formatDueDate(d) {
 function isDueOverdue(d) { return !!d && d < new Date().toISOString().split("T")[0]; }
 function isDueSoonDate(d) { if (!d) return false; const diff = (new Date(d) - new Date()) / 86400000; return diff >= 0 && diff <= 3; }
 
-const REACTION_EMOJIS = ["❤️","👍","😍","🔥","✨","💡","🎉","😂","😮","👏","🙏","💯","👎","😕","💔","🤮","😤","❌","🙅"];
+const REACTION_EMOJIS = ["❤️","👍","😍","🔥","✨","💡","🎉","😂","😮","👏","🙏","💯","👎","😕","💔","🤮","😤","❌","🙅","💸","🪙"];
 
 function EmojiPicker({ onSelect, onClose }) {
   const ref = useRef(null);

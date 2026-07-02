@@ -7,7 +7,7 @@ const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL || "gpt-4.1";
 const CHAT_IMAGE_PROMPT_MARKER = "|||IMAGE_PROMPT|||";
 
 const CHAT_TOOLS = [
-  { type: "web_search_preview" },
+  { type: "web_search", search_context_size: "low" },
   {
     type: "function",
     name: "generate_image",
@@ -624,7 +624,7 @@ createServer(async (req, res) => {
       if (isGeneral && Array.isArray(availableRooms) && availableRooms.length) {
         const roomKeyDesc = availableRooms.map(r => `"${r.key}" (${r.label})`).join(", ");
         chatTools = [
-          { type: "web_search_preview" },
+          { type: "web_search", search_context_size: "low" },
           {
             type: "function",
             name: "generate_image",
@@ -697,7 +697,7 @@ createServer(async (req, res) => {
           "- Réponds en français, de façon concise et praticable (3-6 phrases max par réponse)",
           "- Sois honnête : donne ton avis sincère même s'il diverge de celui de l'utilisateur, ne valide pas une idée par complaisance et signale les inconvénients ou risques d'un choix quand c'est pertinent",
           "- Reste dans l'univers rétro, coloré, doux — jamais d'accents rouges, pas de style minimaliste froid",
-          "- Si l'utilisateur demande des produits, utilise la recherche web pour trouver des résultats réels et inclus des URLs directes",
+          "- N'utilise la recherche web que si l'utilisateur demande explicitement des produits, prix ou liens précis — jamais pour des conseils de design généraux — et limite-toi à une seule recherche par réponse",
           "- Écris TOUJOURS une réponse texte à l'utilisateur, même quand tu appelles un outil (save_room_note, add_to_shopping_list, etc.) : un appel d'outil ne remplace jamais une réponse conversationnelle qui traite réellement la demande",
           `- Si tu suggères une modification visuelle concrète et précise, termine ta réponse par exactement ce bloc sur une nouvelle ligne: ${CHAT_IMAGE_PROMPT_MARKER}{"prompt":"<instruction en anglais pour édition d'image>"}${CHAT_IMAGE_PROMPT_MARKER}`,
           "- N'inclus ce bloc que si la suggestion est clairement visuelle et actionnable",
@@ -722,7 +722,7 @@ createServer(async (req, res) => {
           "- Réponds en français, de façon concise et praticable (3-6 phrases max par réponse)",
           "- Sois honnête : donne ton avis sincère même s'il diverge de celui de l'utilisateur, ne valide pas une idée par complaisance et signale les inconvénients ou risques d'un choix quand c'est pertinent",
           "- Reste dans l'univers rétro, coloré, doux — jamais d'accents rouges, pas de style minimaliste froid",
-          "- Si l'utilisateur demande des produits, utilise la recherche web pour trouver des résultats réels et inclus des URLs directes",
+          "- N'utilise la recherche web que si l'utilisateur demande explicitement des produits, prix ou liens précis — jamais pour des conseils de design généraux — et limite-toi à une seule recherche par réponse",
           "- Écris TOUJOURS une réponse texte à l'utilisateur, même quand tu appelles un outil (save_room_note, add_to_shopping_list, etc.) : un appel d'outil ne remplace jamais une réponse conversationnelle qui traite réellement la demande",
           `- Si tu suggères une modification visuelle concrète et précise, termine ta réponse par exactement ce bloc sur une nouvelle ligne: ${CHAT_IMAGE_PROMPT_MARKER}{"prompt":"<instruction en anglais pour édition d'image>"}${CHAT_IMAGE_PROMPT_MARKER}`,
           "- N'inclus ce bloc que si la suggestion est clairement visuelle et actionnable",

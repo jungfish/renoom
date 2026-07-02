@@ -4274,6 +4274,8 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
   const [editingDate, setEditingDate] = useState(null); // `${roomKey}-${listKey}-${id}`
   const [editingTitleId, setEditingTitleId] = useState(null);
   const [editingTitleValue, setEditingTitleValue] = useState("");
+  const [editingPriceId, setEditingPriceId] = useState(null);
+  const [editingPriceValue, setEditingPriceValue] = useState("");
   const [openPicker, setOpenPicker] = useState(null);
 
   const allPersons = [
@@ -4404,6 +4406,16 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
                 setEditingTitleId(null); setEditingTitleValue("");
               }}
               onCancelEditTitle={() => { setEditingTitleId(null); setEditingTitleValue(""); }}
+              editingPrice={editingPriceId === id}
+              editingPriceValue={editingPriceValue}
+              onChangePriceValue={setEditingPriceValue}
+              onStartEditPrice={(currentPrice) => { setEditingPriceId(id); setEditingPriceValue(currentPrice === "" ? "" : String(currentPrice)); }}
+              onSaveEditPrice={() => {
+                const parsed = parseFloat(editingPriceValue.replace(",", "."));
+                updateItemMeta(roomKey, listKey, id, isNaN(parsed) ? { price: undefined, priceCurrency: undefined } : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
+                setEditingPriceId(null); setEditingPriceValue("");
+              }}
+              onCancelEditPrice={() => { setEditingPriceId(null); setEditingPriceValue(""); }}
             />
           ) : (
             <span className={`min-w-0 flex-1 break-words text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.text}</span>
@@ -5033,6 +5045,8 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
   const [editingDate, setEditingDate] = useState(null);
   const [editingTitleId, setEditingTitleId] = useState(null);
   const [editingTitleValue, setEditingTitleValue] = useState("");
+  const [editingPriceId, setEditingPriceId] = useState(null);
+  const [editingPriceValue, setEditingPriceValue] = useState("");
   const [showMySelections, setShowMySelections] = useState(false);
   const migratedItemIds = useRef(new Set());
 
@@ -5335,6 +5349,20 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                       setEditingTitleId(item.id);
                       setEditingTitleValue(currentTitle);
                     } : undefined}
+                    editingPrice={listKey === "shopping" && editingPriceId === item.id}
+                    editingPriceValue={editingPriceValue}
+                    onChangePriceValue={setEditingPriceValue}
+                    onStartEditPrice={listKey === "shopping" ? (currentPrice) => {
+                      setEditingPriceId(item.id);
+                      setEditingPriceValue(currentPrice === "" ? "" : String(currentPrice));
+                    } : undefined}
+                    onSaveEditPrice={() => {
+                      const parsed = parseFloat(editingPriceValue.replace(",", "."));
+                      updateItemMeta(listKey, item.id, isNaN(parsed) ? { price: undefined, priceCurrency: undefined } : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
+                      setEditingPriceId(null);
+                      setEditingPriceValue("");
+                    }}
+                    onCancelEditPrice={() => { setEditingPriceId(null); setEditingPriceValue(""); }}
                   />
                 ) : (
                   <span className={`min-w-0 flex-1 break-all text-sm ${item.done && listKey !== "shopping" ? "text-slate-400 line-through" : item.done ? "text-amber-800" : "text-slate-800"}`}>{item.text}</span>
@@ -7187,7 +7215,10 @@ export default function App() {
       })
       .catch(() => {})
       .finally(() => setLoadingFromUrl(false));
-  }, [session]);
+    // Volontairement limité à l'id utilisateur (pas l'objet `session` entier) :
+    // Supabase réémet un nouvel objet session (même utilisateur) au refocus de
+    // l'onglet, ce qui redéclenchait un rechargement complet du projet.
+  }, [session?.user?.id]);
 
   // Charger la liste des snapshots quand le panneau s'ouvre
   useEffect(() => {

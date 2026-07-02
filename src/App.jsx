@@ -2856,8 +2856,12 @@ function DocumentsGlobalView({ orderedActiveRooms, allRoomPresets, roomDocuments
         <p className="mt-1 text-sm text-slate-600">Devis, plans et fichiers uploadés dans chaque pièce.</p>
       </div>
       {roomsWithDocs.length === 0 ? (
-        <div className="rounded-xl border border-black/10 bg-white p-8 text-center text-sm text-slate-400">
-          Aucun document uploadé pour l'instant. Ouvre une pièce et ajoute des fichiers dans la section "Devis & documents".
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-black/15 bg-white p-10 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-[#fdf9f4] text-2xl shadow-sm">🗂️</span>
+          <p className="text-sm font-medium text-slate-600">Aucun document uploadé pour l'instant</p>
+          <p className="max-w-sm text-xs text-slate-400">
+            Ouvre une pièce et ajoute des fichiers dans la section « Devis & documents » pour les retrouver ici.
+          </p>
         </div>
       ) : (
         roomsWithDocs.map((key) => {
@@ -4782,7 +4786,13 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, sa
         />
       </div>
       {docs.length === 0 ? (
-        <div className="py-6 text-center text-sm text-slate-400">Aucun document pour l'instant.</div>
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-black/15 bg-white/60 py-10 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-white text-2xl shadow-sm">📄</span>
+          <p className="text-sm font-medium text-slate-600">Aucun document pour l'instant</p>
+          <p className="max-w-xs text-xs text-slate-400">
+            Glisse-dépose un fichier ici ou clique sur « + Document » pour ajouter un devis, un plan ou une facture.
+          </p>
+        </div>
       ) : (
         <ul className="space-y-1.5">
           {docs.map((doc) => (

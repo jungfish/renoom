@@ -7585,7 +7585,7 @@ export default function App() {
     if (!projectId || !hydratedRef.current || isApplyingRemoteUpdate.current) return;
     saveProject({ metaOnly: true });
   }, [ // eslint-disable-line react-hooks/exhaustive-deps
-    projectId, globalAccent, globalShade, globalDominantColor, globalPalette,
+    projectId, room, globalAccent, globalShade, globalDominantColor, globalPalette,
     warmth, customRooms, hiddenRooms, roomNuances, roomOrder,
     generalContext, generalResources,
   ]);

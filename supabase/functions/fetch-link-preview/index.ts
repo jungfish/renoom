@@ -70,16 +70,98 @@ Deno.serve(async (req) => {
       }
     }
 
+    const { price, currency } = extractPrice(html);
+
     return corsResponse(200, {
       url,
       title: getPageTitle() || url,
       description: getOgTag("description") || getMetaName("description"),
       image,
+      price,
+      currency,
     });
   } catch {
     return corsResponse(200, { url, title: url, description: null, image: null });
   }
 });
+
+function extractPrice(html: string): { price: number | null; currency: string | null } {
+  const toNumber = (raw: string) => {
+    const num = parseFloat(raw.replace(/[^\d.,]/g, "").replace(",", "."));
+    return isNaN(num) ? null : num;
+  };
+
+  const ldBlocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (const block of ldBlocks) {
+    const jsonMatch = block.match(/>([\s\S]*?)<\/script>/i);
+    if (!jsonMatch) continue;
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      const nodes = Array.isArray(parsed) ? parsed : (parsed["@graph"] || [parsed]);
+      for (const node of nodes) {
+        const type = node?.["@type"];
+        const isProduct = type === "Product" || (Array.isArray(type) && type.includes("Product"));
+        if (!isProduct) continue;
+        const offers = Array.isArray(node.offers) ? node.offers[0] : node.offers;
+        const rawPrice = offers?.price ?? offers?.priceSpecification?.price;
+        if (rawPrice === undefined || rawPrice === null) continue;
+        const price = toNumber(String(rawPrice));
+        if (price !== null) {
+          const currency = offers?.priceCurrency ?? offers?.priceSpecification?.priceCurrency ?? null;
+          return { price, currency };
+        }
+      }
+    } catch {
+      // JSON-LD malformé, on ignore ce bloc
+    }
+  }
+
+  const getMetaContent = (prop: string) => {
+    const patterns = [
+      new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i"),
+      new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i"),
+    ];
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m?.[1]) return m[1];
+    }
+    return null;
+  };
+
+  const metaAmount = getMetaContent("product:price:amount") || getMetaContent("og:price:amount");
+  if (metaAmount) {
+    const price = toNumber(metaAmount);
+    if (price !== null) {
+      const currency = getMetaContent("product:price:currency") || getMetaContent("og:price:currency");
+      return { price, currency };
+    }
+  }
+
+  const itemPropMatch =
+    html.match(/<[^>]+itemprop=["']price["'][^>]+content=["']([^"']+)["']/i) ||
+    html.match(/<[^>]+content=["']([^"']+)["'][^>]+itemprop=["']price["']/i);
+  if (itemPropMatch?.[1]) {
+    const price = toNumber(itemPropMatch[1]);
+    if (price !== null) return { price, currency: null };
+  }
+
+  for (let i = 1; i <= 2; i++) {
+    const label = getMetaContent(`twitter:label${i}`);
+    if (label && /prix|price/i.test(label)) {
+      const data = getMetaContent(`twitter:data${i}`);
+      const priceMatch = data?.match(/[\d]+(?:[.,]\d{2})?/);
+      if (priceMatch) {
+        const price = toNumber(priceMatch[0]);
+        if (price !== null) {
+          const currency = /€/.test(data!) ? "EUR" : /\$/.test(data!) ? "USD" : /£/.test(data!) ? "GBP" : null;
+          return { price, currency };
+        }
+      }
+    }
+  }
+
+  return { price: null, currency: null };
+}
 
 function decodeHtmlEntities(str: string): string {
   return str

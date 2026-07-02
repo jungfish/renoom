@@ -36,6 +36,10 @@ function extFromDataUrl(dataUrl) {
   return ext === "jpeg" ? "jpg" : ext;
 }
 
+function buildDefaultGeneralContext(projectName, selectedStyle, selectedRooms) {
+  return `${projectName || "Appartement"}, style ${selectedStyle?.label || "moderne"}, pièces : ${selectedRooms.map(r => ROOM_LABELS[r]).join(", ")}.`;
+}
+
 export function OnboardingWizard({ user, session, onComplete, onJoinProject, onSkip, signOut, initialStep = "welcome" }) {
   const [step, setStep] = useState(initialStep);
   const [direction, setDirection] = useState(1);
@@ -44,6 +48,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
   const [projectName, setProjectName] = useState("");
   const [selectedRooms, setSelectedRooms] = useState(DEFAULT_SELECTED);
   const [decoStyle, setDecoStyle] = useState(null);
+  const [generalContext, setGeneralContext] = useState("");
+  const contextTouchedRef = useRef(false);
   const [inspoFiles, setInspoFiles] = useState([]);
   const [inspoUrlInput, setInspoUrlInput] = useState("");
   const [inspoUrlAdded, setInspoUrlAdded] = useState([]);
@@ -84,9 +90,22 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
   }, []);
 
   // Progress bar
-  const PROGRESS_STEPS = ["name","rooms","style","inspo"];
+  const PROGRESS_STEPS = ["name","rooms","style","context","inspo"];
   const progressIdx = PROGRESS_STEPS.indexOf(step);
   const progressPct = progressIdx >= 0 ? ((progressIdx + 1) / PROGRESS_STEPS.length) * 100 : 0;
+
+  // Keep the context textarea prefilled with a live default until the user edits it themselves
+  useEffect(() => {
+    if (contextTouchedRef.current) return;
+    const selectedStyle = DECO_STYLES.find(s => s.key === decoStyle);
+    setGeneralContext(buildDefaultGeneralContext(projectName, selectedStyle, selectedRooms));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectName, decoStyle, selectedRooms]);
+
+  const handleGeneralContextChange = (value) => {
+    contextTouchedRef.current = true;
+    setGeneralContext(value);
+  };
 
   // ── File handling ────────────────────────────────────────────────────────
 
@@ -129,7 +148,7 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
       const selectedStyle = DECO_STYLES.find(s => s.key === decoStyle);
       const hiddenRooms = ALL_ROOMS.filter(r => !selectedRooms.includes(r));
       const activeRoom = selectedRooms[0] || "salon";
-      const generalContext = `${projectName || "Appartement"}, style ${selectedStyle?.label || "moderne"}, pièces : ${selectedRooms.map(r => ROOM_LABELS[r]).join(", ")}.`;
+      const finalGeneralContext = generalContext.trim() || buildDefaultGeneralContext(projectName, selectedStyle, selectedRooms);
 
       // Upload local inspiration files, grouped by the room each photo was assigned to
       const aiInspirations = {};
@@ -173,7 +192,7 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
         customRooms: [],
         hiddenRooms,
         roomOrder: null,
-        generalContext,
+        generalContext: finalGeneralContext,
         generalResources: [],
         uploadedImages: {},
         inspirationLinks,
@@ -376,8 +395,17 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
             <StepStyle
               decoStyle={decoStyle}
               setDecoStyle={setDecoStyle}
-              onNext={() => goTo("inspo")}
+              onNext={() => goTo("context")}
               onBack={() => goTo("rooms", -1)}
+            />
+          )}
+
+          {step === "context" && (
+            <StepContext
+              value={generalContext}
+              onChange={handleGeneralContextChange}
+              onNext={() => goTo("inspo")}
+              onBack={() => goTo("style", -1)}
             />
           )}
 
@@ -396,7 +424,7 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
               onRemoveUrl={(i) => setInspoUrlAdded(prev => prev.filter((_, idx) => idx !== i))}
               fileInputRef={fileInputRef}
               onNext={handleCreate}
-              onBack={() => goTo("style", -1)}
+              onBack={() => goTo("context", -1)}
             />
           )}
 
@@ -632,6 +660,33 @@ function StepStyle({ decoStyle, setDecoStyle, onNext, onBack }) {
       </div>
 
       <PrimaryBtn onClick={onNext}>{decoStyle ? "Suivant" : "Continuer sans choisir"}</PrimaryBtn>
+    </div>
+  );
+}
+
+function StepContext({ value, onChange, onNext, onBack }) {
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <BackLink onClick={onBack} />
+        <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
+          Un mot sur vos goûts ?
+        </h2>
+        <p className="text-xs text-slate-500">
+          On a préparé un résumé à partir de vos réponses — modifiez-le si besoin. Ce texte est transmis à l'IA dans chaque conversation pièce.
+        </p>
+      </div>
+
+      <textarea
+        className="min-h-36 w-full rounded-xl border border-black/12 bg-white p-3 text-sm text-slate-800 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300/60"
+        placeholder="Ex : Style rétro années 70, coloré mais doux. On aime le bois clair, les plantes, les textiles en lin. On évite le minimalisme froid…"
+        maxLength={400}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+      />
+      <p className="-mt-3 text-right text-[10px] text-slate-400">{value.length}/400</p>
+
+      <PrimaryBtn onClick={onNext}>Suivant</PrimaryBtn>
     </div>
   );
 }

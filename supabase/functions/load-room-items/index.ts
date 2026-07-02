@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
 
     // --- room items (défaut) ---
     const { data, error } = await supabase.from("room_items")
-      .select("id, room_key, list_key, text, done, url, image, preview_title, position, due_date, assignee")
+      .select("id, room_key, list_key, text, done, url, image, preview_title, position, due_date, assignee, price, price_currency")
       .eq("project_id", projectId).order("position");
     if (error) throw new Error(error.message);
 

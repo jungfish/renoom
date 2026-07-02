@@ -150,7 +150,7 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
   ];
 }
 
-const SYSTEM_BASE = "Assistant design intérieur, style rétro français. Aide aux décisions déco.\nRègles: français, concis, 3-6 phrases max. Univers rétro, coloré, doux — pas d'accents rouges ni de minimalisme. Pour produits/liens, utilise web_search avec URLs directes.";
+const SYSTEM_BASE = "Assistant design intérieur, style rétro français. Aide aux décisions déco.\nRègles: français, concis, 3-6 phrases max. Univers rétro, coloré, doux — pas d'accents rouges ni de minimalisme. Pour produits/liens, utilise web_search avec URLs directes. Écris TOUJOURS une réponse texte à l'utilisateur, même en appelant un outil : un appel d'outil seul (ex: save_room_note) ne remplace jamais une réponse conversationnelle qui traite réellement la demande.";
 
 function buildSystemPrompt(ctx: Record<string, unknown>): string {
   return [

@@ -3731,7 +3731,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, ch
               setRoomLists((prev) => {
                 const updatedItems = ((prev[targetRoom] || {}).shopping || []).map((i) =>
                   i.id === item.id
-                    ? { ...i, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}) }
+                    ? { ...i, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}), ...(preview.price != null ? { price: preview.price, priceCurrency: preview.currency || undefined } : {}) }
                     : i
                 );
                 if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, targetRoom, "shopping", updatedItems);
@@ -3761,7 +3761,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], aiContext, ch
               setRoomLists((prev) => {
                 const updatedItems = ((prev[targetRoom] || {}).todos || []).map((i) =>
                   i.id === item.id
-                    ? { ...i, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}) }
+                    ? { ...i, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}), ...(preview.price != null ? { price: preview.price, priceCurrency: preview.currency || undefined } : {}) }
                     : i
                 );
                 if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, targetRoom, "todos", updatedItems);
@@ -4611,12 +4611,46 @@ function renderItemText(text, url) {
   return parts.length > 0 ? parts : text;
 }
 
-function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, onSaveEditTitle, onCancelEditTitle, onStartEditTitle }) {
+function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, onSaveEditTitle, onCancelEditTitle, onStartEditTitle,
+  editingPrice, editingPriceValue, onChangePriceValue, onSaveEditPrice, onCancelEditPrice, onStartEditPrice }) {
   const domain = (() => {
     try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; }
   })();
   const isCustomTitle = item.text && item.text !== item.url;
   const cardTitle = isCustomTitle ? item.text : (item.previewTitle || domain);
+
+  const priceRow = editingPrice ? (
+    <input
+      type="number"
+      step="0.01"
+      autoFocus
+      value={editingPriceValue}
+      onClick={e => { e.preventDefault(); e.stopPropagation(); }}
+      onChange={e => onChangePriceValue(e.target.value)}
+      onBlur={() => onSaveEditPrice()}
+      onKeyDown={e => { if (e.key === "Enter") onSaveEditPrice(); if (e.key === "Escape") onCancelEditPrice(); }}
+      className="w-16 shrink-0 rounded border border-amber-300 bg-white px-1 py-0.5 text-[11px] outline-none"
+      placeholder="Prix"
+    />
+  ) : item.price != null ? (
+    <button
+      type="button"
+      onClick={e => { e.preventDefault(); e.stopPropagation(); onStartEditPrice?.(item.price); }}
+      className="shrink-0 text-[11px] font-semibold text-slate-600 hover:underline"
+      title="Modifier le prix"
+    >
+      {formatPrice(item.price, item.priceCurrency)}
+    </button>
+  ) : onStartEditPrice ? (
+    <button
+      type="button"
+      onClick={e => { e.preventDefault(); e.stopPropagation(); onStartEditPrice(""); }}
+      className="shrink-0 text-[11px] text-slate-300 opacity-0 transition-opacity hover:text-slate-500 group-hover/link-preview:opacity-100"
+      title="Ajouter un prix"
+    >
+      + prix
+    </button>
+  ) : null;
 
   const imageEl = item.image ? (
     <img src={item.image} alt={cardTitle} className="h-20 w-24 shrink-0 object-cover" />
@@ -4655,7 +4689,10 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
             className="w-full bg-transparent text-sm font-medium text-slate-800 outline-none"
             placeholder={cardTitle}
           />
-          {domain && <p className="mt-1 truncate text-[11px] text-slate-400">{domain}</p>}
+          <div className="mt-1 flex items-center gap-2">
+            {domain && <p className="truncate text-[11px] text-slate-400">{domain}</p>}
+            {priceRow}
+          </div>
         </div>
       </div>
     );
@@ -4672,7 +4709,10 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
         {imageEl}
         <div className="flex min-w-0 flex-1 flex-col justify-center px-3">
           <p className="line-clamp-2 text-sm font-medium leading-snug text-slate-800">{cardTitle}</p>
-          {domain && <p className="mt-1 truncate text-[11px] text-slate-400">{domain}</p>}
+          <div className="mt-1 flex items-center gap-2">
+            {domain && <p className="truncate text-[11px] text-slate-400">{domain}</p>}
+            {priceRow}
+          </div>
         </div>
       </a>
       {onStartEditTitle && (
@@ -4862,6 +4902,13 @@ function formatDueDate(d) {
 }
 function isDueOverdue(d) { return !!d && d < new Date().toISOString().split("T")[0]; }
 function isDueSoonDate(d) { if (!d) return false; const diff = (new Date(d) - new Date()) / 86400000; return diff >= 0 && diff <= 3; }
+function formatPrice(price, currency) {
+  try {
+    return new Intl.NumberFormat("fr-FR", { style: "currency", currency: currency || "EUR" }).format(price);
+  } catch {
+    return `${price} ${currency || ""}`.trim();
+  }
+}
 
 const REACTION_EMOJIS = ["❤️","👍","😍","🔥","✨","💡","🎉","😂","😮","👏","🙏","💯","👎","😕","💔","🤮","😤","❌","🙅","💸","🪙"];
 
@@ -5069,7 +5116,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
         setRoomLists((prev) => {
           const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
             item.id === id
-              ? { ...item, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}) }
+              ? { ...item, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}), ...(preview.price != null ? { price: preview.price, priceCurrency: preview.currency || undefined } : {}) }
               : item
           );
           if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, updatedItems);
@@ -5133,7 +5180,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
       setRoomLists((prev) => {
         const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
           item.id === id
-            ? { ...item, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title && !lbl.trim() ? { previewTitle: preview.title } : {}) }
+            ? { ...item, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title && !lbl.trim() ? { previewTitle: preview.title } : {}), ...(preview.price != null ? { price: preview.price, priceCurrency: preview.currency || undefined } : {}) }
             : item
         );
         if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, updatedItems);
@@ -7095,6 +7142,8 @@ export default function App() {
           previewTitle: item.preview_title || undefined,
           dueDate: item.due_date || undefined,
           assignee: item.assignee || undefined,
+          price: item.price ?? undefined,
+          priceCurrency: item.price_currency || undefined,
         });
       }
       setRoomLists(built);

@@ -61,6 +61,84 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function extractPrice(html) {
+  const toNumber = (raw) => {
+    const num = parseFloat(raw.replace(/[^\d.,]/g, "").replace(",", "."));
+    return isNaN(num) ? null : num;
+  };
+
+  const ldBlocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (const block of ldBlocks) {
+    const jsonMatch = block.match(/>([\s\S]*?)<\/script>/i);
+    if (!jsonMatch) continue;
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      const nodes = Array.isArray(parsed) ? parsed : (parsed["@graph"] || [parsed]);
+      for (const node of nodes) {
+        const type = node?.["@type"];
+        const isProduct = type === "Product" || (Array.isArray(type) && type.includes("Product"));
+        if (!isProduct) continue;
+        const offers = Array.isArray(node.offers) ? node.offers[0] : node.offers;
+        const rawPrice = offers?.price ?? offers?.priceSpecification?.price;
+        if (rawPrice === undefined || rawPrice === null) continue;
+        const price = toNumber(String(rawPrice));
+        if (price !== null) {
+          const currency = offers?.priceCurrency ?? offers?.priceSpecification?.priceCurrency ?? null;
+          return { price, currency };
+        }
+      }
+    } catch {
+      // JSON-LD malformé, on ignore ce bloc
+    }
+  }
+
+  const getMetaContent = (prop) => {
+    const patterns = [
+      new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i"),
+      new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i"),
+    ];
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m?.[1]) return m[1];
+    }
+    return null;
+  };
+
+  const metaAmount = getMetaContent("product:price:amount") || getMetaContent("og:price:amount");
+  if (metaAmount) {
+    const price = toNumber(metaAmount);
+    if (price !== null) {
+      const currency = getMetaContent("product:price:currency") || getMetaContent("og:price:currency");
+      return { price, currency };
+    }
+  }
+
+  const itemPropMatch =
+    html.match(/<[^>]+itemprop=["']price["'][^>]+content=["']([^"']+)["']/i) ||
+    html.match(/<[^>]+content=["']([^"']+)["'][^>]+itemprop=["']price["']/i);
+  if (itemPropMatch?.[1]) {
+    const price = toNumber(itemPropMatch[1]);
+    if (price !== null) return { price, currency: null };
+  }
+
+  for (let i = 1; i <= 2; i++) {
+    const label = getMetaContent(`twitter:label${i}`);
+    if (label && /prix|price/i.test(label)) {
+      const data = getMetaContent(`twitter:data${i}`);
+      const priceMatch = data?.match(/[\d]+(?:[.,]\d{2})?/);
+      if (priceMatch) {
+        const price = toNumber(priceMatch[0]);
+        if (price !== null) {
+          const currency = /€/.test(data) ? "EUR" : /\$/.test(data) ? "USD" : /£/.test(data) ? "GBP" : null;
+          return { price, currency };
+        }
+      }
+    }
+  }
+
+  return { price: null, currency: null };
+}
+
 function getSupabaseHeaders(req, useServiceRole = false) {
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
   const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -160,7 +238,7 @@ createServer(async (req, res) => {
         const eid = encodeURIComponent(id);
         const [projRes, itemsRes, chatRes, notesRes, docsRes, nuancesRes, mediaRes] = await Promise.all([
           fetch(`${SUPABASE_URL}/rest/v1/projects?id=eq.${eid}&select=name,invite_code,owner_id,active_room,view_mode,general_mode,global_accent,warmth,general_context,custom_rooms,hidden_rooms,room_order,general_resources,persons,updated_at`, { headers: sbH }),
-          fetch(`${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${eid}&select=id,room_key,list_key,text,done,url,image,preview_title,position&order=position.asc`, { headers: sbH }),
+          fetch(`${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${eid}&select=id,room_key,list_key,text,done,url,image,preview_title,position,due_date,assignee,price,price_currency&order=position.asc`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/chat_messages?project_id=eq.${eid}&select=id,room_key,role,content,image_prompt,error,created_at&order=created_at.asc`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_notes?project_id=eq.${eid}&select=room_key,content`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_documents?project_id=eq.${eid}&select=id,room_key,name,url,type,size,uploaded_at&order=uploaded_at.asc`, { headers: sbH }),
@@ -253,7 +331,7 @@ createServer(async (req, res) => {
       const SUPABASE_URL = process.env.SUPABASE_URL;
       try {
         const sbRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${encodeURIComponent(projectId)}&select=id,room_key,list_key,text,done,url,image,preview_title,position&order=position.asc`,
+          `${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${encodeURIComponent(projectId)}&select=id,room_key,list_key,text,done,url,image,preview_title,position,due_date,assignee,price,price_currency&order=position.asc`,
           { headers: getSupabaseHeaders(req, true) }
         );
         const items = await sbRes.json();
@@ -409,7 +487,7 @@ createServer(async (req, res) => {
           const now = new Date().toISOString();
           const eid = encodeURIComponent(projectId);
           if (items.length) {
-            const rows = items.map((item, i) => ({ id: item.id, project_id: projectId, room_key: roomKey, list_key: listKey, text: item.text || "", done: item.done || false, url: item.url || null, image: item.image || null, preview_title: item.previewTitle || null, position: i, updated_at: now }));
+            const rows = items.map((item, i) => ({ id: item.id, project_id: projectId, room_key: roomKey, list_key: listKey, text: item.text || "", done: item.done || false, url: item.url || null, image: item.image || null, preview_title: item.previewTitle || null, position: i, updated_at: now, due_date: item.dueDate || null, assignee: item.assignee || null, price: item.price ?? null, price_currency: item.priceCurrency || null }));
             const uRes = await fetch(`${SUPABASE_URL}/rest/v1/room_items`, { method: "POST", headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify(rows) });
             if (!uRes.ok) { sendJson(res, 500, { error: await uRes.text() }); return; }
           }
@@ -496,14 +574,17 @@ createServer(async (req, res) => {
           return m?.[1] || null;
         };
         const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const { price, currency } = extractPrice(html);
         sendJson(res, 200, {
           url,
           ok: true,
           title: getMeta("og:title") || getMeta("twitter:title") || titleMatch?.[1]?.trim() || null,
           description: getMeta("og:description") || getMeta("twitter:description") || getMeta("description") || null,
           image: getMeta("og:image") || getMeta("twitter:image") || null,
+          price,
+          currency,
         });
-      } catch { sendJson(res, 200, { url, ok: null, title: null, description: null, image: null }); }
+      } catch { sendJson(res, 200, { url, ok: null, title: null, description: null, image: null, price: null, currency: null }); }
       return;
     }
 
@@ -617,6 +698,7 @@ createServer(async (req, res) => {
           "- Sois honnête : donne ton avis sincère même s'il diverge de celui de l'utilisateur, ne valide pas une idée par complaisance et signale les inconvénients ou risques d'un choix quand c'est pertinent",
           "- Reste dans l'univers rétro, coloré, doux — jamais d'accents rouges, pas de style minimaliste froid",
           "- Si l'utilisateur demande des produits, utilise la recherche web pour trouver des résultats réels et inclus des URLs directes",
+          "- Écris TOUJOURS une réponse texte à l'utilisateur, même quand tu appelles un outil (save_room_note, add_to_shopping_list, etc.) : un appel d'outil ne remplace jamais une réponse conversationnelle qui traite réellement la demande",
           `- Si tu suggères une modification visuelle concrète et précise, termine ta réponse par exactement ce bloc sur une nouvelle ligne: ${CHAT_IMAGE_PROMPT_MARKER}{"prompt":"<instruction en anglais pour édition d'image>"}${CHAT_IMAGE_PROMPT_MARKER}`,
           "- N'inclus ce bloc que si la suggestion est clairement visuelle et actionnable",
         ].filter(Boolean).join("\n");
@@ -641,6 +723,7 @@ createServer(async (req, res) => {
           "- Sois honnête : donne ton avis sincère même s'il diverge de celui de l'utilisateur, ne valide pas une idée par complaisance et signale les inconvénients ou risques d'un choix quand c'est pertinent",
           "- Reste dans l'univers rétro, coloré, doux — jamais d'accents rouges, pas de style minimaliste froid",
           "- Si l'utilisateur demande des produits, utilise la recherche web pour trouver des résultats réels et inclus des URLs directes",
+          "- Écris TOUJOURS une réponse texte à l'utilisateur, même quand tu appelles un outil (save_room_note, add_to_shopping_list, etc.) : un appel d'outil ne remplace jamais une réponse conversationnelle qui traite réellement la demande",
           `- Si tu suggères une modification visuelle concrète et précise, termine ta réponse par exactement ce bloc sur une nouvelle ligne: ${CHAT_IMAGE_PROMPT_MARKER}{"prompt":"<instruction en anglais pour édition d'image>"}${CHAT_IMAGE_PROMPT_MARKER}`,
           "- N'inclus ce bloc que si la suggestion est clairement visuelle et actionnable",
         ].filter(Boolean).join("\n");

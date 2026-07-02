@@ -41,6 +41,8 @@ Deno.serve(async (req) => {
         position: idx,
         due_date: item.dueDate || null,
         assignee: item.assignee || null,
+        price: item.price ?? null,
+        price_currency: item.priceCurrency || null,
       }));
 
       const ids = rows.map((r) => r.id).filter(Boolean) as string[];

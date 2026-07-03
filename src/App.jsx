@@ -4271,7 +4271,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelec
   );
 }
 
-function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null }) {
+function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null, itemSelections = {} }) {
   const [filter, setFilter] = useState("all");
   const [hideDone, setHideDone] = useState(true);
   const [groupBy, setGroupBy] = useState("room"); // "room" | "week"
@@ -4338,11 +4338,17 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
     setRoomInputOpen((prev) => ({ ...prev, [roomKey]: false }));
   };
 
+  const isSelectedForPurchase = (item) => (itemSelections[item.id] || []).length > 0;
+
   // Collect all items across all rooms + the room-agnostic "Appartement" bucket
   const allItemsFlat = ["general", ...orderedActiveRooms].flatMap((roomKey) => {
     const list = roomLists[roomKey] || {};
-    const shopping = filter !== "todos" ? (list.shopping || []).map((i) => ({ ...i, listKey: "shopping", roomKey })) : [];
-    const todos = filter !== "shopping" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey })) : [];
+    const shopping = filter !== "todos"
+      ? (list.shopping || [])
+          .filter((i) => filter !== "courses" || isSelectedForPurchase(i))
+          .map((i) => ({ ...i, listKey: "shopping", roomKey }))
+      : [];
+    const todos = filter === "all" || filter === "todos" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey })) : [];
     return [...shopping, ...todos];
   });
 
@@ -4431,6 +4437,17 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
               {roomKey === "general" ? "Appartement" : allRoomPresets[roomKey]?.label}
             </span>
           )}
+          {filter === "all" && listKey === "shopping" && (
+            isSelectedForPurchase(item) ? (
+              <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700" title="Sélectionné pour l'achat">
+                🛒 Sélectionné
+              </span>
+            ) : (
+              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-400" title="Pas encore sélectionné pour l'achat">
+                Envie
+              </span>
+            )
+          )}
           {/* Due date */}
           {editingDate === dateKey ? (
             <input type="date" autoFocus value={item.dueDate || ""}
@@ -4485,7 +4502,39 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
     );
   };
 
+  useEffect(() => {
+    if (filter !== "envies" && filter !== "courses" && groupBy === "site") setGroupBy("room");
+  }, [filter, groupBy]);
+
   const weekGroups = groupBy === "week" ? buildWeekGroups(visibleItems) : null;
+
+  // ── Site grouping helpers (Courses uniquement) ──────────────────────────
+  const siteDomain = (url) => {
+    try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return null; }
+  };
+  const buildSiteGroups = (items) => {
+    const groups = {};
+    const noSite = [];
+    for (const item of items) {
+      const domain = item.url ? siteDomain(item.url) : null;
+      if (!domain) { noSite.push(item); continue; }
+      (groups[domain] = groups[domain] || []).push(item);
+    }
+    const subtotal = (list) => list.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
+    const sorted = Object.entries(groups)
+      .map(([domain, list]) => ({ domain, items: list, total: subtotal(list), currency: list.find(i => i.priceCurrency)?.priceCurrency }))
+      .sort((a, b) => b.total - a.total);
+    return { sites: sorted, noSite: { items: noSite, total: subtotal(noSite), currency: noSite.find(i => i.priceCurrency)?.priceCurrency } };
+  };
+  const siteGroups = groupBy === "site"
+    ? buildSiteGroups(visibleItems.filter((i) => i.listKey === "shopping"))
+    : null;
+  const siteGlobalTotal = siteGroups
+    ? siteGroups.sites.reduce((sum, s) => sum + s.total, 0) + siteGroups.noSite.total
+    : 0;
+  const siteGlobalCurrency = siteGroups
+    ? (siteGroups.sites.find((s) => s.currency)?.currency || siteGroups.noSite.currency)
+    : undefined;
 
   return (
     <div className="space-y-4">
@@ -4497,8 +4546,8 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
           {totalPending > 0 ? `${totalPending} élément${totalPending > 1 ? "s" : ""} en attente.` : "Tout est fait — rien en attente."}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {[{ key: "all", label: "Tout" }, { key: "todos", label: "À faire" }, { key: "shopping", label: "Courses" }].map(({ key, label }) => (
-            <button key={key} type="button" onClick={() => setFilter(key)}
+          {[{ key: "all", label: "Tout" }, { key: "todos", label: "À faire" }, { key: "envies", label: "Envies" }, { key: "courses", label: "Courses" }].map(({ key, label }) => (
+            <button key={key} type="button" onClick={() => { setFilter(key); if (key === "envies" || key === "courses") setGroupBy("site"); else if (groupBy === "site") setGroupBy("room"); }}
               className={`rounded-lg border px-3 py-1.5 text-sm ${filter === key ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white hover:bg-slate-50"}`}>
               {label}
             </button>
@@ -4518,6 +4567,14 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 Semaine
               </button>
+              {(filter === "envies" || filter === "courses") && (
+                <button type="button" onClick={() => setGroupBy("site")}
+                  className={`flex items-center gap-1.5 border-l border-black/15 px-3 py-1.5 text-sm ${groupBy === "site" ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}
+                  title="Grouper par site d'achat">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                  Sites
+                </button>
+              )}
             </div>
             <button type="button" onClick={() => setHideDone((v) => !v)}
               className={`rounded-lg border px-3 py-1.5 text-sm ${hideDone ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white hover:bg-slate-50"}`}>
@@ -4531,14 +4588,18 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
       {groupBy === "room" && ["general", ...orderedActiveRooms].map((key) => {
         const preset = key === "general" ? { label: "Appartement" } : allRoomPresets[key];
         const list = roomLists[key] || {};
-        const shopping = filter !== "todos" ? (list.shopping || []).map((i) => ({ ...i, listKey: "shopping", roomKey: key })) : [];
-        const todos = filter !== "shopping" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey: key })) : [];
+        const shopping = filter !== "todos"
+          ? (list.shopping || [])
+              .filter((i) => filter !== "courses" || isSelectedForPurchase(i))
+              .map((i) => ({ ...i, listKey: "shopping", roomKey: key }))
+          : [];
+        const todos = filter === "all" || filter === "todos" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey: key })) : [];
         const allItems = [...shopping, ...todos];
         const visible = hideDone ? allItems.filter((i) => !i.done) : allItems;
         const sorted = [...visible.filter((i) => !i.done), ...visible.filter((i) => i.done)];
         const isOpen = roomInputOpen[key] || false;
         const inputVal = roomInputs[key] || "";
-        const addListKey = filter === "shopping" ? "shopping" : "todos";
+        const addListKey = (filter === "envies" || filter === "courses") ? "shopping" : "todos";
         return (
           <div key={key} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
             <div className="mb-3 flex items-center justify-between">
@@ -4599,6 +4660,53 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
             </ul>
           </div>
         ));
+      })()}
+
+      {/* Vue par site d'achat */}
+      {groupBy === "site" && siteGroups && (() => {
+        const { sites, noSite } = siteGroups;
+        if (sites.length === 0 && noSite.items.length === 0) {
+          return (
+            <div className="py-12 text-center text-sm text-slate-400">
+              {filter === "courses"
+                ? "Aucun article sélectionné pour l'achat — sélectionnez des articles depuis une pièce pour les voir ici."
+                : "Aucune envie pour l'instant — ajoutez des articles depuis une pièce pour les voir ici."}
+            </div>
+          );
+        }
+        return (
+          <>
+            <div className="flex items-center justify-between rounded-xl border border-slate-900 bg-slate-900 p-4 text-white">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">Budget global</p>
+                <p className="text-lg font-semibold">{formatPrice(siteGlobalTotal, siteGlobalCurrency)}</p>
+              </div>
+              <p className="text-sm text-white/70">{sites.length} site{sites.length > 1 ? "s" : ""} d'achat</p>
+            </div>
+            {sites.map(({ domain, items, total, currency }) => (
+              <div key={domain} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-medium text-slate-900">{domain}</h3>
+                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">{formatPrice(total, currency)}</span>
+                </div>
+                <ul className="space-y-1.5">
+                  {[...items.filter((i) => !i.done), ...items.filter((i) => i.done)].map((item) => renderItemRow(item, true))}
+                </ul>
+              </div>
+            ))}
+            {noSite.items.length > 0 && (
+              <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-medium text-slate-900">Sans site</h3>
+                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">{formatPrice(noSite.total, noSite.currency)}</span>
+                </div>
+                <ul className="space-y-1.5">
+                  {[...noSite.items.filter((i) => !i.done), ...noSite.items.filter((i) => i.done)].map((item) => renderItemRow(item, true))}
+                </ul>
+              </div>
+            )}
+          </>
+        );
       })()}
     </div>
   );
@@ -8467,6 +8575,7 @@ export default function App() {
               projectMembers={projectMembers}
               setPersons={setPersons}
               savePersonsFn={savePersonsToServer}
+              itemSelections={itemSelections}
             />
           ) : generalMode === "couleurs" ? (
             <>

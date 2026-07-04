@@ -96,6 +96,31 @@ label {
   100% { transform: scale(1) rotate(0deg); }
 }
 
+.bento-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+  grid-template-areas: "hero" "tall" "bottom";
+}
+.bento-grid.no-bottom {
+  grid-template-areas: "hero" "tall";
+}
+.bento-grid .bento-tall {
+  aspect-ratio: 4 / 3;
+}
+@media (min-width: 640px) {
+  .bento-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas: "hero hero tall" "bottom bottom tall";
+  }
+  .bento-grid.no-bottom {
+    grid-template-areas: "hero hero tall";
+  }
+  .bento-grid .bento-tall {
+    aspect-ratio: auto;
+  }
+}
+
 @layer components {
   .type-h1 {
     @apply font-display text-[24px] font-semibold leading-[28px] tracking-normal text-slate-900 md:text-[32px] md:leading-[40px];

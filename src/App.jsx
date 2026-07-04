@@ -1982,7 +1982,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
       {(() => {
         const [item0, item1, item2, item3] = visibleItems;
 
-        const renderCard = (item, extraStyle = {}) => {
+        const renderCard = (item, extraStyle = {}, extraClassName = "") => {
           if (!item) return null;
           const { src, cardKey, displayIndex: i } = item;
 
@@ -1992,7 +1992,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
             return (
               <div
                 key={cardKey}
-                className="group relative overflow-hidden rounded-xl cursor-pointer"
+                className={`group relative overflow-hidden rounded-xl cursor-pointer${extraClassName ? ` ${extraClassName}` : ""}`}
                 style={extraStyle}
                 onClick={() => setInstagramModal(item)}
               >
@@ -2062,7 +2062,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
           return (
             <div
               key={cardKey}
-              className="group relative overflow-hidden rounded-xl bg-[#e8e4de]"
+              className={`group relative overflow-hidden rounded-xl bg-[#e8e4de]${extraClassName ? ` ${extraClassName}` : ""}`}
               style={{ cursor: isMissing ? "default" : "zoom-in", ...extraStyle }}
               onClick={() => {
                 if (!isMissing && onImageClick) {
@@ -2146,15 +2146,9 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
         const hasBottom = !!(item2 || item3);
 
         return (
-          <div
-            className="grid gap-3"
-            style={{
-              gridTemplateColumns: "1fr 1fr 1fr",
-              gridTemplateAreas: hasBottom ? '"hero hero tall" "bottom bottom tall"' : '"hero hero tall"',
-            }}
-          >
+          <div className={`bento-grid${hasBottom ? "" : " no-bottom"}`}>
             {renderCard(item0, { gridArea: "hero", aspectRatio: "16/9" })}
-            {renderCard(item1, { gridArea: "tall" })}
+            {renderCard(item1, { gridArea: "tall" }, "bento-tall")}
             {hasBottom ? (
               <div style={{ gridArea: "bottom", display: "grid", gridTemplateColumns: item3 ? "1fr 1fr" : "1fr", gap: "12px" }}>
                 {renderCard(item2, { aspectRatio: "4/3" })}
@@ -8678,14 +8672,14 @@ export default function App() {
                             </button>
                           ))}
                         </div>
-                        <div className="grid grid-cols-7 gap-1.5">
+                        <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-7">
                           {activeFamily.colors.map(preset => (
                             <button
                               key={preset.hex}
                               type="button"
                               onClick={() => applyColor(activePaletteSlot, preset.hex, fbLabel(preset))}
                               title={fbLabel(preset)}
-                              className={`h-7 rounded-lg border-2 transition-all ${
+                              className={`h-10 rounded-lg border-2 transition-all sm:h-7 ${
                                 currentHex === preset.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
                               }`}
                               style={{ backgroundColor: preset.hex }}
@@ -8951,14 +8945,14 @@ export default function App() {
                             </button>
                           ))}
                         </div>
-                        <div className="grid grid-cols-7 gap-1.5">
+                        <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-7">
                           {activeFamily.colors.map(preset => (
                             <button
                               key={preset.hex}
                               type="button"
                               onClick={() => applyColor(activePaletteSlot, preset.hex, fbLabel(preset))}
                               title={fbLabel(preset)}
-                              className={`h-7 rounded-lg border-2 transition-all ${
+                              className={`h-10 rounded-lg border-2 transition-all sm:h-7 ${
                                 currentHex === preset.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
                               }`}
                               style={{ backgroundColor: preset.hex }}

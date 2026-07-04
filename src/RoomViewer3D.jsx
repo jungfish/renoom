@@ -337,8 +337,8 @@ export function RoomViewer3D({ dominant, secondary, accent, roomLabel, available
 
       {/* Surface picker panel — right side */}
       {availablePhotos.length > 0 && (
-        <div className="pointer-events-auto absolute right-3 top-1/2 flex -translate-y-1/2 flex-col gap-1.5"
-          style={{maxHeight:"70vh",overflowY:"auto"}}>
+        <div className="pointer-events-auto absolute right-2 top-1/2 flex -translate-y-1/2 flex-col gap-1.5 sm:right-3"
+          style={{maxHeight:"min(70vh, calc(100vh - 160px))",overflowY:"auto"}}>
           {Object.entries(SURFACE_LABELS).map(([key,label])=>{
             const assigned=assignments[key];
             const isOpen=pickerSurface===key;
@@ -346,7 +346,7 @@ export function RoomViewer3D({ dominant, secondary, accent, roomLabel, available
               <div key={key} className="flex flex-col items-end gap-1">
                 <button type="button"
                   onClick={()=>setPickerSurface(isOpen?null:key)}
-                  className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium shadow transition-all
+                  className={`flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium shadow transition-all
                     ${isOpen?"bg-white text-slate-900":"bg-black/50 text-white/70 hover:bg-black/70 hover:text-white"}
                     border border-white/10 backdrop-blur-sm`}
                 >

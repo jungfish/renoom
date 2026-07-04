@@ -61,6 +61,42 @@ Deno.serve(async (req) => {
       return corsResponse(200, { ok: true });
     }
 
+    // --- color-tests ---
+    if (action === "color-tests" && req.method === "POST") {
+      const { projectId, roomKey, colors, allowClearAll } = body;
+      if (!projectId || !roomKey || !Array.isArray(colors))
+        return corsResponse(400, { error: "projectId, roomKey et colors requis." });
+
+      const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
+      if (!member) return corsResponse(403, { error: "Accès refusé." });
+
+      const rows = colors.map((c: Record<string, unknown>, idx: number) => ({
+        id: c.id,
+        project_id: projectId,
+        room_key: roomKey,
+        hex: c.hex,
+        name: c.name,
+        number: c.number || null,
+        chosen: c.chosen || false,
+        position: idx,
+        updated_at: new Date().toISOString(),
+      }));
+
+      const ids = rows.map((r) => r.id).filter(Boolean) as string[];
+      if (ids.length === 0) {
+        // Garde absolue : ne jamais vider une liste sans intention explicite
+        if (!allowClearAll) return corsResponse(200, { ok: true });
+        const { error: delErr } = await supabase.from("room_color_tests").delete().eq("project_id", projectId).eq("room_key", roomKey);
+        if (delErr) throw new Error(delErr.message);
+      } else {
+        const { error: delErr } = await supabase.from("room_color_tests").delete().eq("project_id", projectId).eq("room_key", roomKey).not("id", "in", `(${ids.join(",")})`);
+        if (delErr) throw new Error(delErr.message);
+        const { error: upsertErr } = await supabase.from("room_color_tests").upsert(rows, { onConflict: "id" });
+        if (upsertErr) throw new Error(upsertErr.message);
+      }
+      return corsResponse(200, { ok: true });
+    }
+
     // --- selection ---
     if (action === "selection" && req.method === "POST") {
       const { projectId, itemId } = body;

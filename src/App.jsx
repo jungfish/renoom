@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RoomViewer3D } from "./RoomViewer3D";
 import { OnboardingWizard } from "./OnboardingWizard.jsx";
+import { ItemRowActions } from "./ItemRowActions.jsx";
+import { OverflowMenu } from "./OverflowMenu.jsx";
+import { Dashboard } from "./Dashboard.jsx";
 import { supabase } from "./supabaseClient";
 import { useAuth } from "./useAuth";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { FB, fbLabel, describeColor, familyOfHex, FARROW_BALL_FAMILIES } from "./farrowBall.js";
+import { FB, fbLabel, describeColor, familyOfHex, FARROW_BALL_FAMILIES, FARROW_BALL_LIBRARY } from "./farrowBall.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
@@ -3600,7 +3603,7 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
   );
 }
 
-function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelectedTotal = null, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, projectId, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
+function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelectedTotal = null, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, setRoomColorTests, saveRoomColorTestsFn, projectId, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
   const [input, setInput] = useState(draft);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState(null);
@@ -3698,6 +3701,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelec
         mySelectedTotal: aiContext.mySelectedTotal,
         todoItems: aiContext.todoItems,
         materialSummary: aiContext.materialSummary,
+        testColors: aiContext.roomTestColors,
       },
       ...(isGeneral ? { isGeneral: true, availableRooms, myGlobalSelectedTotal } : {}),
     });
@@ -3795,6 +3799,27 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelec
           if ("assignee" in call.args) parts.push(assignee ? `assigné à ${assignee}` : "responsable retiré");
           if ("price" in call.args) parts.push(typeof price === "number" ? `prix ${formatPrice(price, price_currency)}` : "prix supprimé");
           if (parts.length) notices.push(`Item mis à jour (${parts.join(", ")})${roomSuffix}.`);
+        } else if (call.name === "add_test_color" && setRoomColorTests) {
+          const currentColors = isGeneral ? (availableRooms.find((r) => r.key === targetRoom)?.testColors || []) : (aiContext.roomTestColors || []);
+          const matched = (call.args.names || [])
+            .map((n) => FARROW_BALL_LIBRARY.find((c) => c.name.toLowerCase() === String(n).trim().toLowerCase()))
+            .filter(Boolean)
+            .filter((c) => !currentColors.some((existing) => existing.hex === c.hex));
+          if (matched.length) {
+            const updated = [...currentColors, ...matched.map((c) => ({ id: `color-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, hex: c.hex, name: c.name, number: c.number, chosen: false }))];
+            setRoomColorTests((prev) => ({ ...prev, [targetRoom]: updated }));
+            if (saveRoomColorTestsFn && projectId) saveRoomColorTestsFn(projectId, targetRoom, updated);
+            notices.push(`${matched.length} couleur${matched.length > 1 ? "s" : ""} ajoutée${matched.length > 1 ? "s" : ""} en test${roomSuffix}.`);
+          }
+        } else if (call.name === "mark_color_chosen" && setRoomColorTests) {
+          const currentColors = isGeneral ? (availableRooms.find((r) => r.key === targetRoom)?.testColors || []) : (aiContext.roomTestColors || []);
+          const target = currentColors.find((c) => c.id === call.args.item_id);
+          if (target) {
+            const updated = currentColors.map((c) => c.id === call.args.item_id ? { ...c, chosen: !!call.args.chosen } : c);
+            setRoomColorTests((prev) => ({ ...prev, [targetRoom]: updated }));
+            if (saveRoomColorTestsFn && projectId) saveRoomColorTestsFn(projectId, targetRoom, updated);
+            notices.push(`${target.name} marquée ${call.args.chosen ? "choisie" : "non choisie"}${roomSuffix}.`);
+          }
         }
       }
       if (notices.length) {
@@ -4453,36 +4478,30 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
               className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isDueOverdue(item.dueDate) ? "bg-red-50 text-red-500" : isDueSoonDate(item.dueDate) ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"}`}>
               {formatDueDate(item.dueDate)}
             </button>
-          ) : (
-            <button type="button" onClick={() => setEditingDate(dateKey)} title="Ajouter une échéance"
-              className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            </button>
-          )}
+          ) : null}
           {/* Assignee */}
-          <div className="relative shrink-0">
-            {item.assignee ? (
+          {item.assignee && (
+            <div className="relative shrink-0">
               <button type="button"
                 onClick={() => setOpenPicker(openPicker === pickerKey ? null : pickerKey)}
                 className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white"
                 style={{ background: personColor(item.assignee) }} title={item.assignee}>
                 {personInitials(item.assignee)}
               </button>
-            ) : (
-              <button type="button"
-                onClick={() => setOpenPicker(openPicker === pickerKey ? null : pickerKey)}
-                className="grid h-5 w-5 place-items-center rounded-full border border-dashed border-slate-400 text-[9px] text-slate-400 opacity-0 transition-opacity hover:border-slate-600 hover:text-slate-600 group-hover:opacity-100"
-                title="Assigner">+</button>
-            )}
-            {openPicker === pickerKey && (
-              <PersonPicker allPersons={allPersons} value={item.assignee || ""}
-                onSelect={name => { updateItemMeta(roomKey, listKey, id, { assignee: name || undefined }); setOpenPicker(null); }}
-                onCreatePerson={name => { createPerson(name); updateItemMeta(roomKey, listKey, id, { assignee: name }); setOpenPicker(null); }}
-                onClose={() => setOpenPicker(null)} />
-            )}
-          </div>
-          <button type="button" onClick={() => deleteItem(roomKey, listKey, id)}
-            className="shrink-0 px-1 text-slate-400 opacity-0 transition-opacity hover:text-slate-700 group-hover:opacity-100">×</button>
+              {openPicker === pickerKey && (
+                <PersonPicker allPersons={allPersons} value={item.assignee || ""}
+                  onSelect={name => { updateItemMeta(roomKey, listKey, id, { assignee: name || undefined }); setOpenPicker(null); }}
+                  onCreatePerson={name => { createPerson(name); updateItemMeta(roomKey, listKey, id, { assignee: name }); setOpenPicker(null); }}
+                  onClose={() => setOpenPicker(null)} />
+              )}
+            </div>
+          )}
+          <ItemRowActions
+            item={item}
+            onAddDueDate={() => setEditingDate(dateKey)}
+            onAddAssignee={() => setOpenPicker(pickerKey)}
+            onDelete={() => deleteItem(roomKey, listKey, id)}
+          />
         </div>
         {reactions.length > 0 && (
           <ReactionRow
@@ -4731,7 +4750,12 @@ function renderItemText(text, url) {
   return parts.length > 0 ? parts : text;
 }
 
-function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, onSaveEditTitle, onCancelEditTitle, onStartEditTitle,
+function linkItemTitle(item) {
+  const domain = (() => { try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; } })();
+  return item.text && item.text !== item.url ? item.text : (item.previewTitle || domain);
+}
+
+function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, onSaveEditTitle, onCancelEditTitle,
   editingPrice, editingPriceValue, onChangePriceValue, onSaveEditPrice, onCancelEditPrice, onStartEditPrice }) {
   const domain = (() => {
     try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; }
@@ -4760,15 +4784,6 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
       title="Modifier le prix"
     >
       {formatPrice(item.price, item.priceCurrency)}
-    </button>
-  ) : onStartEditPrice ? (
-    <button
-      type="button"
-      onClick={e => { e.preventDefault(); e.stopPropagation(); onStartEditPrice(""); }}
-      className="shrink-0 text-[11px] text-slate-300 opacity-0 transition-opacity hover:text-slate-500 group-hover/link-preview:opacity-100"
-      title="Ajouter un prix"
-    >
-      + prix
     </button>
   ) : null;
 
@@ -4819,7 +4834,7 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
   }
 
   return (
-    <div className="relative flex min-w-0 flex-1 group/link-preview">
+    <div className="relative flex min-w-0 flex-1">
       <a
         href={item.url}
         target="_blank"
@@ -4835,19 +4850,6 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
           </div>
         </div>
       </a>
-      {onStartEditTitle && (
-        <button
-          type="button"
-          onClick={e => { e.preventDefault(); e.stopPropagation(); onStartEditTitle(cardTitle); }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded text-slate-300 opacity-0 transition-opacity hover:bg-slate-200 hover:text-slate-600 group-hover/link-preview:opacity-100"
-          title="Modifier le titre"
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
-        </button>
-      )}
     </div>
   );
 }
@@ -5495,61 +5497,48 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                     className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isDueOverdue(item.dueDate) ? "bg-red-50 text-red-500" : isDueSoonDate(item.dueDate) ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"}`}>
                     {formatDueDate(item.dueDate)}
                   </button>
-                ) : (
-                  <button type="button" onClick={() => setEditingDate(item.id)} title="Ajouter une échéance"
-                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                  </button>
-                )}
+                ) : null}
                 {/* Badge assigné */}
-                <div className="relative shrink-0">
-                  {item.assignee ? (
+                {item.assignee && (
+                  <div className="relative shrink-0">
                     <button type="button"
                       onClick={() => setOpenPicker(openPicker === `item-${item.id}` ? null : `item-${item.id}`)}
                       className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white"
                       style={{ background: personColor(item.assignee) }} title={item.assignee}>
                       {personInitials(item.assignee)}
                     </button>
-                  ) : (
-                    <button type="button"
-                      onClick={() => setOpenPicker(openPicker === `item-${item.id}` ? null : `item-${item.id}`)}
-                      className="grid h-5 w-5 place-items-center rounded-full border border-dashed border-slate-400 text-[9px] text-slate-400 opacity-0 transition-opacity hover:border-slate-600 hover:text-slate-600 group-hover:opacity-100"
-                      title="Assigner">+</button>
-                  )}
-                  {openPicker === `item-${item.id}` && (
-                    <PersonPicker allPersons={allPersons} value={item.assignee || ""}
-                      onSelect={name => updateItemMeta(listKey, item.id, { assignee: name || undefined })}
-                      onCreatePerson={name => { createPerson(name); updateItemMeta(listKey, item.id, { assignee: name }); }}
-                      onClose={() => setOpenPicker(null)} />
-                  )}
-                </div>
+                    {openPicker === `item-${item.id}` && (
+                      <PersonPicker allPersons={allPersons} value={item.assignee || ""}
+                        onSelect={name => updateItemMeta(listKey, item.id, { assignee: name || undefined })}
+                        onCreatePerson={name => { createPerson(name); updateItemMeta(listKey, item.id, { assignee: name }); }}
+                        onClose={() => setOpenPicker(null)} />
+                    )}
+                  </div>
+                )}
                 {listKey === "shopping" && (() => {
                   const selectors = itemSelections[item.id] || [];
-                  const isMine = selectors.some(s => s.userId === currentUserId);
-                  return (
+                  return selectors.length > 0 ? (
                     <div className="relative shrink-0 flex items-center gap-0.5">
                       {selectors.slice(0, 3).map(s => (
                         <span key={s.userId}
-                          className={`grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white${isMine && s.userId === currentUserId ? " ring-2 ring-amber-400" : ""}`}
+                          className={`grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white${s.userId === currentUserId ? " ring-2 ring-amber-400" : ""}`}
                           style={{ background: personColor(s.userName) }}
                           title={s.userName}>
                           {personInitials(s.userName)}
                         </span>
                       ))}
-                      <button type="button"
-                        onClick={() => onToggleSelection && onToggleSelection(item.id)}
-                        className={`grid h-5 w-5 place-items-center rounded-full border text-slate-400 transition-opacity hover:border-amber-500 hover:text-amber-500 opacity-0 group-hover:opacity-100${selectors.length === 0 ? " border-dashed border-slate-400" : " border-transparent"}`}
-                        title={isMine ? "Annuler ma sélection" : "Je sélectionne pour l'achat"}>
-                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-                          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-                        </svg>
-                      </button>
                     </div>
-                  );
+                  ) : null;
                 })()}
-                <button type="button" onClick={() => removeItem(listKey, item.id)}
-                  className="shrink-0 px-1 text-slate-400 opacity-0 transition-opacity hover:text-slate-700 group-hover:opacity-100">×</button>
+                <ItemRowActions
+                  item={item}
+                  showPurchaseToggle={listKey === "shopping"}
+                  isSelectedForPurchase={(itemSelections[item.id] || []).some(s => s.userId === currentUserId)}
+                  onAddDueDate={() => setEditingDate(item.id)}
+                  onAddAssignee={() => setOpenPicker(`item-${item.id}`)}
+                  onTogglePurchase={() => onToggleSelection && onToggleSelection(item.id)}
+                  onDelete={() => removeItem(listKey, item.id)}
+                />
                 </div>
                 {listKey === "shopping" && (
                   <ReactionRow
@@ -6228,6 +6217,92 @@ function SetNewPasswordScreen({ onUpdatePassword }) {
   );
 }
 
+// ─── Catalogue Farrow & Ball ─────────────────────────────────────────────────
+
+function FarrowBallCatalog({ existingHexes = [], onAdd, onClose }) {
+  const [family, setFamily] = useState(FARROW_BALL_FAMILIES[0].key);
+  const [query, setQuery] = useState("");
+  const activeFamily = FARROW_BALL_FAMILIES.find((f) => f.key === family) || FARROW_BALL_FAMILIES[0];
+  const q = query.trim().toLowerCase();
+  const colors = q
+    ? FARROW_BALL_LIBRARY.filter((c) => c.name.toLowerCase().includes(q) || (c.number || "").includes(q))
+    : activeFamily.colors;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="flex h-full w-full flex-col bg-white sm:h-[85vh] sm:max-w-4xl sm:rounded-2xl sm:shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-black/10 px-4 py-3 sm:px-6">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Catalogue</p>
+            <h2 className="type-h2">Farrow &amp; Ball</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fermer le catalogue"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-black/10 bg-white text-lg text-slate-500 hover:bg-slate-50"
+          >
+            ×
+          </button>
+        </div>
+        <div className="border-b border-black/10 px-4 py-3 sm:px-6">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Rechercher par nom ou numéro…"
+            className="w-full rounded-lg border border-black/15 bg-[#fafaf8] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+          />
+          {!q ? (
+            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+              {FARROW_BALL_FAMILIES.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setFamily(f.key)}
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                    family === f.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+            {colors.map((c) => {
+              const already = existingHexes.includes(c.hex);
+              return (
+                <div key={c.hex} className="flex flex-col overflow-hidden rounded-xl border border-black/10">
+                  <span className="block h-16 w-full" style={{ backgroundColor: c.hex }} />
+                  <div className="flex flex-1 flex-col gap-1 p-2">
+                    <p className="text-xs font-medium leading-tight text-slate-700">{c.name}</p>
+                    <p className="text-[10px] text-slate-400">N°{c.number}</p>
+                    <button
+                      type="button"
+                      onClick={() => onAdd(c)}
+                      disabled={already}
+                      className={`mt-auto rounded-md border px-2 py-1 text-[11px] font-medium transition-all ${
+                        already ? "border-emerald-200 bg-emerald-50 text-emerald-600" : "border-black/15 bg-white text-slate-600 hover:border-black/30"
+                      }`}
+                    >
+                      {already ? "Ajoutée ✓" : "Ajouter en test"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {colors.length === 0 ? <p className="text-sm text-slate-400">Aucune couleur ne correspond à la recherche.</p> : null}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Modale point de sauvegarde ──────────────────────────────────────────────
 
 function SnapshotModal({ onConfirm, onCancel, saving }) {
@@ -6432,6 +6507,21 @@ function ActivityFeedView({ activityFeed, allRoomPresets, onNavigate }) {
   );
 }
 
+function computeGeneralBadges({ orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user }) {
+  const tPending = orderedActiveRooms.reduce((acc, k) => {
+    const l = roomLists[k] || {};
+    return acc + [...(l.shopping || []), ...(l.todos || [])].filter((i) => !i.done).length;
+  }, 0);
+  const tUnread = ["general", ...orderedActiveRooms].reduce(
+    (acc, k) => acc + (discussionsCache[k] || []).reduce((s, d) => s + (d.unread_count || 0), 0),
+    0
+  );
+  const tDocs = orderedActiveRooms.reduce((acc, k) => acc + (roomDocuments[k] || []).length, 0);
+  const tMention = (mentionNotifications || []).filter((n) => !n.read_at).length;
+  const tActivity = activityFeed.filter(e => e.user_id !== user?.id && (!activityLastViewed || e.created_at > activityLastViewed)).length;
+  return { tPending, tUnread, tDocs, tMention, tActivity };
+}
+
 export default function App() {
   // ── Auth ──────────────────────────────────────────────────────────────────
   const {
@@ -6538,10 +6628,12 @@ export default function App() {
   const [imageAnalysis, setImageAnalysis] = useState({});
   const [deletedImages, setDeletedImages] = useState({});
   const [roomNuances, setRoomNuances] = useState(INITIAL_ROOM_NUANCES);
+  const [roomColorTests, setRoomColorTests] = useState({});
+  const [showColorCatalog, setShowColorCatalog] = useState(false);
   const [roomNotes, setRoomNotes] = useState({});
-  const [viewMode, setViewMode] = useState("room");
+  const [viewMode, setViewMode] = useState("general");
   const [roomMode, setRoomMode] = useState("liste");
-  const [generalMode, setGeneralMode] = useState("todos");
+  const [generalMode, setGeneralMode] = useState("accueil");
   const lastRoomModeRef = useRef({});
 
   const handleSetRoomMode = (mode) => {
@@ -6658,8 +6750,6 @@ export default function App() {
     ...(aiInspirations[room] || []).map((url, i) => ({ url, label: `IA ${i + 1}` })),
   ].filter((p) => p.url && !deletedImages[p.url]);
 
-  const previewSecondaryHex = warmth < 40 ? baseColors.bleu.light : warmth > 70 ? baseColors.bois.light : secondaryHex;
-  const previewAccentHex = warmth < 40 ? accents.sky.hex : warmth > 70 ? accents.butter.hex : accentHex;
   const roomImageMetadata = Object.entries(imageAnalysis)
     .filter(([key, metadata]) => key.startsWith(`${room}-`) && normalizeImageMetadata(metadata))
     .map(([key, metadata]) => ({
@@ -6696,6 +6786,7 @@ export default function App() {
           return result;
         }),
       materialSummary: (materialsByRoom[key] || []).map((m) => `${m.label}: ${m.value}`).slice(0, 3),
+      testColors: (roomColorTests[key] || []).map((c) => ({ id: c.id, name: c.name, number: c.number, hex: c.hex, chosen: c.chosen })),
     };
   }).filter(Boolean) : [];
 
@@ -6766,10 +6857,37 @@ export default function App() {
     todoItems: aiTodoItems,
     materialSummary: aiMaterialSummary,
     persons: [...(projectMembers || []), ...(persons || [])].filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i).map(p => p.name),
+    roomTestColors: roomColorTests[room] || [],
   };
 
   const updateRoomNuance = (key, value) => {
     setRoomNuances((prev) => ({ ...prev, [room]: { ...prev[room], [key]: value } }));
+  };
+
+  const addColorTestToRoom = (roomKey, color) => {
+    setRoomColorTests((prev) => {
+      const existing = prev[roomKey] || [];
+      if (existing.some((c) => c.hex === color.hex)) return prev;
+      const updated = [...existing, { id: `color-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, hex: color.hex, name: color.name, number: color.number || null, chosen: false }];
+      if (projectId) saveRoomColorTestsToServer(projectId, roomKey, updated);
+      return { ...prev, [roomKey]: updated };
+    });
+  };
+
+  const toggleColorTestChosen = (roomKey, id) => {
+    setRoomColorTests((prev) => {
+      const updated = (prev[roomKey] || []).map((c) => c.id === id ? { ...c, chosen: !c.chosen } : c);
+      if (projectId) saveRoomColorTestsToServer(projectId, roomKey, updated);
+      return { ...prev, [roomKey]: updated };
+    });
+  };
+
+  const removeColorTest = (roomKey, id) => {
+    setRoomColorTests((prev) => {
+      const updated = (prev[roomKey] || []).filter((c) => c.id !== id);
+      if (projectId) saveRoomColorTestsToServer(projectId, roomKey, updated);
+      return { ...prev, [roomKey]: updated };
+    });
   };
 
   const addRoom = () => {
@@ -7001,6 +7119,15 @@ export default function App() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "items", projectId: pid, roomKey, listKey, items, allowClearAll: items.length === 0 }),
+    }).catch(() => {});
+  };
+
+  const saveRoomColorTestsToServer = (pid, roomKey, colors) => {
+    if (!pid) return;
+    authedFetch(`${API_BASE}/save-room`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "color-tests", projectId: pid, roomKey, colors, allowClearAll: colors.length === 0 }),
     }).catch(() => {});
   };
 
@@ -7295,6 +7422,9 @@ export default function App() {
     if (saved.roomNuancesNormalized) setRoomNuances(saved.roomNuancesNormalized);
     else if (saved.roomNuances) setRoomNuances(saved.roomNuances);
 
+    // Couleurs test — source normalisée uniquement (pas de blob legacy)
+    if (saved.roomColorTestsNormalized) setRoomColorTests(saved.roomColorTestsNormalized);
+
     // Notes — source normalisée ou blob (snapshot)
     if (saved.roomNotesNormalized) setRoomNotes(saved.roomNotesNormalized);
     else if (saved.roomNotes) setRoomNotes(saved.roomNotes);
@@ -7349,9 +7479,9 @@ export default function App() {
     setLoadingFromUrl(true);
     authedFetch(`${API_BASE}/load-project?id=${encodeURIComponent(idToLoad)}&t=${Date.now()}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then(({ projectConfig, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }) => {
+      .then(({ projectConfig, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
         if (projectConfig) {
-          hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized });
+          hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized });
           setProjectId(idToLoad);
         }
         if (typeof owner === "boolean") setIsOwner(owner);
@@ -7443,8 +7573,8 @@ export default function App() {
     setLoadingFromUrl(true);
     authedFetch(`${API_BASE}/load-project?id=${encodeURIComponent(id)}&t=${Date.now()}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then(({ projectConfig, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }) => {
-        if (projectConfig) hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized });
+      .then(({ projectConfig, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
+        if (projectConfig) hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized });
         if (typeof owner === "boolean") setIsOwner(owner);
         if (code) setInviteCode(code);
       })
@@ -7478,7 +7608,7 @@ export default function App() {
       const loaded = await authedFetch(`${API_BASE}/load-project?id=${data.projectId}`).then((r) => r.json());
       const loadedCfg = loaded.projectConfig || loaded.state;
       if (loadedCfg) {
-        hydrateState(loaded.roomItems?.length ? { projectConfig: loadedCfg, roomItems: loaded.roomItems, roomNotesNormalized: loaded.roomNotesNormalized, roomDocumentsNormalized: loaded.roomDocumentsNormalized, roomNuancesNormalized: loaded.roomNuancesNormalized, roomMediaNormalized: loaded.roomMediaNormalized } : { projectConfig: loadedCfg });
+        hydrateState(loaded.roomItems?.length ? { projectConfig: loadedCfg, roomItems: loaded.roomItems, roomNotesNormalized: loaded.roomNotesNormalized, roomDocumentsNormalized: loaded.roomDocumentsNormalized, roomNuancesNormalized: loaded.roomNuancesNormalized, roomColorTestsNormalized: loaded.roomColorTestsNormalized, roomMediaNormalized: loaded.roomMediaNormalized } : { projectConfig: loadedCfg });
         if (typeof loaded.isOwner === "boolean") setIsOwner(loaded.isOwner);
         if (loaded.inviteCode) setInviteCode(loaded.inviteCode);
       }
@@ -7499,9 +7629,9 @@ export default function App() {
           isApplyingRemoteUpdate.current = true;
           authedFetchRef.current(`${API_BASE}/load-project?id=${encodeURIComponent(projectId)}&t=${Date.now()}`, { cache: "no-store" })
             .then((r) => r.json())
-            .then(({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }) => {
+            .then(({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
               if (projectConfig) {
-                hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomMediaNormalized }, { skipRoomSync: true, mergeMedia: true });
+                hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }, { skipRoomSync: true, mergeMedia: true });
               }
             })
             .catch(() => {})
@@ -8015,57 +8145,64 @@ export default function App() {
               Vue générale
             </span>
             {(() => {
-              const tPending = orderedActiveRooms.reduce((acc, k) => {
-                const l = roomLists[k] || {};
-                return acc + [...(l.shopping || []), ...(l.todos || [])].filter((i) => !i.done).length;
-              }, 0);
-              const tUnread = ["general", ...orderedActiveRooms].reduce(
-                (acc, k) => acc + (discussionsCache[k] || []).reduce((s, d) => s + (d.unread_count || 0), 0),
-                0
-              );
-              const tDocs = orderedActiveRooms.reduce((acc, k) => acc + (roomDocuments[k] || []).length, 0);
-              const tMention = (mentionNotifications || []).filter((n) => !n.read_at).length;
-              const tActivity = activityFeed.filter(e => e.user_id !== user?.id && (!activityLastViewed || e.created_at > activityLastViewed)).length;
-              return [
+              const { tPending, tUnread, tMention, tActivity } = computeGeneralBadges({
+                orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
+              });
+              const selectGeneral = (key) => {
+                setViewMode("general");
+                setGeneralMode(key);
+                if (key === "activite") markActivityViewed();
+                setSidebarOpen(false);
+              };
+              const primary = [
+                { key: "accueil", label: "Accueil", badge: 0, mention: 0 },
                 { key: "todos", label: "Todos", badge: tPending, mention: 0 },
                 { key: "couleurs", label: "Couleurs", badge: 0, mention: 0 },
                 { key: "discussions", label: "Discussions", badge: tUnread, mention: tMention },
+              ];
+              const secondary = [
                 { key: "ressources", label: "Documents", badge: 0, mention: 0 },
                 { key: "activite", label: "Activité", badge: tActivity, mention: 0 },
-              ].map(({ key, label, badge, mention }) => {
-                const active = viewMode === "general" && generalMode === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      setViewMode("general");
-                      setGeneralMode(key);
-                      if (key === "activite") markActivityViewed();
-                      setSidebarOpen(false);
-                    }}
-                    className={`group relative flex w-full items-center gap-1.5 rounded-md px-2 py-[6px] text-left text-[13px] transition-colors ${
-                      active
-                        ? "bg-black/[0.05] font-medium text-[#1C1A17]"
-                        : "text-[#4D4A47] hover:bg-black/[0.04] hover:text-[#1C1A17]"
-                    }`}
-                  >
-                    {active && (
-                      <span className="absolute -left-2 bottom-1 top-1 w-[2.5px] rounded-r bg-[#CDAA73]" />
-                    )}
-                    <span className="flex-1 truncate">{label}</span>
-                    {mention > 0 ? (
-                      <span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#CDAA73] px-1 text-[10px] font-bold text-white">
-                        {mention}
-                      </span>
-                    ) : badge > 0 ? (
-                      <span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#EDE9E0] px-1 text-[10px] font-semibold text-[#8A8580]">
-                        {badge}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              });
+              ];
+              return (
+                <>
+                  {primary.map(({ key, label, badge, mention }) => {
+                    const active = viewMode === "general" && generalMode === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => selectGeneral(key)}
+                        className={`group relative flex w-full items-center gap-1.5 rounded-md px-2 py-[6px] text-left text-[13px] transition-colors ${
+                          active
+                            ? "bg-black/[0.05] font-medium text-[#1C1A17]"
+                            : "text-[#4D4A47] hover:bg-black/[0.04] hover:text-[#1C1A17]"
+                        }`}
+                      >
+                        {active && (
+                          <span className="absolute -left-2 bottom-1 top-1 w-[2.5px] rounded-r bg-[#CDAA73]" />
+                        )}
+                        <span className="flex-1 truncate">{label}</span>
+                        {mention > 0 ? (
+                          <span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#CDAA73] px-1 text-[10px] font-bold text-white">
+                            {mention}
+                          </span>
+                        ) : badge > 0 ? (
+                          <span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#EDE9E0] px-1 text-[10px] font-semibold text-[#8A8580]">
+                            {badge}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                  <OverflowMenu
+                    items={secondary}
+                    activeKey={viewMode === "general" ? generalMode : null}
+                    onSelect={selectGeneral}
+                    variant="sidebar"
+                  />
+                </>
+              );
             })()}
           </div>
           <div>
@@ -8471,35 +8608,44 @@ export default function App() {
             <span className="mr-2 flex-shrink-0 text-sm font-semibold text-[#1C1A17] lg:hidden">{allRoomPresets[room]?.label}</span>
             <div className="mr-2 h-3.5 w-px flex-shrink-0 bg-black/10 lg:hidden" />
             <div className="flex gap-1">
-              {[
-                { key: "liste", label: "Liste" },
-                { key: "inspirations", label: "Inspirations" },
-                { key: "couleurs", label: "Couleurs" },
-                { key: "documents", label: "Documents" },
-                { key: "discussions", label: "Discussions" },
-              ].map(({ key, label }) => {
-                const pending = key === "liste" ? roomPendingCount(room) : key === "discussions" ? (discussionsCache[room] || []).reduce((sum, d) => sum + (d.unread_count || 0), 0) : 0;
-                const mentionBadge = key === "discussions"
-                  ? (mentionNotifications || []).filter(n => !n.read_at && (discussionsCache[room] || []).some(d => d.id === n.discussion_id)).length
-                  : 0;
+              {(() => {
+                const badgesFor = (key) => {
+                  const pending = key === "liste" ? roomPendingCount(room) : key === "discussions" ? (discussionsCache[room] || []).reduce((sum, d) => sum + (d.unread_count || 0), 0) : 0;
+                  const mentionBadge = key === "discussions"
+                    ? (mentionNotifications || []).filter(n => !n.read_at && (discussionsCache[room] || []).some(d => d.id === n.discussion_id)).length
+                    : 0;
+                  return { pending, mentionBadge };
+                };
+                const primary = ["liste", "inspirations", "couleurs", "discussions"].map((key) => ({
+                  key, label: { liste: "Liste", inspirations: "Inspirations", couleurs: "Couleurs", discussions: "Discussions" }[key], ...badgesFor(key),
+                }));
+                const secondary = ["documents"].map((key) => {
+                  const { pending, mentionBadge } = badgesFor(key);
+                  return { key, label: "Documents", badge: pending, mention: mentionBadge };
+                });
                 return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => handleSetRoomMode(key)}
-                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                      roomMode === key ? "bg-[#1C1A17] text-white" : "text-[#4D4A47] hover:bg-black/[0.06] hover:text-[#1C1A17]"
-                    }`}
-                  >
-                    {label}
-                    {mentionBadge > 0 ? (
-                      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{mentionBadge}</span>
-                    ) : pending > 0 ? (
-                      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-amber-900">{pending}</span>
-                    ) : null}
-                  </button>
+                  <>
+                    {primary.map(({ key, label, pending, mentionBadge }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => handleSetRoomMode(key)}
+                        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                          roomMode === key ? "bg-[#1C1A17] text-white" : "text-[#4D4A47] hover:bg-black/[0.06] hover:text-[#1C1A17]"
+                        }`}
+                      >
+                        {label}
+                        {mentionBadge > 0 ? (
+                          <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{mentionBadge}</span>
+                        ) : pending > 0 ? (
+                          <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-amber-900">{pending}</span>
+                        ) : null}
+                      </button>
+                    ))}
+                    <OverflowMenu items={secondary} activeKey={roomMode} onSelect={handleSetRoomMode} variant="topbar" />
+                  </>
                 );
-              })}
+              })()}
             </div>
           </div>
         ) : null}
@@ -8513,39 +8659,42 @@ export default function App() {
             <div className="mr-2 h-3.5 w-px flex-shrink-0 bg-black/10 lg:hidden" />
             <div className="flex gap-1">
               {(() => {
-                const totalPending = orderedActiveRooms.reduce((acc, key) => {
-                  const list = roomLists[key] || {};
-                  return acc + [...(list.shopping || []), ...(list.todos || [])].filter((i) => !i.done).length;
-                }, 0);
-                const totalUnread = ["general", ...orderedActiveRooms].reduce((acc, key) => {
-                  return acc + (discussionsCache[key] || []).reduce((sum, d) => sum + (d.unread_count || 0), 0);
-                }, 0);
-                const totalDocs = orderedActiveRooms.reduce((acc, key) => acc + (roomDocuments[key] || []).length, 0);
-                const totalMentionUnread = (mentionNotifications || []).filter(n => !n.read_at).length;
-                const totalActivity = activityFeed.filter(e => e.user_id !== user?.id && (!activityLastViewed || e.created_at > activityLastViewed)).length;
-                return [
+                const { tPending: totalPending, tUnread: totalUnread, tMention: totalMentionUnread, tActivity: totalActivity } = computeGeneralBadges({
+                  orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
+                });
+                const selectGeneral = (key) => { setGeneralMode(key); if (key === "activite") markActivityViewed(); };
+                const primary = [
+                  { key: "accueil", label: "Accueil", badge: 0 },
                   { key: "todos", label: "Todos", badge: totalPending },
                   { key: "couleurs", label: "Couleurs", badge: 0 },
                   { key: "discussions", label: "Discussions", badge: totalUnread, mentionBadge: totalMentionUnread },
-                  { key: "ressources", label: "Documents", badge: 0 },
-                  { key: "activite", label: "Activité", badge: totalActivity },
-                ].map(({ key, label, badge, mentionBadge }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => { setGeneralMode(key); if (key === "activite") markActivityViewed(); }}
-                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                      generalMode === key ? "bg-[#1C1A17] text-white" : "text-[#4D4A47] hover:bg-black/[0.06] hover:text-[#1C1A17]"
-                    }`}
-                  >
-                    {label}
-                    {mentionBadge > 0 ? (
-                      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{mentionBadge}</span>
-                    ) : badge > 0 ? (
-                      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-amber-900">{badge}</span>
-                    ) : null}
-                  </button>
-                ));
+                ];
+                const secondary = [
+                  { key: "ressources", label: "Documents", badge: 0, mention: 0 },
+                  { key: "activite", label: "Activité", badge: totalActivity, mention: 0 },
+                ];
+                return (
+                  <>
+                    {primary.map(({ key, label, badge, mentionBadge }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => selectGeneral(key)}
+                        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                          generalMode === key ? "bg-[#1C1A17] text-white" : "text-[#4D4A47] hover:bg-black/[0.06] hover:text-[#1C1A17]"
+                        }`}
+                      >
+                        {label}
+                        {mentionBadge > 0 ? (
+                          <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{mentionBadge}</span>
+                        ) : badge > 0 ? (
+                          <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-amber-900">{badge}</span>
+                        ) : null}
+                      </button>
+                    ))}
+                    <OverflowMenu items={secondary} activeKey={generalMode} onSelect={selectGeneral} variant="topbar" />
+                  </>
+                );
               })()}
             </div>
           </div>
@@ -8554,7 +8703,26 @@ export default function App() {
         <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl space-y-5 p-4 md:space-y-6 md:p-6">
         {viewMode === "general" ? (
-          generalMode === "todos" ? (
+          generalMode === "accueil" ? (() => {
+            const { tPending, tUnread, tMention, tActivity } = computeGeneralBadges({
+              orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
+            });
+            return (
+              <Dashboard
+                projectName={userProjects.find(p => p.id === projectId)?.name || "Appartement"}
+                lastSavedAt={lastSavedAt}
+                orderedActiveRooms={orderedActiveRooms}
+                allRoomPresets={allRoomPresets}
+                roomLists={roomLists}
+                totalPending={tPending}
+                totalUnread={tUnread}
+                totalMentionUnread={tMention}
+                totalActivity={tActivity}
+                onNavigateGeneral={(key) => { setGeneralMode(key); if (key === "activite") markActivityViewed(); }}
+                onNavigateRoom={(key) => { setRoom(key); setViewMode("room"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              />
+            );
+          })() : generalMode === "todos" ? (
             <TodosGlobalView
               orderedActiveRooms={orderedActiveRooms}
               allRoomPresets={allRoomPresets}
@@ -8672,18 +8840,21 @@ export default function App() {
                             </button>
                           ))}
                         </div>
-                        <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-7">
+                        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
                           {activeFamily.colors.map(preset => (
                             <button
                               key={preset.hex}
                               type="button"
                               onClick={() => applyColor(activePaletteSlot, preset.hex, fbLabel(preset))}
                               title={fbLabel(preset)}
-                              className={`h-10 rounded-lg border-2 transition-all sm:h-7 ${
+                              className={`flex flex-col overflow-hidden rounded-lg border-2 transition-all ${
                                 currentHex === preset.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
                               }`}
-                              style={{ backgroundColor: preset.hex }}
-                            />
+                            >
+                              <span className="block h-7 w-full" style={{ backgroundColor: preset.hex }} />
+                              <span className="w-full truncate px-1 py-0.5 text-left text-[9px] leading-tight text-slate-600">{preset.name}</span>
+                              <span className="w-full truncate px-1 pb-0.5 text-left text-[8px] leading-tight text-slate-400">N°{preset.number}</span>
+                            </button>
                           ))}
                         </div>
                         <div className="flex items-center gap-2">
@@ -8945,18 +9116,21 @@ export default function App() {
                             </button>
                           ))}
                         </div>
-                        <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-7">
+                        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
                           {activeFamily.colors.map(preset => (
                             <button
                               key={preset.hex}
                               type="button"
                               onClick={() => applyColor(activePaletteSlot, preset.hex, fbLabel(preset))}
                               title={fbLabel(preset)}
-                              className={`h-10 rounded-lg border-2 transition-all sm:h-7 ${
+                              className={`flex flex-col overflow-hidden rounded-lg border-2 transition-all ${
                                 currentHex === preset.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
                               }`}
-                              style={{ backgroundColor: preset.hex }}
-                            />
+                            >
+                              <span className="block h-7 w-full" style={{ backgroundColor: preset.hex }} />
+                              <span className="w-full truncate px-1 py-0.5 text-left text-[9px] leading-tight text-slate-600">{preset.name}</span>
+                              <span className="w-full truncate px-1 pb-0.5 text-left text-[8px] leading-tight text-slate-400">N°{preset.number}</span>
+                            </button>
                           ))}
                         </div>
                         <div className="flex items-center gap-2">
@@ -9092,43 +9266,65 @@ export default function App() {
             </section>
 
             <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-              <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Aperçu visuel</p>
-              <h2 className="type-h2">Nuancier Recommandé</h2>
-              <p className="mt-1 text-sm text-slate-600">Répartition visuelle pour garder un cap cohérent dans la pièce active.</p>
-              <div className="mt-3 rounded-lg border border-black/10 bg-[#f9f6ef] p-3">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <label className="text-sm font-medium">Aperçu chaleur : {warmth}</label>
-                  <span className="rounded border border-black/10 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">Aperçu seul</span>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Couleurs test</p>
+                  <h2 className="type-h2">Couleurs testées — {preset.label}</h2>
                 </div>
-                <input type="range" min={0} max={100} step={1} value={warmth} onChange={(e) => setWarmth(Number(e.target.value))} className="w-full" />
-                <p className="mt-1.5 text-xs text-slate-500">Plus frais vers les bleus · plus chaud vers chêne clair et beurre.</p>
+                <button
+                  type="button"
+                  onClick={() => setShowColorCatalog(true)}
+                  className="shrink-0 rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-slate-800"
+                >
+                  Parcourir le catalogue
+                </button>
               </div>
-              <div className="mt-3 overflow-hidden rounded-xl border border-black/10">
-                <div className="h-6" style={{ backgroundColor: baseColors.creme.hex }} />
-                <div className="grid min-h-[220px] grid-cols-[1.2fr_0.8fr]">
-                  <div className="relative" style={{ backgroundColor: previewSecondaryHex }}>
-                    <div className="absolute inset-x-0 top-0 h-1/2" style={{ backgroundColor: baseColors.creme.hex }} />
-                    <div className="absolute bottom-3 left-3 h-24 w-28 rounded-xl" style={{ backgroundColor: dominantHex }} />
-                  </div>
-                  <div className="p-4" style={{ backgroundColor: dominantHex, color: textColor(dominantHex) }}>
-                    <div className="grid grid-cols-3 gap-2">
-                      {Array.from({ length: 9 }).map((_, i) => (
-                        <div
-                          key={`square-${i}`}
-                          className="aspect-square rounded-md"
-                          style={{ backgroundColor: i % 3 === 0 ? previewAccentHex : i % 2 ? previewSecondaryHex : baseColors.creme.hex }}
-                        />
-                      ))}
+              <p className="mt-1 text-sm text-slate-600">Ajoute des teintes Farrow &amp; Ball à tester (pots d'essai) dans cette pièce, puis marque celles retenues.</p>
+              {(roomColorTests[room] || []).length === 0 ? (
+                <p className="mt-3 rounded-lg bg-[#f9f6ef] p-3 text-sm text-slate-500">Aucune couleur test pour l'instant — ouvre le catalogue pour en ajouter.</p>
+              ) : (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {(roomColorTests[room] || []).map((c) => (
+                    <div
+                      key={c.id}
+                      className={`flex items-center gap-2 rounded-lg border p-2 ${c.chosen ? "border-emerald-500 bg-emerald-50" : "border-black/10 bg-white"}`}
+                    >
+                      <span className="h-9 w-9 shrink-0 rounded-md border border-black/10" style={{ backgroundColor: c.hex }} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-slate-700">{c.name}</p>
+                        <p className="text-[10px] text-slate-400">{c.number ? `N°${c.number}` : c.hex}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleColorTestChosen(room, c.id)}
+                        title={c.chosen ? "Retirer le statut choisi" : "Marquer comme choisi"}
+                        className={`shrink-0 rounded-md border px-2 py-1 text-[11px] font-medium transition-all ${
+                          c.chosen ? "border-emerald-600 bg-emerald-600 text-white" : "border-black/15 bg-white text-slate-500 hover:border-black/30"
+                        }`}
+                      >
+                        {c.chosen ? "Choisi ✓" : "Choisir"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeColorTest(room, c.id)}
+                        title="Retirer"
+                        aria-label="Retirer cette couleur test"
+                        className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-black/10 bg-white text-sm text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        ×
+                      </button>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              </div>
-              <div className="mt-3 space-y-2">
-                {preset.notes.map((note) => (
-                  <p key={note} className="rounded-lg bg-[#f9f6ef] p-3 text-sm">{note}</p>
-                ))}
-              </div>
+              )}
             </div>
+            {showColorCatalog ? (
+              <FarrowBallCatalog
+                existingHexes={(roomColorTests[room] || []).map((c) => c.hex)}
+                onAdd={(color) => addColorTestToRoom(room, color)}
+                onClose={() => setShowColorCatalog(false)}
+              />
+            ) : null}
           </>
         ) : roomMode === "inspirations" ? (
           <>
@@ -9321,11 +9517,13 @@ export default function App() {
                   setChatHistory={setChatHistory}
                   setRoomLists={setRoomLists}
                   setRoomNotes={setRoomNotes}
+                  setRoomColorTests={setRoomColorTests}
                   projectId={projectId}
                   saveMessageFn={saveChatMessageToServer}
                   clearChatFn={clearChatMessagesFromServer}
                   saveNoteFn={saveRoomNoteToServer}
                   saveRoomItemsFn={saveRoomItemsToServer}
+                  saveRoomColorTestsFn={saveRoomColorTestsToServer}
                   onClose={() => setIsChatOpen(false)}
                   isExpanded={isChatExpanded}
                   onToggleExpand={() => setIsChatExpanded((v) => !v)}

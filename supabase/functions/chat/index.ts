@@ -85,6 +85,33 @@ const ROOM_TOOLS = [
       required: ["list_type", "item_id"],
     },
   },
+  {
+    type: "function",
+    name: "add_test_color",
+    description: "Ajoute une ou plusieurs couleurs Farrow & Ball à tester (achat de pot d'essai) pour la pièce active.",
+    parameters: {
+      type: "object",
+      properties: {
+        names: { type: "array", items: { type: "string" }, description: "Noms exacts des couleurs Farrow & Ball (ex: 'Pointing', 'Skimming Stone')." },
+      },
+      required: ["names"],
+      strict: true,
+    },
+  },
+  {
+    type: "function",
+    name: "mark_color_chosen",
+    description: "Marque une couleur test comme choisie (ou non choisie) pour la pièce active. Utilise l'ID exact fourni dans le contexte.",
+    parameters: {
+      type: "object",
+      properties: {
+        item_id: { type: "string", description: "ID exact de la couleur test tel qu'il apparaît dans le contexte entre crochets" },
+        chosen: { type: "boolean", description: "true pour marquer choisie, false pour retirer" },
+      },
+      required: ["item_id", "chosen"],
+      strict: true,
+    },
+  },
 ];
 
 function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
@@ -151,6 +178,35 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
         required: ["room_key", "list_type", "item_id"],
       },
     },
+    {
+      type: "function",
+      name: "add_test_color",
+      description: "Ajoute une ou plusieurs couleurs Farrow & Ball à tester (achat de pot d'essai) pour une pièce spécifique.",
+      parameters: {
+        type: "object",
+        properties: {
+          room_key: { type: "string", description: `Clé de la pièce cible. Valeurs possibles: ${roomKeyDesc}` },
+          names: { type: "array", items: { type: "string" }, description: "Noms exacts des couleurs Farrow & Ball (ex: 'Pointing', 'Skimming Stone')." },
+        },
+        required: ["room_key", "names"],
+        strict: true,
+      },
+    },
+    {
+      type: "function",
+      name: "mark_color_chosen",
+      description: "Marque une couleur test comme choisie (ou non choisie) pour une pièce spécifique. Utilise l'ID exact fourni dans le contexte.",
+      parameters: {
+        type: "object",
+        properties: {
+          room_key: { type: "string", description: `Clé de la pièce cible. Valeurs possibles: ${roomKeyDesc}` },
+          item_id: { type: "string", description: "ID exact de la couleur test tel qu'il apparaît dans le contexte entre crochets" },
+          chosen: { type: "boolean", description: "true pour marquer choisie, false pour retirer" },
+        },
+        required: ["room_key", "item_id", "chosen"],
+        strict: true,
+      },
+    },
   ];
 }
 
@@ -163,6 +219,12 @@ function formatShoppingItem(i: ShoppingItemCtx): string {
   const sel = i.selectedBy?.length ? ` [achat: ${i.selectedBy.join(", ")}]` : "";
   const price = typeof i.price === "number" ? ` — ${i.price}${i.priceCurrency ? ` ${i.priceCurrency}` : ""}` : "";
   return (i.id ? `[${i.id}] ` : "") + i.text + price + rx + sel;
+}
+
+type TestColorCtx = { id: string; name: string; number?: string | null; hex: string; chosen?: boolean };
+
+function formatTestColor(c: TestColorCtx): string {
+  return `[${c.id}] ${c.name}${c.number ? ` N°${c.number}` : ""} (${c.hex})${c.chosen ? " — CHOISI" : ""}`;
 }
 
 function buildSystemPrompt(ctx: Record<string, unknown>): string {
@@ -178,6 +240,7 @@ function buildSystemPrompt(ctx: Record<string, unknown>): string {
     (ctx.todoItems as {id:string,text:string}[])?.length ? `Todos: ${(ctx.todoItems as {id:string,text:string}[]).map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}` : null,
     (ctx.shoppingItems as ShoppingItemCtx[])?.length ? `Courses: ${(ctx.shoppingItems as ShoppingItemCtx[]).map(formatShoppingItem).join(", ")}` : null,
     total ? `Total de mes achats sélectionnés: ${total.amount}${total.currency ? ` ${total.currency}` : ""}` : null,
+    (ctx.testColors as TestColorCtx[])?.length ? `Couleurs testées: ${(ctx.testColors as TestColorCtx[]).map(formatTestColor).join(", ")}` : null,
     (ctx.persons as string[])?.length ? `Personnes: ${(ctx.persons as string[]).join(", ")}` : null,
     (ctx.materialSummary as string[])?.length ? `Matériaux: ${(ctx.materialSummary as string[]).join("; ")}` : null,
     ctx.allRoomsSummary ? `Autres pièces: ${ctx.allRoomsSummary}` : null,
@@ -188,7 +251,7 @@ function buildSystemPrompt(ctx: Record<string, unknown>): string {
 
 function buildGeneralSystemPrompt(
   ctx: Record<string, unknown>,
-  availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: {id:string,text:string}[]; shoppingItems?: ShoppingItemCtx[]; materialSummary?: string[] }[],
+  availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: {id:string,text:string}[]; shoppingItems?: ShoppingItemCtx[]; materialSummary?: string[]; testColors?: TestColorCtx[] }[],
   myGlobalSelectedTotal?: { amount: number; currency?: string | null } | null,
 ): string {
   const roomsDetail = availableRooms.map((r) => {
@@ -197,6 +260,7 @@ function buildGeneralSystemPrompt(
     if (r.todoItems?.length) parts.push(`  Todos: ${r.todoItems.map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}`);
     if (r.shoppingItems?.length) parts.push(`  Courses: ${(r.shoppingItems as ShoppingItemCtx[]).map(formatShoppingItem).join(", ")}`);
     if (r.materialSummary?.length) parts.push(`  Matériaux: ${r.materialSummary.join("; ")}`);
+    if (r.testColors?.length) parts.push(`  Couleurs testées: ${r.testColors.map(formatTestColor).join(", ")}`);
     return parts.join("\n");
   }).join("\n");
 
@@ -251,7 +315,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  let messages: unknown[], roomContext: Record<string, unknown>, isGeneral: boolean, availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: string[]; shoppingItems?: string[]; materialSummary?: string[] }[], myGlobalSelectedTotal: { amount: number; currency?: string | null } | null;
+  let messages: unknown[], roomContext: Record<string, unknown>, isGeneral: boolean, availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: string[]; shoppingItems?: string[]; materialSummary?: string[]; testColors?: TestColorCtx[] }[], myGlobalSelectedTotal: { amount: number; currency?: string | null } | null;
   try {
     const body = await req.json();
     messages = body.messages;

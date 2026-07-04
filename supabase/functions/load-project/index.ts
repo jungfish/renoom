@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
       { data: docsData },
       { data: nuancesData },
       { data: mediaRow },
+      { data: colorTestsData },
     ] = await Promise.all([
       supabaseUser.from("room_items").select("id, room_key, list_key, text, done, url, image, preview_title, position, due_date, assignee, price, price_currency").eq("project_id", id).order("position"),
       supabaseUser.from("chat_messages").select("id, room_key, role, content, image_prompt, error, created_at").eq("project_id", id).order("created_at", { ascending: true }),
@@ -37,6 +38,7 @@ Deno.serve(async (req) => {
       supabaseUser.from("room_documents").select("id, room_key, name, url, type, size, uploaded_at").eq("project_id", id).order("uploaded_at"),
       supabaseUser.from("room_nuances").select("room_key, dominant, secondary, accent, dominant_color, secondary_color").eq("project_id", id),
       supabaseUser.from("room_media").select("data").eq("project_id", id).maybeSingle(),
+      supabaseUser.from("room_color_tests").select("id, room_key, hex, name, number, chosen, position").eq("project_id", id).order("position"),
     ]);
 
     const chatMessages = (chatData || []).map((m) => ({
@@ -55,6 +57,12 @@ Deno.serve(async (req) => {
     for (const d of (docsData || [])) {
       if (!roomDocumentsNormalized[d.room_key]) roomDocumentsNormalized[d.room_key] = [];
       roomDocumentsNormalized[d.room_key].push({ id: d.id, name: d.name, url: d.url, type: d.type, size: d.size, uploadedAt: d.uploaded_at });
+    }
+
+    const roomColorTestsNormalized: Record<string, unknown[]> = {};
+    for (const c of (colorTestsData || [])) {
+      if (!roomColorTestsNormalized[c.room_key]) roomColorTestsNormalized[c.room_key] = [];
+      roomColorTestsNormalized[c.room_key].push({ id: c.id, hex: c.hex, name: c.name, number: c.number, chosen: c.chosen });
     }
 
     const projectConfig = {
@@ -85,6 +93,7 @@ Deno.serve(async (req) => {
         dominant: n.dominant, secondary: n.secondary, accent: n.accent,
         dominantColor: n.dominant_color, secondaryColor: n.secondary_color,
       }])) : null,
+      roomColorTestsNormalized: Object.keys(roomColorTestsNormalized).length ? roomColorTestsNormalized : null,
     };
 
     return new Response(JSON.stringify(payload), {

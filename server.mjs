@@ -48,6 +48,31 @@ const CHAT_TOOLS = [
       required: ["note"], strict: true,
     },
   },
+  {
+    type: "function",
+    name: "add_test_color",
+    description: "Ajoute une ou plusieurs couleurs Farrow & Ball à tester (achat de pot d'essai) pour la pièce active.",
+    parameters: {
+      type: "object",
+      properties: {
+        names: { type: "array", items: { type: "string" }, description: "Noms exacts des couleurs Farrow & Ball (ex: 'Pointing', 'Skimming Stone')." },
+      },
+      required: ["names"], strict: true,
+    },
+  },
+  {
+    type: "function",
+    name: "mark_color_chosen",
+    description: "Marque une couleur test comme choisie (ou non choisie) pour la pièce active. Utilise l'ID exact fourni dans le contexte.",
+    parameters: {
+      type: "object",
+      properties: {
+        item_id: { type: "string", description: "ID exact de la couleur test tel qu'il apparaît dans le contexte entre crochets" },
+        chosen: { type: "boolean", description: "true pour marquer choisie, false pour retirer" },
+      },
+      required: ["item_id", "chosen"], strict: true,
+    },
+  },
 ];
 const MAX_BODY_BYTES = 30 * 1024 * 1024;
 
@@ -236,7 +261,7 @@ createServer(async (req, res) => {
       try {
         const sbH = getSupabaseHeaders(req, true);
         const eid = encodeURIComponent(id);
-        const [projRes, itemsRes, chatRes, notesRes, docsRes, nuancesRes, mediaRes] = await Promise.all([
+        const [projRes, itemsRes, chatRes, notesRes, docsRes, nuancesRes, mediaRes, colorTestsRes] = await Promise.all([
           fetch(`${SUPABASE_URL}/rest/v1/projects?id=eq.${eid}&select=name,invite_code,owner_id,active_room,view_mode,general_mode,global_accent,warmth,general_context,custom_rooms,hidden_rooms,room_order,general_resources,persons,updated_at`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${eid}&select=id,room_key,list_key,text,done,url,image,preview_title,position,due_date,assignee,price,price_currency&order=position.asc`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/chat_messages?project_id=eq.${eid}&select=id,room_key,role,content,image_prompt,error,created_at&order=created_at.asc`, { headers: sbH }),
@@ -244,14 +269,15 @@ createServer(async (req, res) => {
           fetch(`${SUPABASE_URL}/rest/v1/room_documents?project_id=eq.${eid}&select=id,room_key,name,url,type,size,uploaded_at&order=uploaded_at.asc`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_nuances?project_id=eq.${eid}&select=room_key,dominant,secondary,accent,dominant_color,secondary_color`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_media?project_id=eq.${eid}&select=data`, { headers: sbH }),
+          fetch(`${SUPABASE_URL}/rest/v1/room_color_tests?project_id=eq.${eid}&select=id,room_key,hex,name,number,chosen,position&order=position.asc`, { headers: sbH }),
         ]);
         if (!projRes.ok) { sendJson(res, 404, { error: "Projet introuvable." }); return; }
         const rows = await projRes.json();
         if (!rows.length) { sendJson(res, 404, { error: "Projet introuvable." }); return; }
         const row = rows[0];
 
-        const [roomItemsData, chatData, notesData, docsData, nuancesData, mediaRows] = await Promise.all([
-          itemsRes.json(), chatRes.json(), notesRes.json(), docsRes.json(), nuancesRes.json(), mediaRes.json(),
+        const [roomItemsData, chatData, notesData, docsData, nuancesData, mediaRows, colorTestsData] = await Promise.all([
+          itemsRes.json(), chatRes.json(), notesRes.json(), docsRes.json(), nuancesRes.json(), mediaRes.json(), colorTestsRes.json(),
         ]);
 
         const chatMessages = (chatData || []).map((m) => ({
@@ -271,6 +297,12 @@ createServer(async (req, res) => {
         const roomNuancesNormalized = {};
         for (const n of (nuancesData || [])) {
           roomNuancesNormalized[n.room_key] = { dominant: n.dominant, secondary: n.secondary, accent: n.accent, dominantColor: n.dominant_color, secondaryColor: n.secondary_color };
+        }
+
+        const roomColorTestsNormalized = {};
+        for (const c of (colorTestsData || [])) {
+          if (!roomColorTestsNormalized[c.room_key]) roomColorTestsNormalized[c.room_key] = [];
+          roomColorTestsNormalized[c.room_key].push({ id: c.id, hex: c.hex, name: c.name, number: c.number, chosen: c.chosen });
         }
 
         const mediaRow = (mediaRows || [])[0];
@@ -299,6 +331,7 @@ createServer(async (req, res) => {
           roomDocumentsNormalized: Object.keys(roomDocumentsNormalized).length ? roomDocumentsNormalized : null,
           roomMediaNormalized: mediaRow?.data || null,
           roomNuancesNormalized: Object.keys(roomNuancesNormalized).length ? roomNuancesNormalized : null,
+          roomColorTestsNormalized: Object.keys(roomColorTestsNormalized).length ? roomColorTestsNormalized : null,
         });
       } catch (err) { sendJson(res, 500, { error: err.message }); }
       return;
@@ -497,6 +530,22 @@ createServer(async (req, res) => {
           await fetch(delQ, { method: "DELETE", headers: getSupabaseHeaders(req, true) });
           sendJson(res, 200, { ok: true }); return;
         }
+        if (action === "color-tests" && req.method === "POST") {
+          const { roomKey, colors } = body;
+          if (!roomKey || !Array.isArray(colors)) { sendJson(res, 400, { error: "roomKey et colors requis." }); return; }
+          const now = new Date().toISOString();
+          const eid = encodeURIComponent(projectId);
+          if (colors.length) {
+            const rows = colors.map((c, i) => ({ id: c.id, project_id: projectId, room_key: roomKey, hex: c.hex, name: c.name, number: c.number || null, chosen: c.chosen || false, position: i, updated_at: now }));
+            const uRes = await fetch(`${SUPABASE_URL}/rest/v1/room_color_tests`, { method: "POST", headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify(rows) });
+            if (!uRes.ok) { sendJson(res, 500, { error: await uRes.text() }); return; }
+          }
+          const ids = colors.map(c => c.id);
+          const baseQ = `${SUPABASE_URL}/rest/v1/room_color_tests?project_id=eq.${eid}&room_key=eq.${encodeURIComponent(roomKey)}`;
+          const delQ = ids.length ? `${baseQ}&id=not.in.(${ids.join(",")})` : baseQ;
+          await fetch(delQ, { method: "DELETE", headers: getSupabaseHeaders(req, true) });
+          sendJson(res, 200, { ok: true }); return;
+        }
         if (action === "chat-message" && req.method === "POST") {
           const { roomKey, message } = body;
           if (!roomKey || !message?.id) { sendJson(res, 400, { error: "roomKey et message requis." }); return; }
@@ -670,6 +719,33 @@ createServer(async (req, res) => {
               required: ["room_key", "note"], strict: true,
             },
           },
+          {
+            type: "function",
+            name: "add_test_color",
+            description: "Ajoute une ou plusieurs couleurs Farrow & Ball à tester (achat de pot d'essai) pour une pièce spécifique.",
+            parameters: {
+              type: "object",
+              properties: {
+                room_key: { type: "string", description: `Clé de la pièce cible. Valeurs possibles: ${roomKeyDesc}` },
+                names: { type: "array", items: { type: "string" } },
+              },
+              required: ["room_key", "names"], strict: true,
+            },
+          },
+          {
+            type: "function",
+            name: "mark_color_chosen",
+            description: "Marque une couleur test comme choisie (ou non choisie) pour une pièce spécifique. Utilise l'ID exact fourni dans le contexte.",
+            parameters: {
+              type: "object",
+              properties: {
+                room_key: { type: "string", description: `Clé de la pièce cible. Valeurs possibles: ${roomKeyDesc}` },
+                item_id: { type: "string" },
+                chosen: { type: "boolean" },
+              },
+              required: ["room_key", "item_id", "chosen"], strict: true,
+            },
+          },
         ];
 
         const roomsDetail = availableRooms.map(r => {
@@ -678,6 +754,7 @@ createServer(async (req, res) => {
           if (r.todoItems?.length) parts.push(`  Todos: ${r.todoItems.join(", ")}`);
           if (r.shoppingItems?.length) parts.push(`  En liste: ${r.shoppingItems.join(", ")}`);
           if (r.materialSummary?.length) parts.push(`  Matériaux: ${r.materialSummary.join("; ")}`);
+          if (r.testColors?.length) parts.push(`  Couleurs testées: ${r.testColors.map(c => `[${c.id}] ${c.name}${c.number ? ` N°${c.number}` : ""} (${c.hex})${c.chosen ? " — CHOISI" : ""}`).join(", ")}`);
           return parts.join("\n");
         }).join("\n");
 
@@ -716,6 +793,7 @@ createServer(async (req, res) => {
           ctx.todoItems?.length ? `Todos de la pièce: ${ctx.todoItems.join(", ")}` : null,
           ctx.shoppingItems?.length ? `En liste de courses: ${ctx.shoppingItems.join(", ")}` : null,
           ctx.materialSummary?.length ? `Matériaux choisis: ${ctx.materialSummary.join("; ")}` : null,
+          ctx.testColors?.length ? `Couleurs testées: ${ctx.testColors.map(c => `[${c.id}] ${c.name}${c.number ? ` N°${c.number}` : ""} (${c.hex})${c.chosen ? " — CHOISI" : ""}`).join(", ")}` : null,
           ctx.allRoomsSummary ? `Autres pièces: ${ctx.allRoomsSummary}` : null,
           "",
           "Règles:",

@@ -3603,7 +3603,7 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
   );
 }
 
-function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelectedTotal = null, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, setRoomColorTests, saveRoomColorTestsFn, projectId, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
+function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelectedTotal = null, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, setRoomColorTests, saveRoomColorTestsFn, projectId, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
   const [input, setInput] = useState(draft);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState(null);
@@ -3698,12 +3698,12 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelec
         generalContext: aiContext.generalContext,
         allRoomsSummary: aiContext.allRoomsSummary,
         shoppingItems: aiContext.shoppingItems,
-        mySelectedTotal: aiContext.mySelectedTotal,
+        selectedTotal: aiContext.selectedTotal,
         todoItems: aiContext.todoItems,
         materialSummary: aiContext.materialSummary,
         testColors: aiContext.roomTestColors,
       },
-      ...(isGeneral ? { isGeneral: true, availableRooms, myGlobalSelectedTotal } : {}),
+      ...(isGeneral ? { isGeneral: true, availableRooms, globalSelectedTotal } : {}),
     });
 
     const applyToolCalls = (toolCalls, msg) => {
@@ -3779,7 +3779,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelec
           if (saveNoteFn && projectId) saveNoteFn(projectId, targetRoom, call.args.note);
           notices.push(`Note mise à jour${roomSuffix}.`);
         } else if (call.name === "update_item" && setRoomLists) {
-          const { item_id, list_type, due_date, assignee, price, price_currency } = call.args;
+          const { item_id, list_type, due_date, assignee, price, price_currency, selected_for_purchase } = call.args;
           const listKey = list_type === "shopping" ? "shopping" : "todos";
           setRoomLists((prev) => {
             const currentItems = (prev[targetRoom] || {})[listKey] || [];
@@ -3790,6 +3790,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelec
               patch.price = typeof price === "number" ? price : undefined;
               patch.priceCurrency = typeof price === "number" ? (price_currency || "EUR") : undefined;
             }
+            if ("selected_for_purchase" in call.args) patch.selectedForPurchase = !!selected_for_purchase;
             const newItems = currentItems.map((item) => item.id === item_id ? { ...item, ...patch } : item);
             if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, targetRoom, listKey, newItems);
             return { ...prev, [targetRoom]: { ...(prev[targetRoom] || {}), [listKey]: newItems } };
@@ -3798,6 +3799,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelec
           if ("due_date" in call.args) parts.push(due_date ? `échéance ${due_date}` : "échéance supprimée");
           if ("assignee" in call.args) parts.push(assignee ? `assigné à ${assignee}` : "responsable retiré");
           if ("price" in call.args) parts.push(typeof price === "number" ? `prix ${formatPrice(price, price_currency)}` : "prix supprimé");
+          if ("selected_for_purchase" in call.args) parts.push(selected_for_purchase ? "sélectionné pour l'achat" : "retiré des achats");
           if (parts.length) notices.push(`Item mis à jour (${parts.join(", ")})${roomSuffix}.`);
         } else if (call.name === "add_test_color" && setRoomColorTests) {
           const currentColors = isGeneral ? (availableRooms.find((r) => r.key === targetRoom)?.testColors || []) : (aiContext.roomTestColors || []);
@@ -4290,7 +4292,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], myGlobalSelec
   );
 }
 
-function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null, itemSelections = {} }) {
+function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null }) {
   const [filter, setFilter] = useState("all");
   const [hideDone, setHideDone] = useState(true);
   const [groupBy, setGroupBy] = useState("room"); // "room" | "week"
@@ -4357,7 +4359,7 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
     setRoomInputOpen((prev) => ({ ...prev, [roomKey]: false }));
   };
 
-  const isSelectedForPurchase = (item) => (itemSelections[item.id] || []).length > 0;
+  const isSelectedForPurchase = (item) => !!item.selectedForPurchase;
 
   // Collect all items across all rooms + the room-agnostic "Appartement" bucket
   const allItemsFlat = ["general", ...orderedActiveRooms].flatMap((roomKey) => {
@@ -4427,27 +4429,7 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
             {item.done ? "✓" : ""}
           </button>
           {item.url ? (
-            <LinkPreviewMini
-              item={item}
-              editingTitle={editingTitleId === id}
-              editingValue={editingTitleValue}
-              onChangeEditValue={setEditingTitleValue}
-              onSaveEditTitle={() => {
-                if (editingTitleValue.trim()) updateItemMeta(roomKey, listKey, id, { text: editingTitleValue.trim() });
-                setEditingTitleId(null); setEditingTitleValue("");
-              }}
-              onCancelEditTitle={() => { setEditingTitleId(null); setEditingTitleValue(""); }}
-              editingPrice={editingPriceId === id}
-              editingPriceValue={editingPriceValue}
-              onChangePriceValue={setEditingPriceValue}
-              onStartEditPrice={(currentPrice) => { setEditingPriceId(id); setEditingPriceValue(currentPrice === "" ? "" : String(currentPrice)); }}
-              onSaveEditPrice={() => {
-                const parsed = parseFloat(editingPriceValue.replace(",", "."));
-                updateItemMeta(roomKey, listKey, id, isNaN(parsed) ? { price: undefined, priceCurrency: undefined } : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
-                setEditingPriceId(null); setEditingPriceValue("");
-              }}
-              onCancelEditPrice={() => { setEditingPriceId(null); setEditingPriceValue(""); }}
-            />
+            <span className="min-w-0 flex-1" />
           ) : (
             <span className={`min-w-0 flex-1 break-words text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.text}</span>
           )}
@@ -4500,9 +4482,36 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
             item={item}
             onAddDueDate={() => setEditingDate(dateKey)}
             onAddAssignee={() => setOpenPicker(pickerKey)}
+            onEditTitle={item.url ? () => { setEditingTitleId(id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
+            onEditPrice={item.url ? () => { setEditingPriceId(id); setEditingPriceValue(""); } : undefined}
             onDelete={() => deleteItem(roomKey, listKey, id)}
           />
         </div>
+        {item.url && (
+          <div className="pl-7">
+            <LinkPreviewMini
+              item={item}
+              editingTitle={editingTitleId === id}
+              editingValue={editingTitleValue}
+              onChangeEditValue={setEditingTitleValue}
+              onSaveEditTitle={() => {
+                if (editingTitleValue.trim()) updateItemMeta(roomKey, listKey, id, { text: editingTitleValue.trim() });
+                setEditingTitleId(null); setEditingTitleValue("");
+              }}
+              onCancelEditTitle={() => { setEditingTitleId(null); setEditingTitleValue(""); }}
+              editingPrice={editingPriceId === id}
+              editingPriceValue={editingPriceValue}
+              onChangePriceValue={setEditingPriceValue}
+              onStartEditPrice={(currentPrice) => { setEditingPriceId(id); setEditingPriceValue(currentPrice === "" ? "" : String(currentPrice)); }}
+              onSaveEditPrice={() => {
+                const parsed = parseFloat(editingPriceValue.replace(",", "."));
+                updateItemMeta(roomKey, listKey, id, isNaN(parsed) ? { price: undefined, priceCurrency: undefined } : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
+                setEditingPriceId(null); setEditingPriceValue("");
+              }}
+              onCancelEditPrice={() => { setEditingPriceId(null); setEditingPriceValue(""); }}
+            />
+          </div>
+        )}
         {reactions.length > 0 && (
           <ReactionRow
             itemId={id}
@@ -5145,7 +5154,7 @@ function PersonPicker({ allPersons, value, onSelect, onCreatePerson, onClose }) 
 
 // ─── Section listes (tâches + courses) ───────────────────────────────────────
 
-function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoomItemsFn, projectMembers = [], persons = [], setPersons, savePersonsFn, onLogActivity, itemReactions = {}, currentUserId = null, onToggleReaction = null, itemSelections = {}, onToggleSelection = null }) {
+function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoomItemsFn, projectMembers = [], persons = [], setPersons, savePersonsFn, onLogActivity, itemReactions = {}, currentUserId = null, onToggleReaction = null }) {
   const [shopInput, setShopInput] = useState("");
   const [todoInput, setTodoInput] = useState("");
   const [linkMode, setLinkMode] = useState({ shopping: false, todos: false });
@@ -5157,7 +5166,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
   const [editingTitleValue, setEditingTitleValue] = useState("");
   const [editingPriceId, setEditingPriceId] = useState(null);
   const [editingPriceValue, setEditingPriceValue] = useState("");
-  const [showMySelections, setShowMySelections] = useState(false);
+  const [showSelectedOnly, setShowSelectedOnly] = useState(false);
   const migratedItemIds = useRef(new Set());
 
   const list = roomLists[room] || {};
@@ -5333,19 +5342,19 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
             <h3 className="type-h3">{title}</h3>
           </div>
           {listKey === "shopping" && (() => {
-            const mySelectedItems = items.filter(item => (itemSelections[item.id] || []).some(s => s.userId === currentUserId));
-            const myCount = mySelectedItems.length;
-            if (myCount === 0 && !showMySelections) return null;
-            const myTotal = mySelectedItems.reduce((sum, item) => sum + (typeof item.price === "number" ? item.price : 0), 0);
-            const totalCurrency = mySelectedItems.find(item => item.priceCurrency)?.priceCurrency;
+            const selectedItems = items.filter(item => item.selectedForPurchase);
+            const selectedCount = selectedItems.length;
+            if (selectedCount === 0 && !showSelectedOnly) return null;
+            const selectedTotal = selectedItems.reduce((sum, item) => sum + (typeof item.price === "number" ? item.price : 0), 0);
+            const totalCurrency = selectedItems.find(item => item.priceCurrency)?.priceCurrency;
             return (
               <div className="mb-0.5 flex shrink-0 items-center gap-2">
-                {myTotal > 0 && (
-                  <span className="text-xs font-semibold text-slate-600">{formatPrice(myTotal, totalCurrency)}</span>
+                {selectedTotal > 0 && (
+                  <span className="text-xs font-semibold text-slate-600">{formatPrice(selectedTotal, totalCurrency)}</span>
                 )}
-                <button type="button" onClick={() => setShowMySelections(v => !v)}
-                  className={`shrink-0 rounded-full border px-2 py-0.5 text-xs transition-colors ${showMySelections ? "border-amber-300 bg-amber-100 text-amber-700" : "border-black/15 text-slate-500 hover:bg-slate-50"}`}>
-                  {showMySelections ? "Tout afficher" : `Mes sélections (${myCount})`}
+                <button type="button" onClick={() => setShowSelectedOnly(v => !v)}
+                  className={`shrink-0 rounded-full border px-2 py-0.5 text-xs transition-colors ${showSelectedOnly ? "border-amber-300 bg-amber-100 text-amber-700" : "border-black/15 text-slate-500 hover:bg-slate-50"}`}>
+                  {showSelectedOnly ? "Tout afficher" : `Sélectionnés pour l'achat (${selectedCount})`}
                 </button>
               </div>
             );
@@ -5437,8 +5446,8 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
           <div className="py-8 text-center text-sm text-slate-400">Aucun élément pour l'instant.</div>
         ) : (
           <ul className="space-y-1.5">
-            {(listKey === "shopping" && showMySelections
-              ? items.filter(item => (itemSelections[item.id] || []).some(s => s.userId === currentUserId))
+            {(listKey === "shopping" && showSelectedOnly
+              ? items.filter(item => item.selectedForPurchase)
               : listKey === "shopping" ? items : [...pending, ...done]
             ).map((item) => (
               <li key={item.id}
@@ -5451,38 +5460,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                   ) : item.done ? "✓" : ""}
                 </button>
                 {item.url ? (
-                  <LinkPreviewMini
-                    item={item}
-                    editingTitle={listKey === "shopping" && editingTitleId === item.id}
-                    editingValue={editingTitleValue}
-                    onChangeEditValue={setEditingTitleValue}
-                    onSaveEditTitle={() => {
-                      if (listKey === "shopping" && editingTitleValue.trim()) {
-                        updateItemMeta(listKey, item.id, { text: editingTitleValue.trim() });
-                      }
-                      setEditingTitleId(null);
-                      setEditingTitleValue("");
-                    }}
-                    onCancelEditTitle={() => { setEditingTitleId(null); setEditingTitleValue(""); }}
-                    onStartEditTitle={listKey === "shopping" ? (currentTitle) => {
-                      setEditingTitleId(item.id);
-                      setEditingTitleValue(currentTitle);
-                    } : undefined}
-                    editingPrice={listKey === "shopping" && editingPriceId === item.id}
-                    editingPriceValue={editingPriceValue}
-                    onChangePriceValue={setEditingPriceValue}
-                    onStartEditPrice={listKey === "shopping" ? (currentPrice) => {
-                      setEditingPriceId(item.id);
-                      setEditingPriceValue(currentPrice === "" ? "" : String(currentPrice));
-                    } : undefined}
-                    onSaveEditPrice={() => {
-                      const parsed = parseFloat(editingPriceValue.replace(",", "."));
-                      updateItemMeta(listKey, item.id, isNaN(parsed) ? { price: undefined, priceCurrency: undefined } : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
-                      setEditingPriceId(null);
-                      setEditingPriceValue("");
-                    }}
-                    onCancelEditPrice={() => { setEditingPriceId(null); setEditingPriceValue(""); }}
-                  />
+                  <span className="min-w-0 flex-1" />
                 ) : (
                   <span className={`min-w-0 flex-1 break-all text-sm ${item.done && listKey !== "shopping" ? "text-slate-400 line-through" : item.done ? "text-amber-800" : "text-slate-800"}`}>{item.text}</span>
                 )}
@@ -5515,31 +5493,50 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                     )}
                   </div>
                 )}
-                {listKey === "shopping" && (() => {
-                  const selectors = itemSelections[item.id] || [];
-                  return selectors.length > 0 ? (
-                    <div className="relative shrink-0 flex items-center gap-0.5">
-                      {selectors.slice(0, 3).map(s => (
-                        <span key={s.userId}
-                          className={`grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white${s.userId === currentUserId ? " ring-2 ring-amber-400" : ""}`}
-                          style={{ background: personColor(s.userName) }}
-                          title={s.userName}>
-                          {personInitials(s.userName)}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null;
-                })()}
                 <ItemRowActions
                   item={item}
                   showPurchaseToggle={listKey === "shopping"}
-                  isSelectedForPurchase={(itemSelections[item.id] || []).some(s => s.userId === currentUserId)}
+                  isSelectedForPurchase={!!item.selectedForPurchase}
                   onAddDueDate={() => setEditingDate(item.id)}
                   onAddAssignee={() => setOpenPicker(`item-${item.id}`)}
-                  onTogglePurchase={() => onToggleSelection && onToggleSelection(item.id)}
+                  onTogglePurchase={() => updateItemMeta(listKey, item.id, { selectedForPurchase: !item.selectedForPurchase })}
+                  onEditTitle={listKey === "shopping" && item.url ? () => { setEditingTitleId(item.id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
+                  onEditPrice={listKey === "shopping" && item.url ? () => { setEditingPriceId(item.id); setEditingPriceValue(""); } : undefined}
                   onDelete={() => removeItem(listKey, item.id)}
                 />
                 </div>
+                {item.url && (
+                  <div className="pl-7">
+                    <LinkPreviewMini
+                      item={item}
+                      editingTitle={listKey === "shopping" && editingTitleId === item.id}
+                      editingValue={editingTitleValue}
+                      onChangeEditValue={setEditingTitleValue}
+                      onSaveEditTitle={() => {
+                        if (listKey === "shopping" && editingTitleValue.trim()) {
+                          updateItemMeta(listKey, item.id, { text: editingTitleValue.trim() });
+                        }
+                        setEditingTitleId(null);
+                        setEditingTitleValue("");
+                      }}
+                      onCancelEditTitle={() => { setEditingTitleId(null); setEditingTitleValue(""); }}
+                      editingPrice={listKey === "shopping" && editingPriceId === item.id}
+                      editingPriceValue={editingPriceValue}
+                      onChangePriceValue={setEditingPriceValue}
+                      onStartEditPrice={listKey === "shopping" ? (currentPrice) => {
+                        setEditingPriceId(item.id);
+                        setEditingPriceValue(currentPrice === "" ? "" : String(currentPrice));
+                      } : undefined}
+                      onSaveEditPrice={() => {
+                        const parsed = parseFloat(editingPriceValue.replace(",", "."));
+                        updateItemMeta(listKey, item.id, isNaN(parsed) ? { price: undefined, priceCurrency: undefined } : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
+                        setEditingPriceId(null);
+                        setEditingPriceValue("");
+                      }}
+                      onCancelEditPrice={() => { setEditingPriceId(null); setEditingPriceValue(""); }}
+                    />
+                  </div>
+                )}
                 {listKey === "shopping" && (
                   <ReactionRow
                     itemId={item.id}
@@ -6662,7 +6659,6 @@ export default function App() {
   const [showNewProjectWizard, setShowNewProjectWizard] = useState(false);
   const [roomLists, setRoomLists] = useState({});
   const [itemReactions, setItemReactions] = useState({});
-  const [itemSelections, setItemSelections] = useState({});
   const [roomDocuments, setRoomDocuments] = useState({});
   const [roomOrder, setRoomOrder] = useState(null);
   const [draggingRoom, setDraggingRoom] = useState(null);
@@ -6775,12 +6771,11 @@ export default function App() {
       todoItems: (roomLists[key]?.todos || []).filter((i) => !i.done).slice(0, 5).map((i) => ({ id: i.id, text: i.text })),
       shoppingItems: (roomLists[key]?.shopping || []).filter((i) => !i.done).slice(0, 3).map((i) => {
           const rxs = itemReactions[i.id];
-          const sels = itemSelections[i.id];
           const grouped = {};
           if (rxs?.length) rxs.forEach(r => { if (!grouped[r.emoji]) grouped[r.emoji] = []; grouped[r.emoji].push(r.userName); });
           const result = { id: i.id, text: i.text };
           if (Object.keys(grouped).length) result.reactions = grouped;
-          if (sels?.length) result.selectedBy = sels.map(s => s.userName);
+          if (i.selectedForPurchase) result.selectedForPurchase = true;
           if (typeof i.price === "number") result.price = i.price;
           if (i.priceCurrency) result.priceCurrency = i.priceCurrency;
           return result;
@@ -6790,39 +6785,38 @@ export default function App() {
     };
   }).filter(Boolean) : [];
 
-  const myGlobalSelectedTotal = viewMode === "general" ? (() => {
-    const mine = ["general", ...orderedActiveRooms].flatMap((key) => (roomLists[key]?.shopping || [])).filter(
-      (i) => !i.done && (itemSelections[i.id] || []).some((s) => s.userId === user?.id) && typeof i.price === "number"
+  const globalSelectedTotal = viewMode === "general" ? (() => {
+    const selected = ["general", ...orderedActiveRooms].flatMap((key) => (roomLists[key]?.shopping || [])).filter(
+      (i) => !i.done && i.selectedForPurchase && typeof i.price === "number"
     );
-    if (!mine.length) return null;
+    if (!selected.length) return null;
     return {
-      amount: mine.reduce((sum, i) => sum + i.price, 0),
-      currency: mine.find((i) => i.priceCurrency)?.priceCurrency || null,
+      amount: selected.reduce((sum, i) => sum + i.price, 0),
+      currency: selected.find((i) => i.priceCurrency)?.priceCurrency || null,
     };
   })() : null;
 
   const aiShoppingItems = (roomLists[room]?.shopping || [])
     .filter((i) => !i.done).slice(0, 5).map((i) => {
       const rxs = itemReactions[i.id];
-      const sels = itemSelections[i.id];
       const grouped = {};
       if (rxs?.length) rxs.forEach(r => { if (!grouped[r.emoji]) grouped[r.emoji] = []; grouped[r.emoji].push(r.userName); });
       const result = { id: i.id, text: i.text };
       if (Object.keys(grouped).length) result.reactions = grouped;
-      if (sels?.length) result.selectedBy = sels.map(s => s.userName);
+      if (i.selectedForPurchase) result.selectedForPurchase = true;
       if (typeof i.price === "number") result.price = i.price;
       if (i.priceCurrency) result.priceCurrency = i.priceCurrency;
       return result;
     });
 
-  const mySelectedTotal = (() => {
-    const mine = (roomLists[room]?.shopping || []).filter(
-      (i) => !i.done && (itemSelections[i.id] || []).some((s) => s.userId === user?.id) && typeof i.price === "number"
+  const selectedTotal = (() => {
+    const selected = (roomLists[room]?.shopping || []).filter(
+      (i) => !i.done && i.selectedForPurchase && typeof i.price === "number"
     );
-    if (!mine.length) return null;
+    if (!selected.length) return null;
     return {
-      amount: mine.reduce((sum, i) => sum + i.price, 0),
-      currency: mine.find((i) => i.priceCurrency)?.priceCurrency || null,
+      amount: selected.reduce((sum, i) => sum + i.price, 0),
+      currency: selected.find((i) => i.priceCurrency)?.priceCurrency || null,
     };
   })();
 
@@ -6853,7 +6847,7 @@ export default function App() {
     generalContext: generalContext.slice(0, 400),
     allRoomsSummary,
     shoppingItems: aiShoppingItems,
-    mySelectedTotal,
+    selectedTotal,
     todoItems: aiTodoItems,
     materialSummary: aiMaterialSummary,
     persons: [...(projectMembers || []), ...(persons || [])].filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i).map(p => p.name),
@@ -7176,43 +7170,6 @@ export default function App() {
       .catch(() => {});
   };
 
-  const loadSelections = (pid) => {
-    if (!pid) return;
-    authedFetch(`${API_BASE}/load-room-items?projectId=${encodeURIComponent(pid)}&type=selections`)
-      .then(r => r.json())
-      .then(({ selections }) => {
-        if (!Array.isArray(selections)) return;
-        const map = {};
-        for (const s of selections) {
-          if (!map[s.item_id]) map[s.item_id] = [];
-          map[s.item_id].push({ id: s.id, userId: s.user_id, userName: s.user_name });
-        }
-        setItemSelections(map);
-      })
-      .catch(() => {});
-  };
-
-  const toggleSelection = (itemId) => {
-    if (!projectId || !user) return;
-    const userId = user.id;
-    const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email || "Moi";
-    setItemSelections(prev => {
-      const existing = prev[itemId] || [];
-      const alreadySelected = existing.some(s => s.userId === userId);
-      return {
-        ...prev,
-        [itemId]: alreadySelected
-          ? existing.filter(s => s.userId !== userId)
-          : [...existing, { id: `optimistic-${Date.now()}`, userId, userName }],
-      };
-    });
-    authedFetch(`${API_BASE}/save-room`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "selection", projectId, itemId }),
-    }).catch(() => loadSelections(projectId));
-  };
-
   const toggleReaction = (itemId, emoji) => {
     if (!projectId || !user) return;
     const userId = user.id;
@@ -7446,6 +7403,7 @@ export default function App() {
           assignee: item.assignee || undefined,
           price: item.price ?? undefined,
           priceCurrency: item.price_currency || undefined,
+          selectedForPurchase: !!item.selected_for_purchase,
         });
       }
       setRoomLists(built);
@@ -7864,11 +7822,6 @@ export default function App() {
   // Charger les réactions emoji des envies
   useEffect(() => {
     if (projectId && user) loadReactions(projectId);
-  }, [projectId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Charger les sélections pour l'achat
-  useEffect(() => {
-    if (projectId && user) loadSelections(projectId);
   }, [projectId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Demander la permission pour les notifications desktop (une seule fois)
@@ -8737,7 +8690,6 @@ export default function App() {
               projectMembers={projectMembers}
               setPersons={setPersons}
               savePersonsFn={savePersonsToServer}
-              itemSelections={itemSelections}
             />
           ) : generalMode === "couleurs" ? (
             <>
@@ -9407,8 +9359,6 @@ export default function App() {
               itemReactions={itemReactions}
               currentUserId={user?.id}
               onToggleReaction={toggleReaction}
-              itemSelections={itemSelections}
-              onToggleSelection={toggleSelection}
             />
           </div>
         ) : roomMode === "documents" ? (
@@ -9511,7 +9461,7 @@ export default function App() {
                   room={viewMode === "general" ? "general" : room}
                   isGeneral={viewMode === "general"}
                   availableRooms={availableRooms}
-                  myGlobalSelectedTotal={myGlobalSelectedTotal}
+                  globalSelectedTotal={globalSelectedTotal}
                   aiContext={aiContext}
                   chatHistory={chatHistory}
                   setChatHistory={setChatHistory}

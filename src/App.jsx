@@ -1591,7 +1591,7 @@ function PlanPreview({
     const data = await readFileAsDataUrl(file);
     if (typeof data === "string") {
       const url = await uploadToBlob(data, `${currentKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      if (!url) { alert("Échec de l'upload. Réessaie."); return; }
+      if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
       setPlanUploads((prev) => ({ ...prev, [currentKey]: url }));
       if (saveMediaKey) saveMediaKey("planUploads", currentKey, url);
       if (!isPdfUrl(url)) {
@@ -1612,7 +1612,7 @@ function PlanPreview({
       const nextIndex = (extraPlanImages[room] || []).length;
       const nextKey = `${room}-plan-extra-${nextIndex}`;
       const url = await uploadToBlob(data, `${nextKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      if (!url) { alert("Échec de l'upload. Réessaie."); return; }
+      if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
       setExtraPlanImages((prev) => {
         const newList = [...(prev[room] || []), url];
         if (saveMediaKey) saveMediaKey("extraPlanImages", room, newList);
@@ -1875,7 +1875,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
     const data = await readFileAsDataUrl(file);
     if (typeof data === "string") {
       const url = await uploadToBlob(data, `${cardKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      if (!url) { alert("Échec de l'upload. Réessaie."); return; }
+      if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
       setUploadedImages((prev) => ({ ...prev, [cardKey]: url }));
       if (saveMediaKey) saveMediaKey("uploadedImages", cardKey, url);
       const analysis = await analyzeImageForContext({
@@ -1894,7 +1894,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
       const nextIndex = (aiInspirations[room] || []).length;
       const nextKey = `${room}-ai-${nextIndex}`;
       const url = await uploadToBlob(data, `${nextKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      if (!url) { alert("Échec de l'upload. Réessaie."); return; }
+      if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
       addAiInspiration(room, url);  // addAiInspiration calls saveMediaKey internally
       if (onLogActivity) onLogActivity("inspiration_added", room, {});
       const analysis = await analyzeImageForContext({
@@ -2408,7 +2408,7 @@ function MaterialsSection({
     const data = await readFileAsDataUrl(file);
     if (typeof data === "string") {
       const url = await uploadToBlob(data, `${cardKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      if (!url) { alert("Échec de l'upload. Réessaie."); return; }
+      if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
       setMaterialUploads((prev) => ({ ...prev, [cardKey]: url }));
       if (saveMediaKey) saveMediaKey("materialUploads", cardKey, url);
       const analysis = await analyzeImageForContext({
@@ -4852,7 +4852,7 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
       >
         {imageEl}
         <div className="flex min-w-0 flex-1 flex-col justify-center px-3">
-          <p className="line-clamp-2 text-sm font-medium leading-snug text-slate-800">{cardTitle}</p>
+          <p className="line-clamp-2 break-words text-sm font-medium leading-snug text-slate-800">{cardTitle}</p>
           <div className="mt-1 flex items-center gap-2">
             {domain && <p className="truncate text-[11px] text-slate-400">{domain}</p>}
             {priceRow}
@@ -4880,7 +4880,7 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, sa
         const ext = extFromDataUrl(dataUrl);
         const filename = `doc-${room}-${Date.now()}.${ext}`;
         const url = await uploadToBlob(dataUrl, filename);
-        if (!url) { alert("Échec de l'upload. Réessaie."); continue; }
+        if (!url) { await showAlert("Échec de l'upload. Réessaie."); continue; }
         const doc = {
           id: `doc-${room}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           name: file.name,
@@ -5343,8 +5343,8 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     const pickerKey = `new-${listKey}`;
     return (
       <div className="space-y-3">
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-0 flex-1">
             <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{eyebrow}</p>
             <h3 className="type-h3">{title}</h3>
           </div>
@@ -5355,7 +5355,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
             const selectedTotal = selectedItems.reduce((sum, item) => sum + (typeof item.price === "number" ? item.price : 0), 0);
             const totalCurrency = selectedItems.find(item => item.priceCurrency)?.priceCurrency;
             return (
-              <div className="mb-0.5 flex shrink-0 items-center gap-2">
+              <div className="mb-0.5 flex shrink-0 flex-wrap items-center gap-2">
                 {selectedTotal > 0 && (
                   <span className="text-xs font-semibold text-slate-600">{formatPrice(selectedTotal, totalCurrency)}</span>
                 )}
@@ -7007,10 +7007,10 @@ export default function App() {
     setSidebarOpen(false);
   };
 
-  const deleteRoom = () => {
+  const deleteRoom = async () => {
     if (orderedActiveRooms.length <= 1) return;
     const roomLabel = allRoomPresets[room]?.label || "cette pièce";
-    if (!window.confirm(`Supprimer ${roomLabel} de l'app ?`)) return;
+    if (!(await showConfirm(`Supprimer ${roomLabel} de l'app ?`, { title: "Supprimer la pièce", danger: true, confirmLabel: "Supprimer" }))) return;
 
     const nextRoom = orderedActiveRooms.find((key) => key !== room) || "salon";
     if (rooms.includes(room)) {
@@ -7056,7 +7056,7 @@ export default function App() {
         const data = await readFileAsDataUrl(file);
         if (typeof data !== "string") return;
         const url = await uploadToBlob(data, `inspo-${room}-${Date.now()}-${Math.random().toString(36).slice(2)}.${extFromDataUrl(data)}`);
-        if (!url) { alert("Échec de l'upload. Réessaie."); return; }
+        if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
         addAiInspiration(room, url);
         logActivity("inspiration_added", room, {});
         const analysis = await analyzeImageForContext({ image: url, context: `Inspiration ${preset.label}`, section: "inspiration" });
@@ -7558,7 +7558,7 @@ export default function App() {
   }, [showSnapshotHistory]);
 
   const handleRestoreSnapshot = async (snapshotId) => {
-    if (!window.confirm("Restaurer ce point ? Les changements non-sauvegardés seront perdus.")) return;
+    if (!(await showConfirm("Restaurer ce point ? Les changements non-sauvegardés seront perdus.", { title: "Restaurer le point de sauvegarde", danger: true, confirmLabel: "Restaurer" }))) return;
     setRestoringSnapshotId(snapshotId);
     try {
       const res = await authedFetch(`${API_BASE}/restore-snapshot`, {
@@ -7845,7 +7845,7 @@ export default function App() {
   };
 
   const handleDeleteProject = async (p) => {
-    if (!window.confirm(`Supprimer définitivement "${p.name || "cet appartement"}" ? Toutes ses données (pièces, discussions, médias, documents...) seront perdues. Cette action est irréversible.`)) return;
+    if (!(await showConfirm(`Toutes ses données (pièces, discussions, médias, documents...) seront perdues. Cette action est irréversible.`, { title: `Supprimer "${p.name || "cet appartement"}" ?`, danger: true, confirmLabel: "Supprimer définitivement" }))) return;
     try {
       const res = await authedFetch(`${API_BASE}/delete-project`, {
         method: "POST",
@@ -7854,7 +7854,7 @@ export default function App() {
       });
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({}));
-        alert(error || "Erreur lors de la suppression.");
+        await showAlert(error || "Erreur lors de la suppression.");
         return;
       }
       const remaining = userProjects.filter(pr => pr.id !== p.id);
@@ -7870,7 +7870,7 @@ export default function App() {
         }
       }
     } catch {
-      alert("Erreur lors de la suppression.");
+      await showAlert("Erreur lors de la suppression.");
     }
   };
 
@@ -8141,6 +8141,7 @@ export default function App() {
           </div>
         </div>
       )}
+      <DialogHost />
       {showSnapshotModal && (
         <SnapshotModal
           onConfirm={handleCreateSnapshot}
@@ -8803,9 +8804,10 @@ export default function App() {
                     return { ...prev, [slotKey]: { hex, name } };
                   });
                 };
-                const applyToRooms = (palette) => {
-                  const confirmed = window.confirm(
-                    `Appliquer cette palette à ${orderedActiveRooms.length} pièce${orderedActiveRooms.length > 1 ? "s" : ""} ?\n\nCela va écraser les couleurs dominante, secondaire et sol de chaque pièce avec celles de la palette globale. Les nuances (clair/moyen…) déjà choisies par pièce resteront inchangées.\n\nCette action n'est pas réversible automatiquement.`
+                const applyToRooms = async (palette) => {
+                  const confirmed = await showConfirm(
+                    `Cela va écraser les couleurs dominante, secondaire et sol de chaque pièce avec celles de la palette globale. Les nuances (clair/moyen…) déjà choisies par pièce resteront inchangées.\n\nCette action n'est pas réversible automatiquement.`,
+                    { title: `Appliquer cette palette à ${orderedActiveRooms.length} pièce${orderedActiveRooms.length > 1 ? "s" : ""} ?`, confirmLabel: "Appliquer" }
                   );
                   if (!confirmed) return;
                   setRoomNuances(prev => {
@@ -9073,9 +9075,10 @@ export default function App() {
                     return { ...prev, [slotKey]: { hex, name } };
                   });
                 };
-                const applyToRooms = (palette) => {
-                  const confirmed = window.confirm(
-                    `Appliquer cette palette à ${orderedActiveRooms.length} pièce${orderedActiveRooms.length > 1 ? "s" : ""} ?\n\nCela va écraser les couleurs dominante, secondaire et sol de chaque pièce avec celles de la palette globale. Les nuances (clair/moyen…) déjà choisies par pièce resteront inchangées.\n\nCette action n'est pas réversible automatiquement.`
+                const applyToRooms = async (palette) => {
+                  const confirmed = await showConfirm(
+                    `Cela va écraser les couleurs dominante, secondaire et sol de chaque pièce avec celles de la palette globale. Les nuances (clair/moyen…) déjà choisies par pièce resteront inchangées.\n\nCette action n'est pas réversible automatiquement.`,
+                    { title: `Appliquer cette palette à ${orderedActiveRooms.length} pièce${orderedActiveRooms.length > 1 ? "s" : ""} ?`, confirmLabel: "Appliquer" }
                   );
                   if (!confirmed) return;
                   setRoomNuances(prev => {

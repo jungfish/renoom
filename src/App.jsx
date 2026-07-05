@@ -4852,7 +4852,7 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
       >
         {imageEl}
         <div className="flex min-w-0 flex-1 flex-col justify-center px-3">
-          <p className="line-clamp-2 break-words text-sm font-medium leading-snug text-slate-800">{cardTitle}</p>
+          <p className="break-words text-sm font-medium leading-snug text-slate-800 md:line-clamp-2">{cardTitle}</p>
           <div className="mt-1 flex items-center gap-2">
             {domain && <p className="truncate text-[11px] text-slate-400">{domain}</p>}
             {priceRow}

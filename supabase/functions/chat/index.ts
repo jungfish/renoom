@@ -81,6 +81,7 @@ const ROOM_TOOLS = [
         assignee: { type: "string", description: "Nom exact du responsable (doit figurer dans la liste des personnes), ou chaîne vide '' pour retirer" },
         price: { type: "number", description: "Nouveau prix de l'article (uniquement pour les envies/achats)" },
         price_currency: { type: "string", description: "Devise du prix, ex: EUR, USD. Par défaut EUR." },
+        selected_for_purchase: { type: "boolean", description: "Marque ou retire un article des courses (sélectionné pour l'achat, pour tout le projet)." },
       },
       required: ["list_type", "item_id"],
     },
@@ -174,6 +175,7 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
           assignee: { type: "string", description: "Nom exact du responsable (doit figurer dans la liste des personnes), ou chaîne vide '' pour retirer" },
           price: { type: "number", description: "Nouveau prix de l'article (uniquement pour les envies/achats)" },
           price_currency: { type: "string", description: "Devise du prix, ex: EUR, USD. Par défaut EUR." },
+          selected_for_purchase: { type: "boolean", description: "Marque ou retire un article des courses (sélectionné pour l'achat, pour tout le projet)." },
         },
         required: ["room_key", "list_type", "item_id"],
       },
@@ -212,11 +214,11 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
 
 const SYSTEM_BASE = "Assistant design intérieur, style rétro français. Aide aux décisions déco.\nRègles: français, concis, 3-6 phrases max. Univers rétro, coloré, doux — pas d'accents rouges ni de minimalisme. Pour produits/liens, utilise web_search avec URLs directes. Écris TOUJOURS une réponse texte à l'utilisateur, même en appelant un outil : un appel d'outil seul (ex: save_room_note) ne remplace jamais une réponse conversationnelle qui traite réellement la demande.";
 
-type ShoppingItemCtx = { id: string; text: string; reactions?: Record<string, string[]>; selectedBy?: string[]; price?: number; priceCurrency?: string };
+type ShoppingItemCtx = { id: string; text: string; reactions?: Record<string, string[]>; selectedForPurchase?: boolean; price?: number; priceCurrency?: string };
 
 function formatShoppingItem(i: ShoppingItemCtx): string {
   const rx = i.reactions ? ` (${Object.entries(i.reactions).map(([e, u]) => `${e} ${u.join(", ")}`).join(" | ")})` : "";
-  const sel = i.selectedBy?.length ? ` [achat: ${i.selectedBy.join(", ")}]` : "";
+  const sel = i.selectedForPurchase ? " [sélectionné pour achat]" : "";
   const price = typeof i.price === "number" ? ` — ${i.price}${i.priceCurrency ? ` ${i.priceCurrency}` : ""}` : "";
   return (i.id ? `[${i.id}] ` : "") + i.text + price + rx + sel;
 }
@@ -228,7 +230,7 @@ function formatTestColor(c: TestColorCtx): string {
 }
 
 function buildSystemPrompt(ctx: Record<string, unknown>): string {
-  const total = ctx.mySelectedTotal as { amount: number; currency?: string | null } | null | undefined;
+  const total = ctx.selectedTotal as { amount: number; currency?: string | null } | null | undefined;
   return [
     SYSTEM_BASE,
     "",
@@ -239,7 +241,7 @@ function buildSystemPrompt(ctx: Record<string, unknown>): string {
     ctx.imageMetadataSummary ? `Visuels: ${ctx.imageMetadataSummary}` : null,
     (ctx.todoItems as {id:string,text:string}[])?.length ? `Todos: ${(ctx.todoItems as {id:string,text:string}[]).map(i => i.id ? `[${i.id}] ${i.text}` : i.text).join(", ")}` : null,
     (ctx.shoppingItems as ShoppingItemCtx[])?.length ? `Courses: ${(ctx.shoppingItems as ShoppingItemCtx[]).map(formatShoppingItem).join(", ")}` : null,
-    total ? `Total de mes achats sélectionnés: ${total.amount}${total.currency ? ` ${total.currency}` : ""}` : null,
+    total ? `Total des achats sélectionnés pour le projet: ${total.amount}${total.currency ? ` ${total.currency}` : ""}` : null,
     (ctx.testColors as TestColorCtx[])?.length ? `Couleurs testées: ${(ctx.testColors as TestColorCtx[]).map(formatTestColor).join(", ")}` : null,
     (ctx.persons as string[])?.length ? `Personnes: ${(ctx.persons as string[]).join(", ")}` : null,
     (ctx.materialSummary as string[])?.length ? `Matériaux: ${(ctx.materialSummary as string[]).join("; ")}` : null,
@@ -252,7 +254,7 @@ function buildSystemPrompt(ctx: Record<string, unknown>): string {
 function buildGeneralSystemPrompt(
   ctx: Record<string, unknown>,
   availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: {id:string,text:string}[]; shoppingItems?: ShoppingItemCtx[]; materialSummary?: string[]; testColors?: TestColorCtx[] }[],
-  myGlobalSelectedTotal?: { amount: number; currency?: string | null } | null,
+  globalSelectedTotal?: { amount: number; currency?: string | null } | null,
 ): string {
   const roomsDetail = availableRooms.map((r) => {
     const parts = [`${r.label}|${r.key}: ${r.line || ""}`];
@@ -269,7 +271,7 @@ function buildGeneralSystemPrompt(
     "",
     ctx.generalContext ? `Goûts & contraintes: ${ctx.generalContext}` : null,
     (ctx.persons as string[])?.length ? `Personnes: ${(ctx.persons as string[]).join(", ")}` : null,
-    myGlobalSelectedTotal ? `Total de mes achats sélectionnés (toutes pièces): ${myGlobalSelectedTotal.amount}${myGlobalSelectedTotal.currency ? ` ${myGlobalSelectedTotal.currency}` : ""}` : null,
+    globalSelectedTotal ? `Total des achats sélectionnés pour le projet (toutes pièces): ${globalSelectedTotal.amount}${globalSelectedTotal.currency ? ` ${globalSelectedTotal.currency}` : ""}` : null,
     "",
     "Mode Appartement — accès à toutes les pièces. Toujours spécifier room_key dans les outils.",
     "",
@@ -315,14 +317,14 @@ Deno.serve(async (req) => {
     });
   }
 
-  let messages: unknown[], roomContext: Record<string, unknown>, isGeneral: boolean, availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: string[]; shoppingItems?: string[]; materialSummary?: string[]; testColors?: TestColorCtx[] }[], myGlobalSelectedTotal: { amount: number; currency?: string | null } | null;
+  let messages: unknown[], roomContext: Record<string, unknown>, isGeneral: boolean, availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: string[]; shoppingItems?: string[]; materialSummary?: string[]; testColors?: TestColorCtx[] }[], globalSelectedTotal: { amount: number; currency?: string | null } | null;
   try {
     const body = await req.json();
     messages = body.messages;
     roomContext = body.roomContext || {};
     isGeneral = !!body.isGeneral;
     availableRooms = Array.isArray(body.availableRooms) ? body.availableRooms : [];
-    myGlobalSelectedTotal = body.myGlobalSelectedTotal || null;
+    globalSelectedTotal = body.globalSelectedTotal || null;
   } catch {
     return new Response(JSON.stringify({ error: "JSON invalide." }), {
       status: 400,
@@ -340,7 +342,7 @@ Deno.serve(async (req) => {
   const useGeneralMode = isGeneral && availableRooms.length > 0;
   const chatTools = useGeneralMode ? buildGeneralTools(availableRooms) : ROOM_TOOLS;
   const systemPrompt = useGeneralMode
-    ? buildGeneralSystemPrompt(roomContext, availableRooms, myGlobalSelectedTotal)
+    ? buildGeneralSystemPrompt(roomContext, availableRooms, globalSelectedTotal)
     : buildSystemPrompt(roomContext);
 
   const enc = new TextEncoder();

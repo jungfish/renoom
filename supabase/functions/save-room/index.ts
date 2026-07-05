@@ -43,6 +43,7 @@ Deno.serve(async (req) => {
         assignee: item.assignee || null,
         price: item.price ?? null,
         price_currency: item.priceCurrency || null,
+        selected_for_purchase: item.selectedForPurchase === true,
       }));
 
       const ids = rows.map((r) => r.id).filter(Boolean) as string[];
@@ -93,26 +94,6 @@ Deno.serve(async (req) => {
         if (delErr) throw new Error(delErr.message);
         const { error: upsertErr } = await supabase.from("room_color_tests").upsert(rows, { onConflict: "id" });
         if (upsertErr) throw new Error(upsertErr.message);
-      }
-      return corsResponse(200, { ok: true });
-    }
-
-    // --- selection ---
-    if (action === "selection" && req.method === "POST") {
-      const { projectId, itemId } = body;
-      if (!projectId || !itemId) return corsResponse(400, { error: "projectId et itemId requis." });
-
-      const { data: member } = await supabase.from("project_members").select("role")
-        .eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
-      if (!member) return corsResponse(403, { error: "Accès refusé." });
-
-      const { data: existing } = await supabase.from("item_selections")
-        .select("id").eq("item_id", itemId).eq("user_id", user.id).maybeSingle();
-      if (existing) {
-        await supabase.from("item_selections").delete().eq("id", existing.id);
-      } else {
-        const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email || "Membre";
-        await supabase.from("item_selections").insert({ item_id: itemId, project_id: projectId, user_id: user.id, user_name: userName });
       }
       return corsResponse(200, { ok: true });
     }

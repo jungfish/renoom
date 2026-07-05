@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
       // Créer l'entrée snapshot sans blob
       const { data: snap, error: snapErr } = await supabaseAdmin
         .from("project_snapshots")
-        .insert({ project_id: projectId, user_id: user.id, label: snapshotLabel || "Sauvegarde", saved_at: new Date().toISOString() })
+        .insert({ project_id: projectId, user_id: user.id, state: {}, label: snapshotLabel || "Sauvegarde", saved_at: new Date().toISOString() })
         .select("id")
         .single();
       if (snapErr) throw new Error(snapErr.message);

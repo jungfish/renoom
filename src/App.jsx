@@ -3603,7 +3603,7 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
   );
 }
 
-function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelectedTotal = null, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, setRoomColorTests, saveRoomColorTestsFn, projectId, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
+function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelectedTotal = null, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, setRoomColorTests, saveRoomColorTestsFn, projectId, authedFetch, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
   const [input, setInput] = useState(draft);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState(null);
@@ -3703,6 +3703,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
         materialSummary: aiContext.materialSummary,
         testColors: aiContext.roomTestColors,
       },
+      projectId,
       ...(isGeneral ? { isGeneral: true, availableRooms, globalSelectedTotal } : {}),
     });
 
@@ -3830,7 +3831,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
     };
 
     try {
-      const res = await fetch(`${API_BASE}/chat`, {
+      const res = await authedFetch(`${API_BASE}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: requestBody,
@@ -9577,6 +9578,7 @@ export default function App() {
                   setRoomNotes={setRoomNotes}
                   setRoomColorTests={setRoomColorTests}
                   projectId={projectId}
+                  authedFetch={authedFetchRef.current}
                   saveMessageFn={saveChatMessageToServer}
                   clearChatFn={clearChatMessagesFromServer}
                   saveNoteFn={saveRoomNoteToServer}

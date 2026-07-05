@@ -1,4 +1,8 @@
-const CHAT_MODEL = Deno.env.get("OPENAI_CHAT_MODEL") ?? "gpt-4.1";
+import { getUserFromRequest, supabaseAdmin, supabaseWithToken } from "../_shared/_supabase.ts";
+
+const CHAT_MODEL = Deno.env.get("OPENAI_CHAT_MODEL") ?? "gpt-4.1-mini";
+const DAILY_LIMIT_PER_USER = Number(Deno.env.get("AI_DAILY_LIMIT_PER_USER") ?? "40");
+const DAILY_LIMIT_GLOBAL = Number(Deno.env.get("AI_DAILY_LIMIT_GLOBAL") ?? "300");
 const IMAGE_PROMPT_MARKER = "|||IMAGE_PROMPT|||";
 
 const SSE_HEADERS = {
@@ -11,7 +15,7 @@ const SSE_HEADERS = {
 };
 
 const BASE_TOOLS = [
-  { type: "web_search_preview" },
+  { type: "web_search", search_context_size: "low" },
   {
     type: "function",
     name: "generate_image",
@@ -212,7 +216,7 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
   ];
 }
 
-const SYSTEM_BASE = "Assistant design intérieur, style rétro français. Aide aux décisions déco.\nRègles: français, concis, 3-6 phrases max. Univers rétro, coloré, doux — pas d'accents rouges ni de minimalisme. Pour produits/liens, utilise web_search avec URLs directes. Écris TOUJOURS une réponse texte à l'utilisateur, même en appelant un outil : un appel d'outil seul (ex: save_room_note) ne remplace jamais une réponse conversationnelle qui traite réellement la demande.";
+const SYSTEM_BASE = "Assistant design intérieur, style rétro français. Aide aux décisions déco.\nRègles: français, concis, 3-6 phrases max. Univers rétro, coloré, doux — pas d'accents rouges ni de minimalisme. N'utilise web_search que si l'utilisateur demande explicitement des produits, prix ou liens précis — jamais pour des conseils de design généraux — et limite-toi à une seule recherche par réponse ; inclus des URLs directes. Écris TOUJOURS une réponse texte à l'utilisateur, même en appelant un outil : un appel d'outil seul (ex: save_room_note) ne remplace jamais une réponse conversationnelle qui traite réellement la demande.";
 
 type ShoppingItemCtx = { id: string; text: string; reactions?: Record<string, string[]>; selectedForPurchase?: boolean; price?: number; priceCurrency?: string };
 
@@ -309,6 +313,14 @@ Deno.serve(async (req) => {
     });
   }
 
+  const { user, token } = await getUserFromRequest(req);
+  if (!user || !token) {
+    return new Response(JSON.stringify({ error: "Authentification requise." }), {
+      status: 401,
+      headers: { ...SSE_HEADERS, "Content-Type": "application/json" },
+    });
+  }
+
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) {
     return new Response(JSON.stringify({ error: "OPENAI_API_KEY est manquante." }), {
@@ -317,7 +329,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  let messages: unknown[], roomContext: Record<string, unknown>, isGeneral: boolean, availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: string[]; shoppingItems?: string[]; materialSummary?: string[]; testColors?: TestColorCtx[] }[], globalSelectedTotal: { amount: number; currency?: string | null } | null;
+  let messages: unknown[], roomContext: Record<string, unknown>, isGeneral: boolean, availableRooms: { key: string; label: string; line: string; roomNote?: string; todoItems?: string[]; shoppingItems?: string[]; materialSummary?: string[]; testColors?: TestColorCtx[] }[], globalSelectedTotal: { amount: number; currency?: string | null } | null, projectId: string | undefined;
   try {
     const body = await req.json();
     messages = body.messages;
@@ -325,6 +337,7 @@ Deno.serve(async (req) => {
     isGeneral = !!body.isGeneral;
     availableRooms = Array.isArray(body.availableRooms) ? body.availableRooms : [];
     globalSelectedTotal = body.globalSelectedTotal || null;
+    projectId = body.projectId;
   } catch {
     return new Response(JSON.stringify({ error: "JSON invalide." }), {
       status: 400,
@@ -335,6 +348,46 @@ Deno.serve(async (req) => {
   if (!messages?.length) {
     return new Response(JSON.stringify({ error: "Messages requis." }), {
       status: 400,
+      headers: { ...SSE_HEADERS, "Content-Type": "application/json" },
+    });
+  }
+
+  if (!projectId) {
+    return new Response(JSON.stringify({ error: "projectId requis." }), {
+      status: 400,
+      headers: { ...SSE_HEADERS, "Content-Type": "application/json" },
+    });
+  }
+
+  const supabase = supabaseWithToken(token);
+  const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
+  if (!member) {
+    return new Response(JSON.stringify({ error: "Accès refusé." }), {
+      status: 403,
+      headers: { ...SSE_HEADERS, "Content-Type": "application/json" },
+    });
+  }
+
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count: userCount } = await supabaseAdmin
+    .from("ai_usage_events")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .gte("created_at", since24h);
+  if ((userCount ?? 0) >= DAILY_LIMIT_PER_USER) {
+    return new Response(JSON.stringify({ error: "Quota journalier de messages IA atteint. Réessaie demain." }), {
+      status: 429,
+      headers: { ...SSE_HEADERS, "Content-Type": "application/json" },
+    });
+  }
+
+  const { count: globalCount } = await supabaseAdmin
+    .from("ai_usage_events")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", since24h);
+  if ((globalCount ?? 0) >= DAILY_LIMIT_GLOBAL) {
+    return new Response(JSON.stringify({ error: "Le chat IA est temporairement indisponible (limite journalière atteinte). Réessaie plus tard." }), {
+      status: 503,
       headers: { ...SSE_HEADERS, "Content-Type": "application/json" },
     });
   }
@@ -395,6 +448,9 @@ Deno.serve(async (req) => {
         let buffer = "";
         let currentEvent = "";
         let fullText = "";
+        let webSearchCalls = 0;
+        let inputTokens = 0;
+        let outputTokens = 0;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -420,11 +476,26 @@ Deno.serve(async (req) => {
                     const args = JSON.parse(parsed.item.arguments);
                     write("tool_call", { name: parsed.item.name, args });
                   } catch { /* malformed tool call */ }
+                } else if (currentEvent === "response.output_item.done" && parsed.item?.type === "web_search_call") {
+                  webSearchCalls += 1;
+                } else if (currentEvent === "response.completed" && parsed.response?.usage) {
+                  inputTokens = parsed.response.usage.input_tokens || 0;
+                  outputTokens = parsed.response.usage.output_tokens || 0;
                 }
               } catch { /* non-JSON SSE data */ }
             }
           }
         }
+
+        supabaseAdmin.from("ai_usage_events").insert({
+          project_id: projectId,
+          user_id: user.id,
+          room_key: useGeneralMode ? null : roomContext.label ?? null,
+          model: CHAT_MODEL,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          web_search_calls: webSearchCalls,
+        }).then(() => {}).catch(() => {});
 
         const { imagePrompt } = parseImageMarker(fullText);
         write("done", { imagePrompt: imagePrompt || undefined });

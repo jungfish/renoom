@@ -4423,7 +4423,7 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
     return (
       <li key={id}
         className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"}`}>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => toggleItem(roomKey, listKey, id)}
             className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
             {item.done ? "✓" : ""}
@@ -5452,7 +5452,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
             ).map((item) => (
               <li key={item.id}
                 className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${item.done && listKey === "shopping" ? "border-amber-200 bg-amber-50" : item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"}`}>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={() => toggleItem(listKey, item.id)}
                   className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done && listKey === "shopping" ? "border-amber-400 bg-amber-100 text-amber-700" : item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
                   {item.done && listKey === "shopping" ? (
@@ -6910,7 +6910,8 @@ export default function App() {
     if (projectId) saveRoomItemsToServer(projectId, key, "todos", defaultTodos);
 
     setRoom(key);
-    setMobileMenuOpen(false);
+    setViewMode("room");
+    setSidebarOpen(false);
   };
 
   const deleteRoom = () => {
@@ -8159,9 +8160,29 @@ export default function App() {
             })()}
           </div>
           <div>
-            <span className="mb-1 block px-2 text-[10.5px] font-bold uppercase tracking-[0.07em] text-[#7A7773]">
-              Pièces
-            </span>
+            <div className="mb-1 flex items-center justify-between px-2">
+              <span className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-[#7A7773]">
+                Pièces
+              </span>
+              <button
+                type="button"
+                onClick={addRoom}
+                title="Ajouter une pièce"
+                aria-label="Ajouter une pièce"
+                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[#8A8680] transition-colors hover:bg-black/[0.04] hover:text-[#4D4A47]"
+              >
+                <svg
+                  className="h-3.5 w-3.5"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                >
+                  <path d="M7 2v10M2 7h10" />
+                </svg>
+              </button>
+            </div>
             {orderedActiveRooms.map((key) => {
               const active = viewMode === "room" && room === key;
               return (
@@ -8191,23 +8212,6 @@ export default function App() {
                 </button>
               );
             })}
-            <button
-              type="button"
-              onClick={addRoom}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-[6px] text-left text-[12.5px] text-[#8A8680] transition-colors hover:text-[#4D4A47]"
-            >
-              <svg
-                className="h-3.5 w-3.5 flex-shrink-0"
-                viewBox="0 0 14 14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              >
-                <path d="M7 2v10M2 7h10" />
-              </svg>
-              Ajouter une pièce
-            </button>
           </div>
         </div>
         <div className="flex-shrink-0 border-t border-black/[0.08] bg-[#F2EFE7]">
@@ -8560,7 +8564,7 @@ export default function App() {
             </button>
             <span className="mr-2 flex-shrink-0 text-sm font-semibold text-[#1C1A17] lg:hidden">{allRoomPresets[room]?.label}</span>
             <div className="mr-2 h-3.5 w-px flex-shrink-0 bg-black/10 lg:hidden" />
-            <div className="flex gap-1">
+            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {(() => {
                 const badgesFor = (key) => {
                   const pending = key === "liste" ? roomPendingCount(room) : key === "discussions" ? (discussionsCache[room] || []).reduce((sum, d) => sum + (d.unread_count || 0), 0) : 0;
@@ -8583,7 +8587,7 @@ export default function App() {
                         key={key}
                         type="button"
                         onClick={() => handleSetRoomMode(key)}
-                        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                           roomMode === key ? "bg-[#1C1A17] text-white" : "text-[#4D4A47] hover:bg-black/[0.06] hover:text-[#1C1A17]"
                         }`}
                       >
@@ -8610,7 +8614,7 @@ export default function App() {
             </button>
             <span className="mr-2 flex-shrink-0 text-sm font-semibold text-[#1C1A17] lg:hidden">Vue générale</span>
             <div className="mr-2 h-3.5 w-px flex-shrink-0 bg-black/10 lg:hidden" />
-            <div className="flex gap-1">
+            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {(() => {
                 const { tPending: totalPending, tUnread: totalUnread, tMention: totalMentionUnread, tActivity: totalActivity } = computeGeneralBadges({
                   orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
@@ -8633,7 +8637,7 @@ export default function App() {
                         key={key}
                         type="button"
                         onClick={() => selectGeneral(key)}
-                        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                           generalMode === key ? "bg-[#1C1A17] text-white" : "text-[#4D4A47] hover:bg-black/[0.06] hover:text-[#1C1A17]"
                         }`}
                       >
@@ -8653,7 +8657,7 @@ export default function App() {
           </div>
         ) : null}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="mx-auto w-full max-w-5xl space-y-5 p-4 md:space-y-6 md:p-6">
         {viewMode === "general" ? (
           generalMode === "accueil" ? (() => {

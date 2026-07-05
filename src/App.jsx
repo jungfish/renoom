@@ -5088,9 +5088,16 @@ function ReactionRow({ itemId, reactions, currentUserId, onToggle }) {
       })}
       <div className="relative">
         <button type="button" onClick={() => setPickerOpen(p => !p)}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-500 transition-colors hover:bg-slate-300 hover:text-slate-700"
+          className="group inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-500 transition-colors hover:bg-slate-300 hover:text-slate-700"
           title="Ajouter une réaction">
-          <span className="text-sm leading-none grayscale">🙂</span>
+          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none">
+            <circle cx="8.5" cy="8.5" r="7" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="6" cy="7" r="0.9" fill="currentColor" />
+            <circle cx="11" cy="7" r="0.9" fill="currentColor" />
+            <path d="M5.5 10.2c1 1.4 5 1.4 6 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+            <circle cx="14.5" cy="14.5" r="4.2" className="fill-slate-200 group-hover:fill-slate-300" stroke="currentColor" strokeWidth="1.2" />
+            <path d="M14.5 12.7v3.6M12.7 14.5h3.6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
         </button>
         {pickerOpen && <EmojiPicker onSelect={(e) => { onToggle && onToggle(itemId, e); setPickerOpen(false); }} onClose={() => setPickerOpen(false)} />}
       </div>
@@ -6501,6 +6508,92 @@ function ActivityFeedView({ activityFeed, allRoomPresets, onNavigate }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Système de dialogues (remplace alert/confirm natifs) ───────────────────
+
+let setDialogState = null;
+
+function showAlert(message, { title, confirmLabel = "OK" } = {}) {
+  return new Promise((resolve) => {
+    setDialogState?.({
+      type: "alert",
+      title,
+      message,
+      confirmLabel,
+      resolve: () => { setDialogState?.(null); resolve(); },
+    });
+  });
+}
+
+function showConfirm(message, { title, confirmLabel = "Confirmer", cancelLabel = "Annuler", danger = false } = {}) {
+  return new Promise((resolve) => {
+    setDialogState?.({
+      type: "confirm",
+      title,
+      message,
+      confirmLabel,
+      cancelLabel,
+      danger,
+      resolve: (value) => { setDialogState?.(null); resolve(value); },
+    });
+  });
+}
+
+function DialogHost() {
+  const [state, setState] = useState(null);
+
+  useEffect(() => {
+    setDialogState = setState;
+    return () => { setDialogState = null; };
+  }, []);
+
+  useEffect(() => {
+    if (!state) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") state.resolve(state.type === "confirm" ? false : undefined);
+      if (e.key === "Enter") state.resolve(state.type === "confirm" ? true : undefined);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [state]);
+
+  if (!state) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-[fadeIn_0.15s_ease-out]"
+      onClick={() => state.type === "alert" && state.resolve()}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {state.title ? <h2 className="text-base font-semibold text-slate-900 mb-1.5">{state.title}</h2> : null}
+        <p className="text-sm text-slate-600 whitespace-pre-line leading-relaxed mb-5">{state.message}</p>
+        <div className="flex gap-2 justify-end">
+          {state.type === "confirm" ? (
+            <button
+              onClick={() => state.resolve(false)}
+              className="rounded-lg px-4 py-2 text-sm text-slate-500 hover:text-slate-800 transition-colors"
+            >
+              {state.cancelLabel}
+            </button>
+          ) : null}
+          <button
+            autoFocus
+            onClick={() => state.resolve(state.type === "confirm" ? true : undefined)}
+            className={`rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors ${
+              state.danger ? "bg-red-600 hover:bg-red-500" : "bg-slate-900 hover:bg-slate-700"
+            }`}
+          >
+            {state.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 

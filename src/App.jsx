@@ -5090,7 +5090,7 @@ function ReactionRow({ itemId, reactions, currentUserId, onToggle }) {
         <button type="button" onClick={() => setPickerOpen(p => !p)}
           className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-slate-300 text-slate-400 opacity-0 transition-opacity hover:border-slate-500 hover:text-slate-600 group-hover:opacity-100"
           title="Ajouter une réaction">
-          <span className="text-base leading-none">+</span>
+          <span className="text-sm leading-none">🙂</span>
         </button>
         {pickerOpen && <EmojiPicker onSelect={(e) => { onToggle && onToggle(itemId, e); setPickerOpen(false); }} onClose={() => setPickerOpen(false)} />}
       </div>

@@ -5088,9 +5088,9 @@ function ReactionRow({ itemId, reactions, currentUserId, onToggle }) {
       })}
       <div className="relative">
         <button type="button" onClick={() => setPickerOpen(p => !p)}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-slate-300 text-slate-400 opacity-0 transition-opacity hover:border-slate-500 hover:text-slate-600 group-hover:opacity-100"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-500 transition-colors hover:bg-slate-300 hover:text-slate-700"
           title="Ajouter une réaction">
-          <span className="text-sm leading-none">🙂</span>
+          <span className="text-sm leading-none grayscale">🙂</span>
         </button>
         {pickerOpen && <EmojiPicker onSelect={(e) => { onToggle && onToggle(itemId, e); setPickerOpen(false); }} onClose={() => setPickerOpen(false)} />}
       </div>
@@ -8111,7 +8111,7 @@ export default function App() {
               const primary = [
                 { key: "accueil", label: "Accueil", badge: 0, mention: 0 },
                 { key: "todos", label: "Todos", badge: tPending, mention: 0 },
-                { key: "couleurs", label: "Couleurs", badge: 0, mention: 0 },
+                { key: "couleurs", label: "Teintes", badge: 0, mention: 0 },
                 { key: "discussions", label: "Discussions", badge: tUnread, mention: tMention },
               ];
               const secondary = [
@@ -8574,7 +8574,7 @@ export default function App() {
                   return { pending, mentionBadge };
                 };
                 const primary = ["liste", "inspirations", "couleurs", "discussions"].map((key) => ({
-                  key, label: { liste: "Liste", inspirations: "Inspirations", couleurs: "Couleurs", discussions: "Discussions" }[key], ...badgesFor(key),
+                  key, label: { liste: "Liste", inspirations: "Inspirations", couleurs: "Teintes", discussions: "Discussions" }[key], ...badgesFor(key),
                 }));
                 const secondary = ["documents"].map((key) => {
                   const { pending, mentionBadge } = badgesFor(key);
@@ -8623,7 +8623,7 @@ export default function App() {
                 const primary = [
                   { key: "accueil", label: "Accueil", badge: 0 },
                   { key: "todos", label: "Todos", badge: totalPending },
-                  { key: "couleurs", label: "Couleurs", badge: 0 },
+                  { key: "couleurs", label: "Teintes", badge: 0 },
                   { key: "discussions", label: "Discussions", badge: totalUnread, mentionBadge: totalMentionUnread },
                 ];
                 const secondary = [
@@ -8711,6 +8711,10 @@ export default function App() {
                   });
                 };
                 const applyToRooms = (palette) => {
+                  const confirmed = window.confirm(
+                    `Appliquer cette palette à ${orderedActiveRooms.length} pièce${orderedActiveRooms.length > 1 ? "s" : ""} ?\n\nCela va écraser les couleurs dominante, secondaire et sol de chaque pièce avec celles de la palette globale. Les nuances (clair/moyen…) déjà choisies par pièce resteront inchangées.\n\nCette action n'est pas réversible automatiquement.`
+                  );
+                  if (!confirmed) return;
                   setRoomNuances(prev => {
                     const updated = { ...prev };
                     orderedActiveRooms.forEach(k => {
@@ -8977,6 +8981,10 @@ export default function App() {
                   });
                 };
                 const applyToRooms = (palette) => {
+                  const confirmed = window.confirm(
+                    `Appliquer cette palette à ${orderedActiveRooms.length} pièce${orderedActiveRooms.length > 1 ? "s" : ""} ?\n\nCela va écraser les couleurs dominante, secondaire et sol de chaque pièce avec celles de la palette globale. Les nuances (clair/moyen…) déjà choisies par pièce resteront inchangées.\n\nCette action n'est pas réversible automatiquement.`
+                  );
+                  if (!confirmed) return;
                   setRoomNuances(prev => {
                     const updated = { ...prev };
                     orderedActiveRooms.forEach(k => {

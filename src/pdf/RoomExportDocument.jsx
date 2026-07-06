@@ -26,7 +26,10 @@ function ShoppingRow({ item }) {
   return (
     <View style={styles.tableRow}>
       {item.image ? <Image src={item.image} style={styles.tableThumb} /> : null}
-      <Text style={styles.tableCellText}>{item.text}</Text>
+      <View style={styles.tableCellText}>
+        <Text>{item.text}</Text>
+        {item.url ? <Link src={item.url} style={styles.tableCellUrl}>{item.url}</Link> : null}
+      </View>
       <Text style={styles.tableCellPrice}>{formatPrice(item.price, item.priceCurrency)}</Text>
     </View>
   );
@@ -56,6 +59,7 @@ export function RoomExportDocument({
   shoppingItems = [],
   budgetTotal,
   note,
+  inviteUrl,
 }) {
   const selectedItems = shoppingItems.filter((i) => i.selectedForPurchase);
   const wishlistItems = shoppingItems.filter((i) => !i.selectedForPurchase);
@@ -102,7 +106,7 @@ export function RoomExportDocument({
           </View>
           {testColors.length > 0 && (
             <View style={{ marginTop: 12 }}>
-              <Text style={styles.swatchLabel}>Couleurs testées</Text>
+              <Text style={styles.subSectionTitle}>Couleurs testées</Text>
               <View style={[styles.swatchRow, { flexWrap: "wrap", marginTop: 6 }]}>
                 {testColors.map((c) => (
                   <Swatch
@@ -143,7 +147,7 @@ export function RoomExportDocument({
           )}
         </View>
 
-        <View style={styles.section}>
+        <View style={styles.section} break>
           <Text style={styles.sectionTitle}>Liste de courses</Text>
           {shoppingItems.length === 0 && <Text style={styles.empty}>Aucun article dans la liste de courses.</Text>}
 
@@ -179,8 +183,10 @@ export function RoomExportDocument({
 
         <View style={styles.footer} fixed>
           <Text>Document généré depuis Renoom — {projectName || "Projet"} · {roomLabel}</Text>
-          <Link src="https://renoom.com" style={{ marginTop: 3, color: "#8A6D3B" }}>
-            Vous ne connaissez pas Renoom ? Découvrez l'app sur renoom.com
+          <Link src={inviteUrl || "https://renoom.com"} style={{ marginTop: 3, color: "#8A6D3B" }}>
+            {inviteUrl
+              ? "Vous ne connaissez pas Renoom ? Rejoignez ce projet pour suivre les avancées"
+              : "Vous ne connaissez pas Renoom ? Découvrez l'app sur renoom.com"}
           </Link>
         </View>
       </Page>

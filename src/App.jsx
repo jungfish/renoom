@@ -6994,7 +6994,14 @@ export default function App() {
       const projectName = userProjects.find((p) => p.id === projectId)?.name || "Projet";
       const shoppingItems = (roomLists[room]?.shopping || [])
         .filter((i) => !i.done)
-        .map((i) => ({ text: i.text, price: i.price, priceCurrency: i.priceCurrency, selectedForPurchase: i.selectedForPurchase, image: i.image || null }));
+        .map((i) => ({
+          text: linkItemTitle(i),
+          url: i.url && i.url !== i.text ? i.url : null,
+          price: i.price,
+          priceCurrency: i.priceCurrency,
+          selectedForPurchase: i.selectedForPurchase,
+          image: i.image || null,
+        }));
 
       // Même logique que MaterialsSection : une photo de matériau du catalogue
       // n'est incluse que si l'utilisateur l'a réellement remplacée par son upload ;
@@ -7038,6 +7045,7 @@ export default function App() {
           shoppingItems={shoppingItems}
           budgetTotal={selectedTotal}
           note={roomNotes[room] || ""}
+          inviteUrl={inviteCode ? `${window.location.origin}/?invite=${inviteCode}` : null}
         />
       ).toBlob();
 

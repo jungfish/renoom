@@ -108,6 +108,11 @@ export const styles = StyleSheet.create({
   tableCellText: {
     flex: 1,
   },
+  tableCellUrl: {
+    marginTop: 2,
+    fontSize: 8,
+    color: colors.muted,
+  },
   tableCellPrice: {
     width: 70,
     textAlign: "right",

@@ -32,6 +32,8 @@ export function Dashboard({
       .catch(() => {});
   }, [isOwner, projectId, authedFetch, apiBase]);
 
+  const formatLimit = (n) => (n >= 100000 ? "∞" : n);
+
   const roomPending = (key) => {
     const list = roomLists[key] || {};
     return [...(list.shopping || []), ...(list.todos || [])].filter((i) => !i.done).length;
@@ -109,19 +111,19 @@ export function Dashboard({
           <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-4">
             <div>
               <p className="text-slate-400">Projets actifs</p>
-              <p className="font-semibold text-[#1C1A17]">{entitlements.usage.activeProjects} / {entitlements.limits.max_active_projects}</p>
+              <p className="font-semibold text-[#1C1A17]">{entitlements.usage.activeProjects} / {formatLimit(entitlements.limits.max_active_projects)}</p>
             </div>
             <div>
               <p className="text-slate-400">Messages IA / jour</p>
-              <p className="font-semibold text-[#1C1A17]">{entitlements.usage.aiMessages24h} / {entitlements.limits.ai_messages_per_day}</p>
+              <p className="font-semibold text-[#1C1A17]">{entitlements.usage.aiMessages24h} / {formatLimit(entitlements.limits.ai_messages_per_day)}</p>
             </div>
             <div>
               <p className="text-slate-400">Images IA / mois</p>
-              <p className="font-semibold text-[#1C1A17]">{entitlements.usage.aiImages30d} / {entitlements.limits.ai_images_per_month}</p>
+              <p className="font-semibold text-[#1C1A17]">{entitlements.usage.aiImages30d} / {formatLimit(entitlements.limits.ai_images_per_month)}</p>
             </div>
             <div>
               <p className="text-slate-400">Membres / projet</p>
-              <p className="font-semibold text-[#1C1A17]">Jusqu'à {entitlements.limits.max_members_per_project}, propriétaire inclus</p>
+              <p className="font-semibold text-[#1C1A17]">Jusqu'à {formatLimit(entitlements.limits.max_members_per_project)}, propriétaire inclus</p>
             </div>
           </div>
           {(entitlements.usage.activeProjects >= entitlements.limits.max_active_projects ||

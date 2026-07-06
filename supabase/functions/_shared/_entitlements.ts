@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./_supabase.ts";
+import { isGodUser } from "./_god.ts";
 
 export type PlanLimits = {
   max_active_projects: number;
@@ -19,7 +20,21 @@ const FREE_FALLBACK: Entitlements = {
   limits: { max_active_projects: 1, ai_messages_per_day: 5, ai_images_per_month: 3, max_members_per_project: 2 },
 };
 
+// Les comptes god bypassent tous les quotas (déjà le cas pour la suppression de
+// projet et le comptage de conso IA) — sinon les comptes de dev/démo se retrouvent
+// bloqués par les mêmes limites que les clients.
+// Sentinelle finie (pas Infinity) car ces limites transitent en JSON — JSON.stringify(Infinity)
+// devient `null`, ce qui casserait les comparaisons côté front.
+const UNLIMITED = 1_000_000;
+const GOD_ENTITLEMENTS: Entitlements = {
+  planId: "god",
+  planName: "Illimité (admin)",
+  limits: { max_active_projects: UNLIMITED, ai_messages_per_day: UNLIMITED, ai_images_per_month: UNLIMITED, max_members_per_project: UNLIMITED },
+};
+
 export async function getEntitlements(userId: string): Promise<Entitlements> {
+  if (isGodUser(userId)) return GOD_ENTITLEMENTS;
+
   const { data } = await supabaseAdmin
     .from("profiles")
     .select("plan_id, plans(id, name, limits)")

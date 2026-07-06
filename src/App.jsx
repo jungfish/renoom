@@ -6994,11 +6994,26 @@ export default function App() {
       const projectName = userProjects.find((p) => p.id === projectId)?.name || "Projet";
       const shoppingItems = (roomLists[room]?.shopping || [])
         .filter((i) => !i.done)
-        .map((i) => ({ text: i.text, price: i.price, priceCurrency: i.priceCurrency, selectedForPurchase: i.selectedForPurchase }));
+        .map((i) => ({ text: i.text, price: i.price, priceCurrency: i.priceCurrency, selectedForPurchase: i.selectedForPurchase, image: i.image || null }));
+
+      // Même logique que MaterialsSection : une photo de matériau du catalogue
+      // n'est incluse que si l'utilisateur l'a réellement remplacée par son upload ;
+      // les ajouts "extra" peuvent être une photo directe ou un lien produit avec
+      // une image (personnalisée ou récupérée depuis l'aperçu du lien).
       const materialImages = [
-        ...(materialsByRoom[room] || []).map((m, i) => materialUploads[`${room}-material-${i}`] || m.src),
-        ...(extraMaterialImages[room] || []).map((entry) => (typeof entry === "string" ? entry : entry.src)),
-      ].filter(Boolean);
+        ...(materialsByRoom[room] || []).flatMap((_, i) => {
+          const src = materialUploads[`${room}-material-${i}`];
+          return src ? [src] : [];
+        }),
+        ...(extraMaterialImages[room] || []).flatMap((entry, i) => {
+          if (entry && typeof entry === "object" && entry.type === "link") {
+            const meta = extraMaterialMeta[`${room}-material-extra-${i}`] || {};
+            const src = meta.customImage || entry.image || "";
+            return src ? [src] : [];
+          }
+          return typeof entry === "string" ? [entry] : [];
+        }),
+      ];
 
       const blob = await pdf(
         <RoomExportDocument
@@ -7006,6 +7021,12 @@ export default function App() {
           roomLabel={preset.label}
           roomLine={preset.line}
           generatedAt={new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+          apartmentPalette={{
+            dominant: globalPalette.dominante,
+            secondary: globalPalette.secondaire,
+            sol: globalPalette.sol,
+            accent: globalPalette.accents?.[0],
+          }}
           palette={{
             dominant: { name: aiContext.dominantName, hex: aiContext.dominantHex },
             secondary: { name: aiContext.secondaryName, hex: aiContext.secondaryHex },

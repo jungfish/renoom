@@ -12,12 +12,22 @@ function formatPrice(amount, currency) {
   return `${formatted} ${currency || "EUR"}`;
 }
 
-function Swatch({ label, name, hex }) {
+function Swatch({ label, name, hex, small }) {
   return (
-    <View style={styles.swatch}>
-      <View style={[styles.swatchBox, { backgroundColor: hex || "#EEEEEE" }]} />
+    <View style={small ? styles.swatchSmall : styles.swatch}>
+      <View style={[small ? styles.swatchSmallBox : styles.swatchBox, { backgroundColor: hex || "#EEEEEE" }]} />
       <Text style={styles.swatchName}>{name || "—"}</Text>
       <Text style={styles.swatchLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function ShoppingRow({ item }) {
+  return (
+    <View style={styles.tableRow}>
+      {item.image ? <Image src={item.image} style={styles.tableThumb} /> : null}
+      <Text style={styles.tableCellText}>{item.text}</Text>
+      <Text style={styles.tableCellPrice}>{formatPrice(item.price, item.priceCurrency)}</Text>
     </View>
   );
 }
@@ -38,6 +48,7 @@ export function RoomExportDocument({
   roomLabel,
   roomLine,
   generatedAt,
+  apartmentPalette,
   palette,
   testColors = [],
   inspirationImages = [],
@@ -46,6 +57,9 @@ export function RoomExportDocument({
   budgetTotal,
   note,
 }) {
+  const selectedItems = shoppingItems.filter((i) => i.selectedForPurchase);
+  const wishlistItems = shoppingItems.filter((i) => !i.selectedForPurchase);
+
   return (
     <Document title={`${projectName || "Renoom"} — ${roomLabel}`}>
       <Page size="A4" style={styles.page}>
@@ -59,8 +73,28 @@ export function RoomExportDocument({
           <Text style={styles.subtitle}>Généré le {generatedAt}</Text>
         </View>
 
+        {apartmentPalette ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Palette de l'appartement</Text>
+            <Text style={[styles.swatchLabel, { textAlign: "left", marginBottom: 6 }]}>
+              Ambiance générale appliquée par défaut à toutes les pièces.
+            </Text>
+            <View style={styles.swatchRow}>
+              <Swatch small label="Dominante" name={apartmentPalette?.dominant?.name} hex={apartmentPalette?.dominant?.hex} />
+              <Swatch small label="Secondaire" name={apartmentPalette?.secondary?.name} hex={apartmentPalette?.secondary?.hex} />
+              <Swatch small label="Sol" name={apartmentPalette?.sol?.name} hex={apartmentPalette?.sol?.hex} />
+              {apartmentPalette?.accent ? (
+                <Swatch small label="Accent" name={apartmentPalette.accent.name} hex={apartmentPalette.accent.hex} />
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Palette</Text>
+          <Text style={styles.sectionTitle}>Palette de la pièce — {roomLabel}</Text>
+          <Text style={[styles.swatchLabel, { textAlign: "left", marginBottom: 6 }]}>
+            Nuances propres à cette pièce (peuvent différer de l'appartement).
+          </Text>
           <View style={styles.swatchRow}>
             <Swatch label="Dominante" name={palette?.dominant?.name} hex={palette?.dominant?.hex} />
             <Swatch label="Secondaire" name={palette?.secondary?.name} hex={palette?.secondary?.hex} />
@@ -109,30 +143,33 @@ export function RoomExportDocument({
           )}
         </View>
 
-        <View style={styles.section} wrap={false}>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Liste de courses</Text>
-          {shoppingItems.length > 0 ? (
-            <View>
-              <Text style={[styles.swatchLabel, { marginBottom: 4 }]}>[x] sélectionné pour achat · [ ] envie non sélectionnée</Text>
-              {shoppingItems.map((item, i) => (
-                <View key={i} style={styles.tableRow}>
-                  <Text style={styles.tableCellText}>
-                    {item.selectedForPurchase ? "[x] " : "[ ] "}
-                    {item.text}
-                  </Text>
-                  <Text style={styles.tableCellPrice}>{formatPrice(item.price, item.priceCurrency)}</Text>
+          {shoppingItems.length === 0 && <Text style={styles.empty}>Aucun article dans la liste de courses.</Text>}
+
+          {selectedItems.length > 0 && (
+            <View wrap={false}>
+              <Text style={styles.subSectionTitle}>Sélectionné pour achat</Text>
+              {selectedItems.map((item, i) => (
+                <ShoppingRow key={i} item={item} />
+              ))}
+              {budgetTotal ? (
+                <View style={styles.budgetBar}>
+                  <Text style={styles.budgetLabel}>Total sélectionné pour achat</Text>
+                  <Text style={styles.budgetValue}>{formatPrice(budgetTotal.amount, budgetTotal.currency)}</Text>
                 </View>
+              ) : null}
+            </View>
+          )}
+
+          {wishlistItems.length > 0 && (
+            <View wrap={false}>
+              <Text style={styles.subSectionTitle}>Envies (non sélectionnées)</Text>
+              {wishlistItems.map((item, i) => (
+                <ShoppingRow key={i} item={item} />
               ))}
             </View>
-          ) : (
-            <Text style={styles.empty}>Aucun article dans la liste de courses.</Text>
           )}
-          {budgetTotal ? (
-            <View style={styles.budgetBar}>
-              <Text style={styles.budgetLabel}>Total sélectionné pour achat</Text>
-              <Text style={styles.budgetValue}>{formatPrice(budgetTotal.amount, budgetTotal.currency)}</Text>
-            </View>
-          ) : null}
         </View>
 
         <View style={styles.section}>

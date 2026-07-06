@@ -85,10 +85,25 @@ export const styles = StyleSheet.create({
     borderRadius: 4,
     objectFit: "cover",
   },
+  subSectionTitle: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: colors.ink,
+    marginTop: 10,
+    marginBottom: 6,
+  },
   tableRow: {
     flexDirection: "row",
+    alignItems: "center",
     borderBottom: `1px solid ${colors.border}`,
     paddingVertical: 6,
+  },
+  tableThumb: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    marginRight: 8,
+    objectFit: "cover",
   },
   tableCellText: {
     flex: 1,
@@ -96,6 +111,18 @@ export const styles = StyleSheet.create({
   tableCellPrice: {
     width: 70,
     textAlign: "right",
+  },
+  swatchSmallBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 5,
+    border: `1px solid ${colors.border}`,
+    marginBottom: 4,
+  },
+  swatchSmall: {
+    flexDirection: "column",
+    alignItems: "center",
+    width: 70,
   },
   budgetBar: {
     marginTop: 8,

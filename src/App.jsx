@@ -6995,6 +6995,10 @@ export default function App() {
       const shoppingItems = (roomLists[room]?.shopping || [])
         .filter((i) => !i.done)
         .map((i) => ({ text: i.text, price: i.price, priceCurrency: i.priceCurrency, selectedForPurchase: i.selectedForPurchase }));
+      const materialImages = [
+        ...(materialsByRoom[room] || []).map((m, i) => materialUploads[`${room}-material-${i}`] || m.src),
+        ...(extraMaterialImages[room] || []).map((entry) => (typeof entry === "string" ? entry : entry.src)),
+      ].filter(Boolean);
 
       const blob = await pdf(
         <RoomExportDocument
@@ -7009,6 +7013,7 @@ export default function App() {
           }}
           testColors={roomColorTests[room] || []}
           inspirationImages={(aiInspirations[room] || []).filter((_, i) => !deletedImages[`${room}-ai-${i}`])}
+          materialImages={materialImages}
           shoppingItems={shoppingItems}
           budgetTotal={selectedTotal}
           note={roomNotes[room] || ""}

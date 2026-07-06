@@ -8772,6 +8772,10 @@ export default function App() {
                 totalActivity={tActivity}
                 onNavigateGeneral={(key) => { setGeneralMode(key); if (key === "activite") markActivityViewed(); }}
                 onNavigateRoom={(key) => { setRoom(key); setViewMode("room"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                isOwner={isOwner}
+                authedFetch={authedFetchRef.current}
+                apiBase={API_BASE}
+                projectId={projectId}
               />
             );
           })() : generalMode === "todos" ? (

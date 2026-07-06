@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 // Vue d'accueil : point d'entrée unique qui résume ce qui demande de l'attention,
 // pour ne pas forcer les utilisateurs à choisir une pièce/onglet dès l'ouverture.
 export function Dashboard({
@@ -12,7 +14,21 @@ export function Dashboard({
   totalActivity,
   onNavigateGeneral,
   onNavigateRoom,
+  isOwner,
+  authedFetch,
+  apiBase,
+  projectId,
 }) {
+  const [aiUsage, setAiUsage] = useState(null);
+
+  useEffect(() => {
+    if (!isOwner || !projectId || !authedFetch) return;
+    authedFetch(`${apiBase}/load-room-items?projectId=${encodeURIComponent(projectId)}&type=ai-usage`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setAiUsage(data); })
+      .catch(() => {});
+  }, [isOwner, projectId, authedFetch, apiBase]);
+
   const roomPending = (key) => {
     const list = roomLists[key] || {};
     return [...(list.shopping || []), ...(list.todos || [])].filter((i) => !i.done).length;
@@ -80,6 +96,23 @@ export function Dashboard({
           })}
         </div>
       </div>
+
+      {isOwner && aiUsage && (
+        <div className="rounded-xl border border-black/10 bg-white p-4">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Conso IA (24h, visible par toi seul)</p>
+          <p className="text-sm text-slate-600">
+            Global : <span className="font-semibold text-[#1C1A17]">{aiUsage.global.count}</span> / {aiUsage.global.limit} messages
+          </p>
+          <div className="mt-2 space-y-1">
+            {aiUsage.perUser.map((u) => (
+              <div key={u.id} className="flex items-center justify-between text-xs text-slate-500">
+                <span className="truncate">{u.name}</span>
+                <span>{u.messages24h} / {aiUsage.perUserLimit} msg · {u.tokens24h.toLocaleString("fr-FR")} tokens{u.webSearch24h > 0 ? ` · ${u.webSearch24h} recherches web` : ""}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -115,6 +115,46 @@ Deno.serve(async (req) => {
       return corsResponse(200, { notifications: notifications || [] });
     }
 
+    // --- ai-usage (owner only) ---
+    if (type === "ai-usage") {
+      const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
+      if (!member || member.role !== "owner") return corsResponse(403, { error: "Accès refusé." });
+
+      const dailyLimitPerUser = Number(Deno.env.get("AI_DAILY_LIMIT_PER_USER") ?? "40");
+      const dailyLimitGlobal = Number(Deno.env.get("AI_DAILY_LIMIT_GLOBAL") ?? "300");
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      const { count: globalCount } = await supabaseAdmin
+        .from("ai_usage_events")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", since24h);
+
+      const { data: projectEvents } = await supabaseAdmin
+        .from("ai_usage_events")
+        .select("user_id, input_tokens, output_tokens, web_search_calls")
+        .eq("project_id", projectId)
+        .gte("created_at", since24h);
+
+      const { data: memberships } = await supabaseAdmin.from("project_members").select("user_id, role").eq("project_id", projectId);
+      const perUser = await Promise.all((memberships || []).filter((m) => !isGodUser(m.user_id)).map(async (m) => {
+        const events = (projectEvents || []).filter((e) => e.user_id === m.user_id);
+        const { data } = await supabaseAdmin.auth.admin.getUserById(m.user_id);
+        return {
+          id: m.user_id,
+          name: data?.user?.user_metadata?.full_name || data?.user?.email || m.user_id,
+          messages24h: events.length,
+          tokens24h: events.reduce((sum, e) => sum + (e.input_tokens || 0) + (e.output_tokens || 0), 0),
+          webSearch24h: events.reduce((sum, e) => sum + (e.web_search_calls || 0), 0),
+        };
+      }));
+
+      return corsResponse(200, {
+        global: { count: globalCount || 0, limit: dailyLimitGlobal },
+        perUserLimit: dailyLimitPerUser,
+        perUser: perUser.sort((a, b) => b.messages24h - a.messages24h),
+      });
+    }
+
     // --- members ---
     if (type === "members") {
       const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();

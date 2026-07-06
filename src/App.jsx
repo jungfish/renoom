@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RoomViewer3D } from "./RoomViewer3D";
 import { OnboardingWizard } from "./OnboardingWizard.jsx";
@@ -7166,7 +7166,7 @@ export default function App() {
     }));
   };
 
-  const authedFetch = (url, options = {}) => {
+  const authedFetch = useCallback((url, options = {}) => {
     const token = session?.access_token;
     return fetch(url, {
       ...options,
@@ -7175,7 +7175,7 @@ export default function App() {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
-  };
+  }, [session]);
   const authedFetchRef = useRef(authedFetch);
   authedFetchRef.current = authedFetch;
 

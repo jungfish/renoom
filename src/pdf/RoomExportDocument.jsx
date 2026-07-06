@@ -35,9 +35,9 @@ function ShoppingRow({ item }) {
   );
 }
 
-function Logo() {
+function Logo({ size = 20 }) {
   return (
-    <Svg width="20" height="20" viewBox="0 0 32 32">
+    <Svg width={size} height={size} viewBox="0 0 32 32">
       <Rect x="0" y="0" width="14" height="14" rx="2.5" fill="#b8c9d0" />
       <Rect x="18" y="0" width="14" height="14" rx="2.5" fill="#A8B5A2" />
       <Rect x="0" y="18" width="14" height="14" rx="2.5" fill="#D0AA6C" />
@@ -80,9 +80,7 @@ export function RoomExportDocument({
         {apartmentPalette ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Palette de l'appartement</Text>
-            <Text style={[styles.swatchLabel, { textAlign: "left", marginBottom: 6 }]}>
-              Ambiance générale appliquée par défaut à toutes les pièces.
-            </Text>
+            <Text style={styles.caption}>Ambiance générale appliquée par défaut à toutes les pièces.</Text>
             <View style={styles.swatchRow}>
               <Swatch small label="Dominante" name={apartmentPalette?.dominant?.name} hex={apartmentPalette?.dominant?.hex} />
               <Swatch small label="Secondaire" name={apartmentPalette?.secondary?.name} hex={apartmentPalette?.secondary?.hex} />
@@ -96,9 +94,7 @@ export function RoomExportDocument({
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Palette de la pièce — {roomLabel}</Text>
-          <Text style={[styles.swatchLabel, { textAlign: "left", marginBottom: 6 }]}>
-            Nuances propres à cette pièce (peuvent différer de l'appartement).
-          </Text>
+          <Text style={styles.caption}>Nuances propres à cette pièce (peuvent différer de l'appartement).</Text>
           <View style={styles.swatchRow}>
             <Swatch label="Dominante" name={palette?.dominant?.name} hex={palette?.dominant?.hex} />
             <Swatch label="Secondaire" name={palette?.secondary?.name} hex={palette?.secondary?.hex} />
@@ -106,7 +102,7 @@ export function RoomExportDocument({
           </View>
           {testColors.length > 0 && (
             <View style={{ marginTop: 12 }}>
-              <Text style={styles.subSectionTitle}>Couleurs testées</Text>
+              <Text style={styles.caption}>Couleurs testées</Text>
               <View style={[styles.swatchRow, { flexWrap: "wrap", marginTop: 6 }]}>
                 {testColors.map((c) => (
                   <Swatch
@@ -121,69 +117,71 @@ export function RoomExportDocument({
           )}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Inspirations</Text>
-          {inspirationImages.length > 0 ? (
+        {inspirationImages.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Inspirations</Text>
             <View style={styles.imageGrid}>
               {inspirationImages.slice(0, 6).map((src) => (
                 <Image key={src} src={src} style={styles.image} />
               ))}
             </View>
-          ) : (
-            <Text style={styles.empty}>Aucune inspiration ajoutée pour cette pièce.</Text>
-          )}
-        </View>
+          </View>
+        )}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Matériaux</Text>
-          {materialImages.length > 0 ? (
+        {materialImages.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Matériaux</Text>
             <View style={styles.imageGrid}>
               {materialImages.slice(0, 6).map((src) => (
                 <Image key={src} src={src} style={styles.image} />
               ))}
             </View>
-          ) : (
-            <Text style={styles.empty}>Aucun matériau ajouté pour cette pièce.</Text>
-          )}
-        </View>
+          </View>
+        )}
 
-        <View style={styles.section} break>
-          <Text style={styles.sectionTitle}>Liste de courses</Text>
-          {shoppingItems.length === 0 && <Text style={styles.empty}>Aucun article dans la liste de courses.</Text>}
+        {shoppingItems.length > 0 && (
+          <View style={styles.section} break>
+            <Text style={styles.sectionTitle}>Liste de courses</Text>
 
-          {selectedItems.length > 0 && (
-            <View wrap={false}>
-              <Text style={styles.subSectionTitle}>Sélectionné pour achat</Text>
-              {selectedItems.map((item, i) => (
-                <ShoppingRow key={i} item={item} />
-              ))}
-              {budgetTotal ? (
-                <View style={styles.budgetBar}>
-                  <Text style={styles.budgetLabel}>Total sélectionné pour achat</Text>
-                  <Text style={styles.budgetValue}>{formatPrice(budgetTotal.amount, budgetTotal.currency)}</Text>
-                </View>
-              ) : null}
-            </View>
-          )}
+            {selectedItems.length > 0 && (
+              <View wrap={false}>
+                <Text style={styles.subSectionTitle}>Sélectionné pour achat</Text>
+                {selectedItems.map((item, i) => (
+                  <ShoppingRow key={i} item={item} />
+                ))}
+                {budgetTotal ? (
+                  <View style={styles.budgetBar}>
+                    <Text style={styles.budgetLabel}>Total sélectionné pour achat</Text>
+                    <Text style={styles.budgetValue}>{formatPrice(budgetTotal.amount, budgetTotal.currency)}</Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
 
-          {wishlistItems.length > 0 && (
-            <View wrap={false}>
-              <Text style={styles.subSectionTitle}>Envies (non sélectionnées)</Text>
-              {wishlistItems.map((item, i) => (
-                <ShoppingRow key={i} item={item} />
-              ))}
-            </View>
-          )}
-        </View>
+            {wishlistItems.length > 0 && (
+              <View wrap={false}>
+                <Text style={styles.subSectionTitle}>Envies (non sélectionnées)</Text>
+                {wishlistItems.map((item, i) => (
+                  <ShoppingRow key={i} item={item} />
+                ))}
+              </View>
+            )}
+          </View>
+        )}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notes</Text>
-          <Text style={note ? styles.note : styles.empty}>{note || "Aucune note pour cette pièce."}</Text>
-        </View>
+        {note && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Notes</Text>
+            <Text style={styles.note}>{note}</Text>
+          </View>
+        )}
 
         <View style={styles.footer} fixed>
-          <Text>Document généré depuis Renoom — {projectName || "Projet"} · {roomLabel}</Text>
-          <Link src={inviteUrl || "https://renoom.com"} style={{ marginTop: 3, color: "#8A6D3B" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 3 }}>
+            <Logo />
+            <Text>Document généré depuis Renoom — {projectName || "Projet"} · {roomLabel}</Text>
+          </View>
+          <Link src={inviteUrl || "https://renoom.com"} style={{ color: "#8A6D3B" }}>
             {inviteUrl
               ? "Vous ne connaissez pas Renoom ? Rejoignez ce projet pour suivre les avancées"
               : "Vous ne connaissez pas Renoom ? Découvrez l'app sur renoom.com"}

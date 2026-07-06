@@ -47,6 +47,13 @@ export const styles = StyleSheet.create({
     letterSpacing: 0.6,
     color: colors.muted,
     marginBottom: 8,
+    textAlign: "left",
+  },
+  caption: {
+    fontSize: 9,
+    color: colors.muted,
+    marginBottom: 6,
+    textAlign: "left",
   },
   swatchRow: {
     flexDirection: "row",

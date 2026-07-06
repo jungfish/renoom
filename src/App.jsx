@@ -6992,10 +6992,18 @@ export default function App() {
       ]);
 
       const projectName = userProjects.find((p) => p.id === projectId)?.name || "Projet";
+      // Certains articles stockent encore "Titre — https://..." dans le champ texte
+      // brut (aperçu de lien jamais résolu) : on retire l'URL traînante du titre
+      // puisqu'elle est déjà affichée séparément en dessous.
+      const stripTrailingUrl = (text) => {
+        if (!text) return text;
+        const cleaned = text.replace(/[\s\-–—]*https?:\/\/\S+$/i, "").trim();
+        return cleaned || text;
+      };
       const shoppingItems = (roomLists[room]?.shopping || [])
         .filter((i) => !i.done)
         .map((i) => ({
-          text: linkItemTitle(i),
+          text: stripTrailingUrl(linkItemTitle(i)),
           url: i.url && i.url !== i.text ? i.url : null,
           price: i.price,
           priceCurrency: i.priceCurrency,
@@ -8949,6 +8957,7 @@ export default function App() {
                 lastSavedAt={lastSavedAt}
                 orderedActiveRooms={orderedActiveRooms}
                 allRoomPresets={allRoomPresets}
+                getRoomColors={getRoomColors}
                 roomLists={roomLists}
                 totalPending={tPending}
                 totalUnread={tUnread}

@@ -6649,6 +6649,7 @@ export default function App() {
   const [showSnapshotHistory, setShowSnapshotHistory] = useState(false);
   const [snapshots, setSnapshots] = useState([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [restoringSnapshotId, setRestoringSnapshotId] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
   const [inviteCode, setInviteCode] = useState(null);
@@ -6968,6 +6969,63 @@ export default function App() {
     materialSummary: aiMaterialSummary,
     persons: [...(projectMembers || []), ...(persons || [])].filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i).map(p => p.name),
     roomTestColors: roomColorTests[room] || [],
+  };
+
+  const handleExportRoomPdf = async () => {
+    if (!projectId || isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      const res = await authedFetch(`${API_BASE}/record-export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, roomKey: room }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        await showAlert(data.error || "Export impossible pour le moment.");
+        return;
+      }
+
+      const [{ pdf }, { RoomExportDocument }] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("./pdf/RoomExportDocument.jsx"),
+      ]);
+
+      const projectName = userProjects.find((p) => p.id === projectId)?.name || "Projet";
+      const shoppingItems = (roomLists[room]?.shopping || [])
+        .filter((i) => !i.done)
+        .map((i) => ({ text: i.text, price: i.price, priceCurrency: i.priceCurrency, selectedForPurchase: i.selectedForPurchase }));
+
+      const blob = await pdf(
+        <RoomExportDocument
+          projectName={projectName}
+          roomLabel={preset.label}
+          roomLine={preset.line}
+          generatedAt={new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+          palette={{
+            dominant: { name: aiContext.dominantName, hex: aiContext.dominantHex },
+            secondary: { name: aiContext.secondaryName, hex: aiContext.secondaryHex },
+            accent: { name: aiContext.accentName, hex: aiContext.accentHex },
+          }}
+          testColors={roomColorTests[room] || []}
+          inspirationImages={(aiInspirations[room] || []).filter((_, i) => !deletedImages[`${room}-ai-${i}`])}
+          shoppingItems={shoppingItems}
+          budgetTotal={selectedTotal}
+          note={roomNotes[room] || ""}
+        />
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${projectName} - ${preset.label}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      await showAlert("Export impossible pour le moment.");
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   const updateRoomNuance = (key, value) => {
@@ -8782,6 +8840,15 @@ export default function App() {
                 );
               })()}
             </div>
+            <button
+              type="button"
+              onClick={handleExportRoomPdf}
+              disabled={isExportingPdf}
+              title="Exporter cette pièce en PDF"
+              className="ml-2 flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-black/15 bg-white px-3 py-1.5 text-sm font-medium text-[#4D4A47] transition-colors hover:bg-black/[0.05] disabled:opacity-50"
+            >
+              {isExportingPdf ? "Export..." : "Exporter PDF"}
+            </button>
           </div>
         ) : null}
 

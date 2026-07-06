@@ -7,6 +7,8 @@ import { OverflowMenu } from "./OverflowMenu.jsx";
 import { Dashboard } from "./Dashboard.jsx";
 import { supabase } from "./supabaseClient";
 import { useAuth } from "./useAuth";
+import { useEntitlements } from "./hooks/useEntitlements";
+import { SUPPORT_EMAIL } from "./config";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { FB, fbLabel, describeColor, familyOfHex, FARROW_BALL_FAMILIES, FARROW_BALL_LIBRARY } from "./farrowBall.js";
@@ -438,12 +440,12 @@ function removeObjectKey(object, key) {
   return next;
 }
 
-async function analyzeImageForContext({ image, context, section }) {
+async function analyzeImageForContext({ image, context, section, authedFetch, projectId }) {
   try {
-    const response = await fetch(`${API_BASE}/analyze-image`, {
+    const response = await authedFetch(`${API_BASE}/analyze-image`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image, context, section }),
+      body: JSON.stringify({ image, context, section, projectId }),
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Analyse impossible.");
@@ -1173,7 +1175,7 @@ function RepoImage({ src, alt, onMissingChange, objectFit = "cover" }) {
   );
 }
 
-function AiImageEditor({ imageSrc, imageKind, imageTitle, aiContext, imageMetadata, onApply, onAddToInspirations }) {
+function AiImageEditor({ imageSrc, imageKind, imageTitle, aiContext, imageMetadata, onApply, onAddToInspirations, authedFetch, projectId }) {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [generatedImage, setGeneratedImage] = useState("");
@@ -1217,10 +1219,10 @@ function AiImageEditor({ imageSrc, imageKind, imageTitle, aiContext, imageMetada
     try {
       const raw = await imageSrcToDataUrl(imageSrc);
       const image = await normalizeImageForAi(raw);
-      const response = await fetch(`${API_BASE}/generate-image`, {
+      const response = await authedFetch(`${API_BASE}/generate-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image, prompt }),
+        body: JSON.stringify({ image, prompt, projectId }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "La génération a échoué.");
@@ -1562,6 +1564,8 @@ function PlanPreview({
   setDeletedImages,
   onImageClick,
   saveMediaKey,
+  authedFetch,
+  projectId,
 }) {
   const items = [
     ...(roomPlanImages[room] || []).flatMap((src, i) => {
@@ -1599,6 +1603,8 @@ function PlanPreview({
           image: url,
           context: `Plan ${label}, pièce ${label}`,
           section: "plan",
+          authedFetch,
+          projectId,
         });
         if (analysis) setImageAnalysis((prev) => ({ ...prev, [currentKey]: analysis }));
       }
@@ -1623,6 +1629,8 @@ function PlanPreview({
           image: url,
           context: `Plan ajouté ${label}`,
           section: "plan",
+          authedFetch,
+          projectId,
         });
         if (analysis) setImageAnalysis((prev) => ({ ...prev, [nextKey]: analysis }));
       }
@@ -1762,6 +1770,8 @@ function PlanPreview({
               imageMetadata={imageAnalysis[currentKey]}
               onApply={(image) => setPlanUploads((prev) => ({ ...prev, [currentKey]: image }))}
               onAddToInspirations={(image) => addAiInspiration(room, image)}
+              authedFetch={authedFetch}
+              projectId={projectId}
             />
             <LinkAction
               value={currentLink}
@@ -1845,7 +1855,7 @@ function PlanPreview({
   );
 }
 
-function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirationLinks, setInspirationLinks, aiContext, aiInspirations, addAiInspiration, imageAnalysis, setImageAnalysis, deletedImages, setDeletedImages, onImageClick, instagramItems, setInstagramItems, onLogActivity, saveMediaKey }) {
+function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirationLinks, setInspirationLinks, aiContext, aiInspirations, addAiInspiration, imageAnalysis, setImageAnalysis, deletedImages, setDeletedImages, onImageClick, instagramItems, setInstagramItems, onLogActivity, saveMediaKey, authedFetch, projectId }) {
   const items = [
     ...(roomInspirationImages[room] || []).flatMap((src, i) => {
       const cardKey = `${room}-${i}`;
@@ -1882,6 +1892,8 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
         image: url,
         context: `Inspiration ${label}, pièce ${label}`,
         section: "inspiration",
+        authedFetch,
+        projectId,
       });
       if (analysis) setImageAnalysis((prev) => ({ ...prev, [cardKey]: analysis }));
     }
@@ -1923,6 +1935,8 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
       image: url,
       context: `Inspiration ajoutée ${label}`,
       section: "inspiration",
+      authedFetch,
+      projectId,
     });
     if (analysis) setImageAnalysis((prev) => ({ ...prev, [nextKey]: analysis }));
   };
@@ -2090,6 +2104,8 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
                   imageMetadata={imageAnalysis[cardKey]}
                   onApply={(image) => { setUploadedImages((prev) => ({ ...prev, [cardKey]: image })); if (saveMediaKey) saveMediaKey("uploadedImages", cardKey, image); }}
                   onAddToInspirations={(image) => addAiInspiration(room, image)}
+                  authedFetch={authedFetch}
+                  projectId={projectId}
                 />
                 <LinkAction
                   value={linkValue}
@@ -2363,6 +2379,8 @@ function MaterialsSection({
   setDeletedImages,
   onImageClick,
   saveMediaKey,
+  authedFetch,
+  projectId,
 }) {
   const items = [
     ...(materialsByRoom[room] || []).flatMap((item, i) => {
@@ -2415,6 +2433,8 @@ function MaterialsSection({
         image: url,
         context: `Matériau ${room}, ${cardKey}`,
         section: "matériau",
+        authedFetch,
+        projectId,
       });
       if (analysis) setImageAnalysis((prev) => ({ ...prev, [cardKey]: analysis }));
     }
@@ -2545,6 +2565,8 @@ function MaterialsSection({
                       imageMetadata={imageAnalysis[cardKey]}
                       onApply={(image) => { setMaterialUploads((prev) => ({ ...prev, [cardKey]: image })); if (saveMediaKey) saveMediaKey("materialUploads", cardKey, image); }}
                       onAddToInspirations={(image) => addAiInspiration(room, image)}
+                      authedFetch={authedFetch}
+                      projectId={projectId}
                     />
                   )}
                   {!isLinkPreview && (
@@ -3924,10 +3946,10 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
     try {
       const raw = await imageSrcToDataUrl(imageSrc);
       const dataUrl = await normalizeImageForAi(raw);
-      const res = await fetch(`${API_BASE}/generate-image`, {
+      const res = await authedFetch(`${API_BASE}/generate-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: dataUrl, prompt: imagePrompt }),
+        body: JSON.stringify({ image: dataUrl, prompt: imagePrompt, projectId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur génération.");
@@ -7060,7 +7082,7 @@ export default function App() {
         if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
         addAiInspiration(room, url);
         logActivity("inspiration_added", room, {});
-        const analysis = await analyzeImageForContext({ image: url, context: `Inspiration ${preset.label}`, section: "inspiration" });
+        const analysis = await analyzeImageForContext({ image: url, context: `Inspiration ${preset.label}`, section: "inspiration", authedFetch, projectId });
         if (analysis) setImageAnalysis((prev) => ({ ...prev, [`${room}-ai-${(aiInspirations[room] || []).length}`]: analysis }));
       })
     );
@@ -7156,6 +7178,8 @@ export default function App() {
   };
   const authedFetchRef = useRef(authedFetch);
   authedFetchRef.current = authedFetch;
+
+  const entitlements = useEntitlements({ authedFetch, apiBase: API_BASE, enabled: !!user });
 
   const saveRoomNoteToServer = (pid, roomKey, content) => {
     if (!pid) return;
@@ -7840,9 +7864,15 @@ export default function App() {
     if (!user?.id || !import.meta.env.VITE_SUPABASE_URL) return;
     const { data } = await supabase
       .from("project_members")
-      .select("project_id, role, projects(id, name)")
+      .select("project_id, role, projects(id, name, status)")
       .eq("user_id", user.id);
-    if (data) setUserProjects(data.map(r => ({ id: r.projects.id, name: r.projects.name, role: r.role })));
+    if (data) {
+      setUserProjects(
+        data
+          .filter(r => r.projects && r.projects.status !== "archived")
+          .map(r => ({ id: r.projects.id, name: r.projects.name, role: r.role }))
+      );
+    }
   };
 
   const handleDeleteProject = async (p) => {
@@ -7872,6 +7902,36 @@ export default function App() {
       }
     } catch {
       await showAlert("Erreur lors de la suppression.");
+    }
+  };
+
+  const handleArchiveProject = async (p) => {
+    if (!(await showConfirm("Cette action archive le projet — les données sont conservées, tu pourras demander sa réactivation.", { title: `Archiver "${p.name || "ce projet"}" ?`, confirmLabel: "Archiver" }))) return;
+    try {
+      const res = await authedFetch(`${API_BASE}/archive-project`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: p.id }),
+      });
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({}));
+        await showAlert(error || "Erreur lors de l'archivage.");
+        return;
+      }
+      const remaining = userProjects.filter(pr => pr.id !== p.id);
+      setUserProjects(remaining);
+      if (p.id === projectId) {
+        if (remaining.length > 0) {
+          switchProject(remaining[0].id);
+        } else {
+          setProjectId(null);
+          setShowProjectPicker(false);
+          window.history.replaceState({}, "", "/");
+          setShowOnboarding(true);
+        }
+      }
+    } catch {
+      await showAlert("Erreur lors de l'archivage.");
     }
   };
 
@@ -8383,6 +8443,19 @@ export default function App() {
                         </svg>
                       </button>
                     )}
+                    {renamingProjectId !== p.id && p.role === "owner" && (
+                      <button
+                        type="button"
+                        title="Archiver ce projet"
+                        onClick={e => { e.stopPropagation(); handleArchiveProject(p); }}
+                        className="flex-shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/[0.06]"
+                      >
+                        <svg className="h-3 w-3 text-[#8A8680]" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1.5 2h9v2h-9zM2 4.5h8v5.5a1 1 0 01-1 1H3a1 1 0 01-1-1z" />
+                          <path d="M4.75 6.5h2.5" />
+                        </svg>
+                      </button>
+                    )}
                     {renamingProjectId !== p.id && isGod && (
                       <button
                         type="button"
@@ -8403,13 +8476,23 @@ export default function App() {
                   </div>
                 ))}
                 <div className="border-t border-black/[0.06] px-3 py-1.5">
-                  <button
-                    type="button"
-                    onClick={() => { setShowProjectPicker(false); setShowNewProjectWizard(true); }}
-                    className="w-full rounded-md px-1 py-1 text-left text-[11px] text-[#ADA89E] transition-colors hover:text-[#8A8680]"
-                  >
-                    Créer un tout nouvel appartement
-                  </button>
+                  {entitlements.limits && entitlements.usage && entitlements.usage.activeProjects >= entitlements.limits.max_active_projects ? (
+                    <a
+                      href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Limite de projets atteinte")}`}
+                      title={`Limite de ${entitlements.limits.max_active_projects} projets actifs atteinte pour ton plan ${entitlements.plan?.name || ""}. Archive un projet existant ou contacte l'équipe.`}
+                      className="block w-full rounded-md px-1 py-1 text-left text-[11px] text-[#ADA89E] transition-colors hover:text-[#8A8680]"
+                    >
+                      Limite de projets atteinte · Contacter l'équipe
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setShowProjectPicker(false); setShowNewProjectWizard(true); }}
+                      className="w-full rounded-md px-1 py-1 text-left text-[11px] text-[#ADA89E] transition-colors hover:text-[#8A8680]"
+                    >
+                      Créer un tout nouvel appartement
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -9410,6 +9493,8 @@ export default function App() {
               setDeletedImages={setDeletedImages}
               onImageClick={(images, idx) => setLightbox({ images, index: idx ?? 0 })}
               saveMediaKey={saveMediaKey}
+              authedFetch={authedFetch}
+              projectId={projectId}
             />
             <section className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
               <Inspirations
@@ -9431,6 +9516,8 @@ export default function App() {
                 setInstagramItems={setInstagramItems}
                 onLogActivity={logActivity}
                 saveMediaKey={saveMediaKey}
+                authedFetch={authedFetch}
+                projectId={projectId}
               />
             </section>
             <section className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
@@ -9452,6 +9539,8 @@ export default function App() {
                 setDeletedImages={setDeletedImages}
                 onImageClick={(images, idx) => setLightbox({ images, index: idx ?? 0 })}
                 saveMediaKey={saveMediaKey}
+                authedFetch={authedFetch}
+                projectId={projectId}
               />
             </section>
           </>

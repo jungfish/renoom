@@ -1,7 +1,9 @@
 import { getUserFromRequest, supabaseAdmin, supabaseWithToken } from "../_shared/_supabase.ts";
+import { getEntitlements, countAiMessages24h } from "../_shared/_entitlements.ts";
 
 const CHAT_MODEL = Deno.env.get("OPENAI_CHAT_MODEL") ?? "gpt-4.1-mini";
-const DAILY_LIMIT_PER_USER = Number(Deno.env.get("AI_DAILY_LIMIT_PER_USER") ?? "40");
+// Filet de sécurité budget global, indépendant du pricing — s'applique toujours,
+// même au-dessus des quotas par plan.
 const DAILY_LIMIT_GLOBAL = Number(Deno.env.get("AI_DAILY_LIMIT_GLOBAL") ?? "300");
 const IMAGE_PROMPT_MARKER = "|||IMAGE_PROMPT|||";
 
@@ -368,19 +370,18 @@ Deno.serve(async (req) => {
     });
   }
 
-  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { count: userCount } = await supabaseAdmin
-    .from("ai_usage_events")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .gte("created_at", since24h);
-  if ((userCount ?? 0) >= DAILY_LIMIT_PER_USER) {
-    return new Response(JSON.stringify({ error: "Quota journalier de messages IA atteint. Réessaie demain." }), {
+  const entitlements = await getEntitlements(user.id);
+  const userCount = await countAiMessages24h(user.id);
+  if (userCount >= entitlements.limits.ai_messages_per_day) {
+    return new Response(JSON.stringify({
+      error: `Limite quotidienne atteinte (${entitlements.limits.ai_messages_per_day} messages/jour pour le plan ${entitlements.planName}). Réessaie demain ou contacte l'équipe.`,
+    }), {
       status: 429,
       headers: { ...SSE_HEADERS, "Content-Type": "application/json" },
     });
   }
 
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { count: globalCount } = await supabaseAdmin
     .from("ai_usage_events")
     .select("id", { count: "exact", head: true })
@@ -492,6 +493,7 @@ Deno.serve(async (req) => {
           user_id: user.id,
           room_key: useGeneralMode ? null : roomContext.label ?? null,
           model: CHAT_MODEL,
+          event_type: "chat_message",
           input_tokens: inputTokens,
           output_tokens: outputTokens,
           web_search_calls: webSearchCalls,

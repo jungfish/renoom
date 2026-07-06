@@ -1,5 +1,6 @@
 import { corsResponse, optionsResponse } from "../_shared/_cors.ts";
 import { getUserFromRequest, supabaseAdmin, writeChangeLog } from "../_shared/_supabase.ts";
+import { getEntitlements, countProjectMembers } from "../_shared/_entitlements.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -32,6 +33,14 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (existing) return corsResponse(200, { projectId: project.id, alreadyMember: true });
+
+    const ownerEntitlements = await getEntitlements(project.owner_id);
+    const currentMembers = await countProjectMembers(project.id);
+    if (currentMembers >= ownerEntitlements.limits.max_members_per_project) {
+      return corsResponse(403, {
+        error: `Ce projet a atteint la limite de ${ownerEntitlements.limits.max_members_per_project} membres incluse dans le plan du propriétaire.`,
+      });
+    }
 
     const { error: insertError } = await supabaseAdmin.from("project_members").insert({
       project_id: project.id,

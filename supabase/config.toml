@@ -251,7 +251,7 @@ otp_expiry = 3600
 # Email de confirmation de compte — branding Renoom
 [auth.email.template.confirmation]
 subject = "Bienvenue chez Renoom — confirme ton adresse email"
-content_path = "./templates/confirmation.html"
+content_path = "./supabase/templates/confirmation.html"
 
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]

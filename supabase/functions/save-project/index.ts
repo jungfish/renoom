@@ -1,6 +1,7 @@
 import { corsResponse, optionsResponse } from "../_shared/_cors.ts";
 import { getUserFromRequest, supabaseAdmin, supabaseWithToken, writeChangeLog, stripBinaryData } from "../_shared/_supabase.ts";
 import { GOD_USER_IDS } from "../_shared/_god.ts";
+import { getEntitlements, countActiveProjects } from "../_shared/_entitlements.ts";
 
 const MEDIA_FIELDS = [
   "uploadedImages", "inspirationLinks", "aiInspirations", "instagramItems",
@@ -27,6 +28,16 @@ Deno.serve(async (req) => {
 
   const projectId = id || generateId();
   const isNewProject = !id;
+
+  if (isNewProject) {
+    const entitlements = await getEntitlements(user.id);
+    const activeProjects = await countActiveProjects(user.id);
+    if (activeProjects >= entitlements.limits.max_active_projects) {
+      return corsResponse(403, {
+        error: `Limite de ${entitlements.limits.max_active_projects} projets actifs atteinte pour ton plan ${entitlements.planName}. Archive un projet existant ou contacte l'équipe.`,
+      });
+    }
+  }
 
   try {
     const upsertData: Record<string, unknown> = {

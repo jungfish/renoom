@@ -4447,7 +4447,7 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
       <li key={id}
         className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${
           item.done ? "border-black/5 bg-white opacity-50"
-          : listKey === "shopping" && isSelectedForPurchase(item) ? "border-emerald-200 bg-emerald-50"
+          : listKey === "shopping" && isSelectedForPurchase(item) ? "border-[#c9d3b6] bg-[#eef1e4]"
           : "border-black/10 bg-white"
         }`}>
         <div className="flex flex-wrap items-center gap-2">
@@ -4467,7 +4467,7 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
           )}
           {filter === "all" && listKey === "shopping" && (
             isSelectedForPurchase(item) ? (
-              <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700" title="Sélectionné pour l'achat">
+              <span className="shrink-0 rounded-full bg-[#e3e8d5] px-2 py-0.5 text-[10px] font-medium text-[#4f5d3a]" title="Sélectionné pour l'achat">
                 🛒 Sélectionné
               </span>
             ) : (
@@ -5488,7 +5488,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                 className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${
                   item.done && listKey === "shopping" ? "border-amber-200 bg-amber-50"
                   : item.done ? "border-black/5 bg-white opacity-50"
-                  : listKey === "shopping" && item.selectedForPurchase ? "border-emerald-200 bg-emerald-50"
+                  : listKey === "shopping" && item.selectedForPurchase ? "border-[#c9d3b6] bg-[#eef1e4]"
                   : "border-black/10 bg-white"
                 }`}>
                 <div className="flex flex-wrap items-center gap-2">
@@ -8051,12 +8051,9 @@ export default function App() {
 
     const inviteParam = new URLSearchParams(window.location.search).get("invite");
     if (inviteParam) {
-      handleJoinProject(inviteParam).then((result) => {
-        if (!result?.ok) {
-          window.history.replaceState({}, "", "/");
-          setShowOnboarding(true);
-        }
-      });
+      // Ne pas rejoindre automatiquement — l'écran d'invitation de l'onboarding
+      // demande confirmation avant d'appeler handleJoinProject.
+      setShowOnboarding(true);
       return;
     }
 

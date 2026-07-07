@@ -2,6 +2,16 @@ import { useEffect, useState } from "react";
 import { useEntitlements } from "./hooks/useEntitlements";
 import { SUPPORT_EMAIL } from "./config";
 
+function textColor(hex) {
+  const c = hex.replace("#", "");
+  const bigint = parseInt(c, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 165 ? "#24303a" : "#ffffff";
+}
+
 // Vue d'accueil : point d'entrée unique qui résume ce qui demande de l'attention,
 // pour ne pas forcer les utilisateurs à choisir une pièce/onglet dès l'ouverture.
 export function Dashboard({
@@ -9,6 +19,7 @@ export function Dashboard({
   lastSavedAt,
   orderedActiveRooms,
   allRoomPresets,
+  getRoomColors,
   roomLists,
   totalPending,
   totalUnread,
@@ -91,11 +102,14 @@ export function Dashboard({
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
           {orderedActiveRooms.map((key) => {
             const pending = roomPending(key);
+            const bg = getRoomColors?.(key)?.dominant?.hex;
+            const fg = bg ? textColor(bg) : "#1C1A17";
             return (
               <button key={key} type="button" onClick={() => onNavigateRoom(key)}
-                className="rounded-xl border border-black/10 bg-white p-3 text-left transition-colors hover:bg-black/[0.02]">
-                <p className="truncate text-sm font-medium text-[#1C1A17]">{allRoomPresets[key]?.label}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{pending > 0 ? `${pending} en attente` : "À jour"}</p>
+                style={bg ? { backgroundColor: bg, color: fg } : undefined}
+                className={`rounded-xl border border-black/10 p-3 text-left shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:brightness-95 ${bg ? "" : "bg-white"}`}>
+                <p className="truncate text-sm font-medium" style={bg ? undefined : { color: "#1C1A17" }}>{allRoomPresets[key]?.label}</p>
+                <p className="mt-0.5 text-xs" style={{ opacity: bg ? 0.75 : 1, color: bg ? fg : "#64748b" }}>{pending > 0 ? `${pending} en attente` : "À jour"}</p>
               </button>
             );
           })}

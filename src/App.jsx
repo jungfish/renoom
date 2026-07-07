@@ -4445,7 +4445,11 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
     const reactions = itemReactions[id] || [];
     return (
       <li key={id}
-        className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"}`}>
+        className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${
+          item.done ? "border-black/5 bg-white opacity-50"
+          : listKey === "shopping" && isSelectedForPurchase(item) ? "border-emerald-200 bg-emerald-50"
+          : "border-black/10 bg-white"
+        }`}>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => toggleItem(roomKey, listKey, id)}
             className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
@@ -5481,7 +5485,12 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
               : listKey === "shopping" ? items : [...pending, ...done]
             ).map((item) => (
               <li key={item.id}
-                className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${item.done && listKey === "shopping" ? "border-amber-200 bg-amber-50" : item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"}`}>
+                className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${
+                  item.done && listKey === "shopping" ? "border-amber-200 bg-amber-50"
+                  : item.done ? "border-black/5 bg-white opacity-50"
+                  : listKey === "shopping" && item.selectedForPurchase ? "border-emerald-200 bg-emerald-50"
+                  : "border-black/10 bg-white"
+                }`}>
                 <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={() => toggleItem(listKey, item.id)}
                   className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done && listKey === "shopping" ? "border-amber-400 bg-amber-100 text-amber-700" : item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
@@ -8710,13 +8719,7 @@ export default function App() {
                   <p className="truncate text-[12px] font-medium leading-tight text-[#1C1A17]">
                     {user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Moi"}
                   </p>
-                  {lastSavedAt ? (
-                    <p className="truncate text-[10.5px] leading-tight text-[#B0ADA6]">
-                      Sauvé à {new Date(lastSavedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  ) : (
-                    <p className="truncate text-[10.5px] leading-tight text-[#B0ADA6]">{user?.email}</p>
-                  )}
+                  <p className="truncate text-[10.5px] leading-tight text-[#B0ADA6]">{user?.email}</p>
                 </div>
               </button>
             </div>

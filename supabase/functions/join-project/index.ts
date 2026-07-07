@@ -52,6 +52,16 @@ Deno.serve(async (req) => {
 
     await writeChangeLog(project.id, user.id, "join", { role: "editor" });
 
+    const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email || "Inconnu";
+    await supabaseAdmin.from("activity_log").insert({
+      project_id: project.id,
+      user_id: user.id,
+      user_name: userName,
+      action_type: "member_joined",
+      room_key: null,
+      metadata: {},
+    });
+
     return corsResponse(200, { projectId: project.id });
   } catch (err) {
     return corsResponse(500, { error: (err as Error).message || "Erreur lors de la jonction." });

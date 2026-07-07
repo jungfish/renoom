@@ -6454,6 +6454,7 @@ function ActivityFeedView({ activityFeed, allRoomPresets, onNavigate }) {
       case "inspiration_link_added": return "a ajouté un lien d'inspiration";
       case "discussion_added": return "a créé une discussion";
       case "reaction_added": return "a réagi à une envie";
+      case "member_joined": return "a rejoint le projet";
       default: return "a effectué une action";
     }
   };
@@ -8140,10 +8141,23 @@ export default function App() {
             if (prev.some(e => e.id === payload.new.id)) return prev;
             return [payload.new, ...prev].slice(0, 50);
           });
+          if (
+            payload.new.action_type === 'member_joined' &&
+            payload.new.user_id !== user?.id &&
+            document.visibilityState !== 'visible' &&
+            Notification.permission === 'granted'
+          ) {
+            const notif = new Notification('Nouveau membre', {
+              body: `${payload.new.user_name || 'Quelqu\'un'} a rejoint le projet.`,
+              icon: '/vite.svg',
+              tag: `member-joined-${payload.new.id}`,
+            });
+            notif.onclick = () => { window.focus(); notif.close(); };
+          }
         }
       ).subscribe();
     return () => supabase.removeChannel(channel);
-  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Realtime réactions emoji — sync entre membres du projet
   useEffect(() => {

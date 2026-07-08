@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
 
     const { data, error } = await supabaseUser
       .from("projects")
-      .select("name, invite_code, owner_id, active_room, view_mode, general_mode, global_accent, warmth, general_context, custom_rooms, hidden_rooms, room_order, general_resources, persons")
+      .select("name, invite_code, owner_id, active_room, view_mode, general_mode, global_accent, warmth, general_context, custom_rooms, hidden_rooms, room_order, general_resources, persons, budget_target")
       .eq("id", id)
       .maybeSingle();
 
@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
       { data: mediaRow },
       { data: colorTestsData },
     ] = await Promise.all([
-      supabaseUser.from("room_items").select("id, room_key, list_key, text, done, url, image, preview_title, position, due_date, assignee, price, price_currency, selected_for_purchase").eq("project_id", id).order("position"),
+      supabaseUser.from("room_items").select("id, room_key, list_key, text, done, url, image, preview_title, position, due_date, assignee, price, price_currency, selected_for_purchase, status").eq("project_id", id).order("position"),
       supabaseUser.from("chat_messages").select("id, room_key, role, content, image_prompt, error, created_at").eq("project_id", id).order("created_at", { ascending: true }),
       supabaseUser.from("room_notes").select("room_key, content").eq("project_id", id),
       supabaseUser.from("room_documents").select("id, room_key, name, url, type, size, uploaded_at").eq("project_id", id).order("uploaded_at"),
@@ -77,6 +77,7 @@ Deno.serve(async (req) => {
       roomOrder:        data.room_order        || null,
       generalResources: data.general_resources || [],
       persons:          data.persons            || [],
+      budgetTarget:     data.budget_target      ?? null,
     };
 
     const payload = {

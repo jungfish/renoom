@@ -53,6 +53,7 @@ Deno.serve(async (req) => {
       hidden_rooms:      state.hiddenRooms      || [],
       room_order:        state.roomOrder        || null,
       general_resources: state.generalResources || [],
+      budget_target:     typeof state.budgetTarget === "number" ? state.budgetTarget : null,
     };
 
     if (isNewProject) {

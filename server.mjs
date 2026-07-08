@@ -377,7 +377,7 @@ createServer(async (req, res) => {
     return;
   }
 
-  const POST_ROUTES = ["/api/generate-image", "/api/analyze-image", "/api/upload-image", "/api/chat", "/api/fetch-link-preview", "/api/save-project", "/api/join-project", "/api/restore-snapshot", "/api/save-room"];
+  const POST_ROUTES = ["/api/generate-image", "/api/analyze-image", "/api/parse-devis", "/api/upload-image", "/api/chat", "/api/fetch-link-preview", "/api/save-project", "/api/join-project", "/api/restore-snapshot", "/api/save-room"];
   if ((req.method !== "POST" && req.method !== "DELETE") || !POST_ROUTES.includes(req.url)) {
     sendJson(res, 404, { error: "Route inconnue." });
     return;
@@ -520,7 +520,7 @@ createServer(async (req, res) => {
           const now = new Date().toISOString();
           const eid = encodeURIComponent(projectId);
           if (items.length) {
-            const rows = items.map((item, i) => ({ id: item.id, project_id: projectId, room_key: roomKey, list_key: listKey, text: item.text || "", done: item.done || false, url: item.url || null, image: item.image || null, preview_title: item.previewTitle || null, position: i, updated_at: now, due_date: item.dueDate || null, assignee: item.assignee || null, price: item.price ?? null, price_currency: item.priceCurrency || null }));
+            const rows = items.map((item, i) => ({ id: item.id, project_id: projectId, room_key: roomKey, list_key: listKey, text: item.text || "", done: item.done || false, url: item.url || null, image: item.image || null, preview_title: item.previewTitle || null, position: i, updated_at: now, due_date: item.dueDate || null, assignee: item.assignee || null, price: item.price ?? null, price_currency: item.priceCurrency || null, selected_for_purchase: item.selectedForPurchase === true, status: listKey === "shopping" ? (item.status || "envie") : null }));
             const uRes = await fetch(`${SUPABASE_URL}/rest/v1/room_items`, { method: "POST", headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify(rows) });
             if (!uRes.ok) { sendJson(res, 500, { error: await uRes.text() }); return; }
           }
@@ -778,6 +778,7 @@ createServer(async (req, res) => {
           "- Écris TOUJOURS une réponse texte à l'utilisateur, même quand tu appelles un outil (save_room_note, add_to_shopping_list, etc.) : un appel d'outil ne remplace jamais une réponse conversationnelle qui traite réellement la demande",
           `- Si tu suggères une modification visuelle concrète et précise, termine ta réponse par exactement ce bloc sur une nouvelle ligne: ${CHAT_IMAGE_PROMPT_MARKER}{"prompt":"<instruction en anglais pour édition d'image>"}${CHAT_IMAGE_PROMPT_MARKER}`,
           "- N'inclus ce bloc que si la suggestion est clairement visuelle et actionnable",
+          "- Si un document PDF est joint (devis, facture...), réponds aux questions dessus à partir du contenu extrait fourni. S'il contient des lignes d'articles avec des prix, signale à l'utilisateur qu'il peut cliquer sur le document dans la conversation pour l'analyser et en importer les lignes dans son budget — ne tente pas d'ajouter ces lignes toi-même via un outil",
         ].filter(Boolean).join("\n");
       } else {
         systemPrompt = [
@@ -804,6 +805,7 @@ createServer(async (req, res) => {
           "- Écris TOUJOURS une réponse texte à l'utilisateur, même quand tu appelles un outil (save_room_note, add_to_shopping_list, etc.) : un appel d'outil ne remplace jamais une réponse conversationnelle qui traite réellement la demande",
           `- Si tu suggères une modification visuelle concrète et précise, termine ta réponse par exactement ce bloc sur une nouvelle ligne: ${CHAT_IMAGE_PROMPT_MARKER}{"prompt":"<instruction en anglais pour édition d'image>"}${CHAT_IMAGE_PROMPT_MARKER}`,
           "- N'inclus ce bloc que si la suggestion est clairement visuelle et actionnable",
+          "- Si un document PDF est joint (devis, facture...), réponds aux questions dessus à partir du contenu extrait fourni. S'il contient des lignes d'articles avec des prix, signale à l'utilisateur qu'il peut cliquer sur le document dans la conversation pour l'analyser et en importer les lignes dans son budget — ne tente pas d'ajouter ces lignes toi-même via un outil",
         ].filter(Boolean).join("\n");
       }
 
@@ -821,11 +823,16 @@ createServer(async (req, res) => {
           instructions: systemPrompt,
           input: historyToSend.map((m) => {
             const imgList = m.images?.length ? m.images : m.image ? [m.image] : [];
-            if (m.role === "user" && imgList.length > 0) {
+            const docList = Array.isArray(m.docs) ? m.docs : [];
+            if (m.role === "user" && (imgList.length > 0 || docList.length > 0)) {
               return {
                 role: m.role,
                 content: [
                   ...(m.content ? [{ type: "input_text", text: m.content }] : []),
+                  ...docList.map((d) => ({
+                    type: "input_text",
+                    text: `Document PDF joint "${d.name || "document"}" — contenu extrait:\n${String(d.text || "").slice(0, 12000)}`,
+                  })),
                   ...imgList.map((img) => ({ type: "input_image", image_url: img })),
                 ],
               };
@@ -899,6 +906,63 @@ createServer(async (req, res) => {
       }
       writeEvent("done", { imagePrompt: imagePrompt || undefined });
       res.end();
+      return;
+    }
+
+    if (req.url === "/api/parse-devis") {
+      const { text, context: devisContext, roomKey, documentName } = body;
+      if (!text) {
+        sendJson(res, 400, { error: "text requis." });
+        return;
+      }
+
+      const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: ANALYSIS_MODEL,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: [
+                    "Tu extrais les lignes d'articles/prestations d'un devis ou d'une facture français, dont le texte a été extrait automatiquement d'un PDF (mise en page tabulaire potentiellement imparfaite).",
+                    `Contexte: ${devisContext || `Devis: ${documentName || "document"}, pièce: ${roomKey || "non précisée"}`}.`,
+                    "Ignore : en-têtes/pieds de page, coordonnées de l'entreprise/du client, mentions légales, conditions de paiement, numéro de devis/date, ainsi que les lignes de sous-total, total HT, TVA et total TTC — ce sont des agrégats, pas des articles.",
+                    "Ne garde que les lignes correspondant à un article ou une prestation concrète avec une désignation, une quantité et un prix.",
+                    "Si une ligne n'a pas de quantité explicite, utilise 1. Si le prix unitaire est absent mais le total est présent (ou l'inverse), déduis l'un de l'autre quand c'est sans ambiguïté ; sinon mets null.",
+                    "Devine à quelle pièce de la maison chaque ligne se rattache le plus probablement si c'est évident du texte (ex: 'cuisine', 'salle de bain'), sinon laisse suggestedRoom à null.",
+                    "Réponds uniquement en JSON valide, sans markdown, sans texte autour.",
+                    "Schéma exact: {\"lines\":[{\"description\":\"string\",\"quantity\":number,\"unitPrice\":number|null,\"total\":number|null,\"currency\":\"EUR\",\"suggestedRoom\":\"string|null\"}]}.",
+                    "Texte du devis:",
+                    String(text).slice(0, 15000),
+                  ].join("\n"),
+                },
+              ],
+            },
+          ],
+        }),
+      });
+
+      const payload = await openaiResponse.json();
+      if (!openaiResponse.ok) {
+        sendJson(res, openaiResponse.status, { error: payload.error?.message || "L'analyse OpenAI a échoué." });
+        return;
+      }
+
+      let lines = [];
+      try {
+        const cleaned = (payload.output_text || "").replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+        const parsed = JSON.parse(cleaned);
+        lines = Array.isArray(parsed.lines) ? parsed.lines : [];
+      } catch { /* ignore, lines reste vide */ }
+
+      sendJson(res, 200, { lines });
       return;
     }
 

@@ -12,6 +12,12 @@ import { SUPPORT_EMAIL } from "./config";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { FB, fbLabel, describeColor, familyOfHex, FARROW_BALL_FAMILIES, FARROW_BALL_LIBRARY } from "./farrowBall.js";
+import { STATUSES, effectiveStatus, deriveFlagsFromStatus, styleForStatus } from "./lib/itemStatus.js";
+import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, PersonPicker } from "./lib/itemHelpers.jsx";
+import { ShoppingKanban } from "./ShoppingKanban.jsx";
+import { BudgetView } from "./BudgetView.jsx";
+import { DevisImportReview } from "./components/DevisImportReview.jsx";
+import { extractPdfText } from "./lib/pdfText.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
@@ -3625,14 +3631,16 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
   );
 }
 
-function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelectedTotal = null, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, setRoomColorTests, saveRoomColorTestsFn, projectId, authedFetch, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage }) {
+function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelectedTotal = null, aiContext, chatHistory, setChatHistory, roomImages, setRoomLists, setRoomNotes, setRoomColorTests, saveRoomColorTestsFn, projectId, authedFetch, saveMessageFn, clearChatFn, saveNoteFn, saveRoomItemsFn, onClose, isExpanded, onToggleExpand, draft = "", onDraftChange, addAiInspiration, addExtraPlanImage, orderedActiveRooms = [], allRoomPresets = {}, roomLists = {} }) {
   const [input, setInput] = useState(draft);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState(null);
   const [generatingFor, setGeneratingFor] = useState(null);
   const [pendingImages, setPendingImages] = useState([]);
   const [pendingPreviews, setPendingPreviews] = useState([]);
+  const [pendingDocs, setPendingDocs] = useState([]);
   const [uploadingCount, setUploadingCount] = useState(0);
+  const [devisReviewFor, setDevisReviewFor] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -3653,34 +3661,65 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
   }, []);
 
   const handleImagePick = (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-    setUploadingCount((prev) => prev + files.length);
-    Promise.all(
-      files.map(async (file) => {
-        const raw = await readFileAsDataUrl(file);
-        const normalized = await normalizeImageForAi(raw);
-        const url = await uploadToBlob(normalized, `chat-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
-        return { url, preview: normalized };
-      })
-    ).then((results) => {
-      setPendingImages((prev) => [...prev, ...results.map((r) => r.url)]);
-      setPendingPreviews((prev) => [...prev, ...results.map((r) => r.preview)]);
-      setUploadingCount((prev) => prev - files.length);
-    }).catch(() => {
-      setUploadingCount((prev) => prev - files.length);
-    });
+    const allFiles = Array.from(e.target.files);
+    if (!allFiles.length) return;
+    const pdfFiles = allFiles.filter((f) => f.type === "application/pdf");
+    const imageFiles = allFiles.filter((f) => f.type !== "application/pdf");
+
+    if (pdfFiles.length) {
+      setUploadingCount((prev) => prev + pdfFiles.length);
+      Promise.all(
+        pdfFiles.map(async (file) => {
+          const blobUrl = URL.createObjectURL(file);
+          try {
+            const { text } = await extractPdfText(blobUrl);
+            return { name: file.name, text };
+          } finally {
+            URL.revokeObjectURL(blobUrl);
+          }
+        })
+      ).then((docs) => {
+        setPendingDocs((prev) => [...prev, ...docs]);
+        setUploadingCount((prev) => prev - pdfFiles.length);
+      }).catch(() => {
+        setUploadingCount((prev) => prev - pdfFiles.length);
+      });
+    }
+
+    if (imageFiles.length) {
+      setUploadingCount((prev) => prev + imageFiles.length);
+      Promise.all(
+        imageFiles.map(async (file) => {
+          const raw = await readFileAsDataUrl(file);
+          const normalized = await normalizeImageForAi(raw);
+          const url = await uploadToBlob(normalized, `chat-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
+          return { url, preview: normalized };
+        })
+      ).then((results) => {
+        setPendingImages((prev) => [...prev, ...results.map((r) => r.url)]);
+        setPendingPreviews((prev) => [...prev, ...results.map((r) => r.preview)]);
+        setUploadingCount((prev) => prev - imageFiles.length);
+      }).catch(() => {
+        setUploadingCount((prev) => prev - imageFiles.length);
+      });
+    }
+
     e.target.value = "";
   };
 
   const sendMessage = async (text) => {
     const trimmed = (text || input).trim();
-    if ((!trimmed && !pendingImages.length) || isLoading) return;
+    if ((!trimmed && !pendingImages.length && !pendingDocs.length) || isLoading) return;
 
-    const userMsg = { id: `msg-${Date.now()}`, role: "user", content: trimmed, ...(pendingImages.length > 0 ? { images: pendingImages } : {}) };
+    const userMsg = {
+      id: `msg-${Date.now()}`, role: "user", content: trimmed,
+      ...(pendingImages.length > 0 ? { images: pendingImages } : {}),
+      ...(pendingDocs.length > 0 ? { docs: pendingDocs } : {}),
+    };
     const nextHistory = [...messages, userMsg];
     setPendingImages([]);
     setPendingPreviews([]);
+    setPendingDocs([]);
     setChatHistory((prev) => ({ ...prev, [room]: nextHistory }));
     setInput("");
     onDraftChange?.("");
@@ -3698,12 +3737,14 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
       .join("; ");
 
     const requestBody = JSON.stringify({
-      messages: nextHistory.slice(-20).map(({ role, content, image, images }, i, arr) => {
+      messages: nextHistory.slice(-20).map(({ role, content, image, images, docs }, i, arr) => {
         const imgList = images?.length ? images : image ? [image] : [];
+        const inWindow = i >= arr.length - 4;
         return {
           role,
           content,
-          ...(imgList.length > 0 && i >= arr.length - 4 ? { images: imgList } : {}),
+          ...(imgList.length > 0 && inWindow ? { images: imgList } : {}),
+          ...(docs?.length > 0 && inWindow ? { docs: docs.map((d) => ({ name: d.name, text: d.text })) } : {}),
         };
       }),
       roomContext: {
@@ -3813,7 +3854,11 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
               patch.price = typeof price === "number" ? price : undefined;
               patch.priceCurrency = typeof price === "number" ? (price_currency || "EUR") : undefined;
             }
-            if ("selected_for_purchase" in call.args) patch.selectedForPurchase = !!selected_for_purchase;
+            if ("selected_for_purchase" in call.args && listKey === "shopping") {
+              const nextStatus = selected_for_purchase ? "selectionne" : "envie";
+              patch.status = nextStatus;
+              Object.assign(patch, deriveFlagsFromStatus(nextStatus));
+            }
             const newItems = currentItems.map((item) => item.id === item_id ? { ...item, ...patch } : item);
             if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, targetRoom, listKey, newItems);
             return { ...prev, [targetRoom]: { ...(prev[targetRoom] || {}), [listKey]: newItems } };
@@ -4088,6 +4133,18 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
                     ))}
                   </div>
                 ) : null}
+                {msg.docs?.length > 0 && (
+                  <div className="mb-1 flex flex-wrap gap-1.5">
+                    {msg.docs.map((doc, i) => (
+                      <button key={i} type="button" onClick={() => setDevisReviewFor(doc)}
+                        className="flex items-center gap-1.5 rounded-lg border border-black/10 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">
+                        <span>📄</span>
+                        <span className="max-w-[140px] truncate">{doc.name}</span>
+                        <span className="text-slate-400">· Analyser ce devis</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {msg.content ? <p className="whitespace-pre-wrap leading-relaxed">{renderMessageContent(msg.content)}</p> : null}
                 {msg.role === "assistant" && !msg.error && msg.content && (() => {
                   const links = parseLinksFromContent(msg.content);
@@ -4234,13 +4291,13 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,application/pdf"
           multiple
           className="hidden"
           onChange={handleImagePick}
         />
         <div className="rounded-xl border border-black/12 bg-[#f9f7f3] overflow-hidden focus-within:border-slate-400 focus-within:bg-white transition-colors">
-          {(pendingPreviews.length > 0 || uploadingCount > 0) ? (
+          {(pendingPreviews.length > 0 || pendingDocs.length > 0 || uploadingCount > 0) ? (
             <div className="flex flex-wrap items-end gap-2 px-3 pt-3">
               {pendingPreviews.map((preview, i) => (
                 <div key={i} className="relative">
@@ -4251,6 +4308,19 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
                       setPendingImages((prev) => prev.filter((_, j) => j !== i));
                       setPendingPreviews((prev) => prev.filter((_, j) => j !== i));
                     }}
+                    className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-slate-900 text-[9px] text-white leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {pendingDocs.map((doc, i) => (
+                <div key={i} className="relative flex h-14 max-w-[140px] items-center gap-1.5 rounded-lg border border-black/10 bg-white px-2">
+                  <span className="text-lg leading-none">📄</span>
+                  <span className="truncate text-xs text-slate-600">{doc.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingDocs((prev) => prev.filter((_, j) => j !== i))}
                     className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-slate-900 text-[9px] text-white leading-none"
                   >
                     ×
@@ -4290,7 +4360,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
               onClick={() => fileInputRef.current?.click()}
               disabled={isLoading}
               className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-black/5 disabled:opacity-40 transition-colors"
-              title="Joindre des photos"
+              title="Joindre des photos ou un PDF"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
@@ -4299,7 +4369,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
             <button
               type="button"
               onClick={() => sendMessage()}
-              disabled={(!input.trim() && !pendingImages.length) || isLoading || uploadingCount > 0}
+              disabled={(!input.trim() && !pendingImages.length && !pendingDocs.length) || isLoading || uploadingCount > 0}
               className="grid h-7 w-7 place-items-center rounded-full bg-slate-900 text-white disabled:opacity-30 hover:bg-slate-700 transition-colors"
               title="Envoyer (Cmd+Entrée)"
             >
@@ -4311,6 +4381,21 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
         </div>
         <p className="mt-1.5 text-center text-[10px] text-slate-400">Cmd+Entrée pour envoyer</p>
       </div>
+      {devisReviewFor && (
+        <DevisImportReview
+          documentName={devisReviewFor.name}
+          initialText={devisReviewFor.text}
+          projectId={projectId}
+          roomKey={isGeneral ? "general" : room}
+          authedFetch={authedFetch}
+          roomLists={roomLists}
+          setRoomLists={setRoomLists}
+          saveRoomItemsFn={saveRoomItemsFn}
+          orderedActiveRooms={orderedActiveRooms}
+          allRoomPresets={allRoomPresets}
+          onClose={() => setDevisReviewFor(null)}
+        />
+      )}
     </div>
   );
 }
@@ -4786,10 +4871,6 @@ function renderItemText(text, url) {
   return parts.length > 0 ? parts : text;
 }
 
-function linkItemTitle(item) {
-  const domain = (() => { try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; } })();
-  return item.text && item.text !== item.url ? item.text : (item.previewTitle || domain);
-}
 
 function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, onSaveEditTitle, onCancelEditTitle,
   editingPrice, editingPriceValue, onChangePriceValue, onSaveEditPrice, onCancelEditPrice, onStartEditPrice }) {
@@ -4890,9 +4971,10 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
   );
 }
 
-function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, saveDocFn, deleteDocFn }) {
+function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, saveDocFn, deleteDocFn, authedFetch, roomLists, setRoomLists, saveRoomItemsFn, orderedActiveRooms, allRoomPresets }) {
   const [uploading, setUploading] = useState(false);
   const [docsDragging, setDocsDragging] = useState(false);
+  const [devisReviewDoc, setDevisReviewDoc] = useState(null);
   const fileInputRef = useRef(null);
   const docsDragCountRef = useRef(0);
 
@@ -5027,6 +5109,15 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, sa
                   {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString("fr-FR") : ""}
                 </span>
               </div>
+              {doc.type?.includes("pdf") && (
+                <button
+                  type="button"
+                  onClick={() => setDevisReviewDoc(doc)}
+                  className="shrink-0 rounded-md border border-black/15 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Analyser ce devis
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => removeDoc(doc.id)}
@@ -5038,28 +5129,30 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, sa
           ))}
         </ul>
       )}
+      {devisReviewDoc && (
+        <DevisImportReview
+          documentUrl={devisReviewDoc.url}
+          documentName={devisReviewDoc.name}
+          projectId={projectId}
+          roomKey={room}
+          authedFetch={authedFetch}
+          roomLists={roomLists}
+          setRoomLists={setRoomLists}
+          saveRoomItemsFn={saveRoomItemsFn}
+          orderedActiveRooms={orderedActiveRooms}
+          allRoomPresets={allRoomPresets}
+          onClose={() => setDevisReviewDoc(null)}
+        />
+      )}
     </div>
   );
 }
 
 // ─── Helpers personnes / dates ───────────────────────────────────────────────
+// (personColor, personInitials, formatDueDate, isDueOverdue, isDueSoonDate,
+// linkItemTitle, PersonPicker vivent dans ./lib/itemHelpers.jsx, partagés
+// avec ShoppingKanban.jsx sans import circulaire)
 
-const PERSON_PALETTE = ["#e8937a","#7ab4e8","#82d9a7","#d97ab4","#a87ae8","#e8c87a","#7ae8d4","#e87a7a"];
-function personColor(name) {
-  let h = 0; for (const c of (name || "?")) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return PERSON_PALETTE[h % PERSON_PALETTE.length];
-}
-function personInitials(name) {
-  return (name || "?").trim().split(/\s+/).map(n => n[0]).join("").slice(0, 2).toUpperCase();
-}
-function formatDueDate(d) {
-  if (!d) return "";
-  const [y, m, day] = d.split("-").map(Number);
-  const months = ["jan","fév","mar","avr","mai","juin","juil","aoû","sep","oct","nov","déc"];
-  return new Date().getFullYear() === y ? `${day} ${months[m-1]}` : `${day} ${months[m-1]} ${y}`;
-}
-function isDueOverdue(d) { return !!d && d < new Date().toISOString().split("T")[0]; }
-function isDueSoonDate(d) { if (!d) return false; const diff = (new Date(d) - new Date()) / 86400000; return diff >= 0 && diff <= 3; }
 function formatPrice(price, currency) {
   try {
     return new Intl.NumberFormat("fr-FR", { style: "currency", currency: currency || "EUR" }).format(price);
@@ -5128,60 +5221,6 @@ function ReactionRow({ itemId, reactions, currentUserId, onToggle }) {
         </button>
         {pickerOpen && <EmojiPicker onSelect={(e) => { onToggle && onToggle(itemId, e); setPickerOpen(false); }} onClose={() => setPickerOpen(false)} />}
       </div>
-    </div>
-  );
-}
-
-function PersonPicker({ allPersons, value, onSelect, onCreatePerson, onClose }) {
-  const [q, setQ] = useState("");
-  const ref = useRef(null);
-  useEffect(() => {
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [onClose]);
-
-  const filtered = (allPersons || []).filter(p => p.name.toLowerCase().includes(q.toLowerCase()));
-  const exactMatch = (allPersons || []).some(p => p.name.toLowerCase() === q.trim().toLowerCase());
-
-  return (
-    <div ref={ref} className="absolute z-50 w-52 rounded-xl border border-black/10 bg-white py-1 shadow-xl" style={{ top: "calc(100% + 4px)", left: 0 }}>
-      <div className="px-2 pb-1">
-        <input autoFocus value={q}
-          onChange={e => setQ(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === "Enter" && q.trim()) { if (exactMatch) { onSelect(filtered[0]?.name || q.trim()); onClose(); } else { onCreatePerson(q.trim()); onClose(); } }
-            if (e.key === "Escape") onClose();
-          }}
-          placeholder="Rechercher…"
-          className="w-full rounded-md border border-black/10 px-2 py-1 text-xs outline-none focus:border-black/25"
-        />
-      </div>
-      <div className="max-h-40 overflow-y-auto">
-        {filtered.length === 0 && !q.trim() && (
-          <div className="px-3 py-2 text-xs text-slate-400">Aucune personne pour l'instant.</div>
-        )}
-        {filtered.map(p => (
-          <button key={p.id} type="button" onClick={() => { onSelect(p.name); onClose(); }}
-            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-50 ${value === p.name ? "bg-slate-50" : ""}`}>
-            <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[9px] font-bold text-white" style={{ background: personColor(p.name) }}>{personInitials(p.name)}</span>
-            <span className="min-w-0 flex-1 truncate text-xs">{p.name}</span>
-            {value === p.name && <span className="text-xs text-slate-400">✓</span>}
-          </button>
-        ))}
-        {q.trim() && !exactMatch && (
-          <button type="button" onClick={() => { onCreatePerson(q.trim()); onClose(); }}
-            className="flex w-full items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 hover:bg-slate-50">
-            <span className="text-sm font-medium">+</span> Créer « {q.trim()} »
-          </button>
-        )}
-      </div>
-      {value && (
-        <div className="border-t border-black/5 px-2 pt-1">
-          <button type="button" onClick={() => { onSelect(""); onClose(); }}
-            className="w-full rounded px-2 py-1 text-center text-xs text-slate-400 hover:bg-slate-50">Retirer</button>
-        </div>
-      )}
     </div>
   );
 }
@@ -5326,6 +5365,10 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     const newItems = currentItems.map(item => item.id === id ? { ...item, ...patch } : item);
     setRoomLists(prev => ({ ...prev, [room]: { ...(prev[room] || {}), [listKey]: newItems } }));
     if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, newItems);
+  };
+
+  const handleKanbanMove = (itemId, targetStatus) => {
+    updateItemMeta("shopping", itemId, { status: targetStatus, ...deriveFlagsFromStatus(targetStatus) });
   };
 
   const addLinkItem = async (listKey) => {
@@ -5486,18 +5529,23 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
             ).map((item) => (
               <li key={item.id}
                 className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${
-                  item.done && listKey === "shopping" ? "border-amber-200 bg-amber-50"
+                  listKey === "shopping" ? styleForStatus(effectiveStatus(item))
                   : item.done ? "border-black/5 bg-white opacity-50"
-                  : listKey === "shopping" && item.selectedForPurchase ? "border-[#c9d3b6] bg-[#eef1e4]"
                   : "border-black/10 bg-white"
                 }`}>
                 <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => toggleItem(listKey, item.id)}
-                  className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done && listKey === "shopping" ? "border-amber-400 bg-amber-100 text-amber-700" : item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
-                  {item.done && listKey === "shopping" ? (
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-                  ) : item.done ? "✓" : ""}
-                </button>
+                {listKey === "shopping" ? (
+                  <select value={effectiveStatus(item)}
+                    onChange={(e) => updateItemMeta(listKey, item.id, { status: e.target.value, ...deriveFlagsFromStatus(e.target.value) })}
+                    className="shrink-0 rounded-md border border-black/15 bg-white px-1.5 py-1 text-[11px] text-slate-600">
+                    {STATUSES.map(s => <option key={s.key} value={s.key}>{s.title}</option>)}
+                  </select>
+                ) : (
+                  <button type="button" onClick={() => toggleItem(listKey, item.id)}
+                    className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
+                    {item.done ? "✓" : ""}
+                  </button>
+                )}
                 {item.url ? (
                   <span className="min-w-0 flex-1" />
                 ) : (
@@ -5534,11 +5582,8 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                 )}
                 <ItemRowActions
                   item={item}
-                  showPurchaseToggle={listKey === "shopping"}
-                  isSelectedForPurchase={!!item.selectedForPurchase}
                   onAddDueDate={() => setEditingDate(item.id)}
                   onAddAssignee={() => setOpenPicker(`item-${item.id}`)}
-                  onTogglePurchase={() => updateItemMeta(listKey, item.id, { selectedForPurchase: !item.selectedForPurchase })}
                   onEditTitle={listKey === "shopping" && item.url ? () => { setEditingTitleId(item.id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
                   onEditPrice={listKey === "shopping" && item.url ? () => { setEditingPriceId(item.id); setEditingPriceValue(""); } : undefined}
                   onDelete={() => removeItem(listKey, item.id)}
@@ -5598,15 +5643,34 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     );
   };
 
-  return (
-    <div className="grid gap-6 xl:grid-cols-2">
-      <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-        {renderList("shopping", shopping, shopInput, setShopInput, "Mes envies", label, "Ajouter une envie…")}
-      </div>
-      <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-        {renderList("todos", todos, todoInput, setTodoInput, "À faire", "Tâches", "Ajouter une tâche…")}
-      </div>
+  const todosPanel = (
+    <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
+      {renderList("todos", todos, todoInput, setTodoInput, "À faire", "Tâches", "Ajouter une tâche…")}
     </div>
+  );
+
+  return (
+    <>
+      <div className="grid gap-6 xl:grid-cols-2 lg:hidden">
+        <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
+          {renderList("shopping", shopping, shopInput, setShopInput, "Mes envies", label, "Ajouter une envie…")}
+        </div>
+        {todosPanel}
+      </div>
+      <div className="hidden lg:block space-y-6">
+        <ShoppingKanban
+          items={shopping}
+          formatPrice={formatPrice}
+          onMoveItem={handleKanbanMove}
+          onDelete={(id) => removeItem("shopping", id)}
+          onSetDueDate={(id, date) => updateItemMeta("shopping", id, { dueDate: date || undefined })}
+          onSetAssignee={(id, name) => updateItemMeta("shopping", id, { assignee: name || undefined })}
+          allPersons={allPersons}
+          onCreatePerson={createPerson}
+        />
+        {todosPanel}
+      </div>
+    </>
   );
 }
 
@@ -6795,6 +6859,7 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState({});
   const [generalContext, setGeneralContext] = useState("");
   const [generalResources, setGeneralResources] = useState([]);
+  const [budgetTarget, setBudgetTarget] = useState(null);
   const [activityFeed, setActivityFeed] = useState([]);
   const [activityLastViewed, setActivityLastViewed] = useState(
     () => localStorage.getItem("activityLastViewed") || null
@@ -7508,6 +7573,7 @@ export default function App() {
       roomOrder,
       generalContext,
       generalResources,
+      budgetTarget,
       chatHistory: Object.fromEntries(
         Object.entries(chatHistory).map(([k, msgs]) => [
           k,
@@ -7567,6 +7633,8 @@ export default function App() {
     if (cfg.roomOrder) setRoomOrder(cfg.roomOrder);
     if (typeof cfg.generalContext === "string") setGeneralContext(cfg.generalContext);
     if (Array.isArray(cfg.generalResources)) setGeneralResources(cfg.generalResources);
+    // budgetTarget peut être explicitement `null` (objectif effacé) — pas de garde par vérité comme warmth
+    if ("budgetTarget" in cfg) setBudgetTarget(cfg.budgetTarget ?? null);
     if (Array.isArray(cfg.persons)) setPersons(cfg.persons);
     if (cfg.savedAt) setLastSavedAt(cfg.savedAt);
 
@@ -7633,6 +7701,7 @@ export default function App() {
           price: item.price ?? undefined,
           priceCurrency: item.price_currency || undefined,
           selectedForPurchase: !!item.selected_for_purchase,
+          status: item.status || undefined,
         });
       }
       setRoomLists(built);
@@ -8194,7 +8263,7 @@ export default function App() {
   }, [ // eslint-disable-line react-hooks/exhaustive-deps
     projectId, room, viewMode, generalMode, globalAccent, globalShade, globalDominantColor, globalPalette,
     warmth, customRooms, hiddenRooms, roomNuances, roomOrder,
-    generalContext, generalResources,
+    generalContext, generalResources, budgetTarget,
   ]);
 
   useEffect(() => {
@@ -8386,6 +8455,7 @@ export default function App() {
               const primary = [
                 { key: "accueil", label: "Accueil", badge: 0, mention: 0 },
                 { key: "todos", label: "Todos", badge: tPending, mention: 0 },
+                { key: "budget", label: "Budget", badge: 0, mention: 0 },
                 { key: "couleurs", label: "Teintes", badge: 0, mention: 0 },
                 { key: "discussions", label: "Discussions", badge: tUnread, mention: tMention },
               ];
@@ -8924,6 +8994,7 @@ export default function App() {
                 const primary = [
                   { key: "accueil", label: "Accueil", badge: 0 },
                   { key: "todos", label: "Todos", badge: totalPending },
+                  { key: "budget", label: "Budget", badge: 0 },
                   { key: "couleurs", label: "Teintes", badge: 0 },
                   { key: "discussions", label: "Discussions", badge: totalUnread, mentionBadge: totalMentionUnread },
                 ];
@@ -9000,6 +9071,25 @@ export default function App() {
               projectMembers={projectMembers}
               setPersons={setPersons}
               savePersonsFn={savePersonsToServer}
+            />
+          ) : generalMode === "budget" ? (
+            <BudgetView
+              orderedActiveRooms={orderedActiveRooms}
+              allRoomPresets={allRoomPresets}
+              roomLists={roomLists}
+              setRoomLists={setRoomLists}
+              saveRoomItemsFn={saveRoomItemsToServer}
+              projectId={projectId}
+              budgetTarget={budgetTarget}
+              onSetBudgetTarget={setBudgetTarget}
+              formatPrice={formatPrice}
+              onNavigateToRoom={(key) => {
+                lastRoomModeRef.current[key] = "liste";
+                setRoom(key);
+                setViewMode("room");
+                setRoomMode("liste");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
             />
           ) : generalMode === "couleurs" ? (
             <>
@@ -9252,6 +9342,12 @@ export default function App() {
                 projectId={projectId}
                 saveDocFn={saveRoomDocumentToServer}
                 deleteDocFn={deleteRoomDocumentFromServer}
+                authedFetch={authedFetch}
+                roomLists={roomLists}
+                setRoomLists={setRoomLists}
+                saveRoomItemsFn={saveRoomItemsToServer}
+                orderedActiveRooms={orderedActiveRooms}
+                allRoomPresets={allRoomPresets}
               />
               <DocumentsGlobalView
                 orderedActiveRooms={orderedActiveRooms}
@@ -9695,6 +9791,12 @@ export default function App() {
             projectId={projectId}
             saveDocFn={saveRoomDocumentToServer}
             deleteDocFn={deleteRoomDocumentFromServer}
+            authedFetch={authedFetch}
+            roomLists={roomLists}
+            setRoomLists={setRoomLists}
+            saveRoomItemsFn={saveRoomItemsToServer}
+            orderedActiveRooms={orderedActiveRooms}
+            allRoomPresets={allRoomPresets}
           />
         ) : roomMode === "discussions" ? (
           <DiscussionsPanel
@@ -9808,6 +9910,9 @@ export default function App() {
                   onDraftChange={(val) => setChatDrafts((prev) => ({ ...prev, [viewMode === "general" ? "general" : room]: val }))}
                   addAiInspiration={addAiInspiration}
                   addExtraPlanImage={addExtraPlanImage}
+                  orderedActiveRooms={orderedActiveRooms}
+                  allRoomPresets={allRoomPresets}
+                  roomLists={roomLists}
                   roomImages={[
                     ...(roomPlanImages[room] || []).flatMap((src, i) => {
                       const key = `${room}-plan-${i}`;

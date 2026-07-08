@@ -44,6 +44,7 @@ Deno.serve(async (req) => {
         price: item.price ?? null,
         price_currency: item.priceCurrency || null,
         selected_for_purchase: item.selectedForPurchase === true,
+        status: listKey === "shopping" ? ((typeof item.status === "string" && item.status) || "envie") : null,
       }));
 
       const ids = rows.map((r) => r.id).filter(Boolean) as string[];

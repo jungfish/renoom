@@ -77,15 +77,16 @@ export async function countAiMessages24h(userId: string): Promise<number> {
   return count ?? 0;
 }
 
-// Compte les opérations IA liées à l'image (génération ET analyse) ensemble —
-// c'est un seul quota partagé entre `image_generation` et `image_analysis`.
+// Compte les opérations IA liées à l'image (génération ET analyse) et
+// l'analyse de devis, ensemble — un seul quota partagé (pas de dimension
+// dédiée pour l'import de devis).
 export async function countAiImages30d(userId: string): Promise<number> {
   const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const { count } = await supabaseAdmin
     .from("ai_usage_events")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
-    .in("event_type", ["image_generation", "image_analysis"])
+    .in("event_type", ["image_generation", "image_analysis", "devis_parse"])
     .gte("created_at", since30d);
   return count ?? 0;
 }

@@ -66,6 +66,69 @@ export async function analyzeImage({ image, context, section }: { image: string;
   return parseMetadata(payload.output_text || "", section);
 }
 
+function parseDevisLines(text: string) {
+  try {
+    const cleaned = text.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+    const parsed = JSON.parse(cleaned);
+    const lines = Array.isArray(parsed.lines) ? parsed.lines : [];
+    return lines
+      .filter((l: Record<string, unknown>) => l && typeof l.description === "string" && l.description.trim())
+      .slice(0, 100)
+      .map((l: Record<string, unknown>) => ({
+        description: String(l.description).trim(),
+        quantity: typeof l.quantity === "number" && l.quantity > 0 ? l.quantity : 1,
+        unitPrice: typeof l.unitPrice === "number" ? l.unitPrice : null,
+        total: typeof l.total === "number" ? l.total : null,
+        currency: typeof l.currency === "string" && l.currency ? l.currency : "EUR",
+        suggestedRoom: typeof l.suggestedRoom === "string" && l.suggestedRoom ? l.suggestedRoom : null,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export async function parseDevis({ text, context }: { text: string; context?: string }) {
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) throw Object.assign(new Error("OPENAI_API_KEY manquante."), { status: 500 });
+  if (!text?.trim()) throw Object.assign(new Error("Texte du devis requis."), { status: 400 });
+
+  const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: ANALYSIS_MODEL,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: [
+                "Tu extrais les lignes d'articles/prestations d'un devis ou d'une facture français, dont le texte a été extrait automatiquement d'un PDF (mise en page tabulaire potentiellement imparfaite).",
+                `Contexte: ${context || "devis de rénovation/décoration"}.`,
+                "Ignore : en-têtes/pieds de page, coordonnées de l'entreprise/du client, mentions légales, conditions de paiement, numéro de devis/date, ainsi que les lignes de sous-total, total HT, TVA et total TTC — ce sont des agrégats, pas des articles.",
+                "Ne garde que les lignes correspondant à un article ou une prestation concrète avec une désignation, une quantité et un prix.",
+                "Si une ligne n'a pas de quantité explicite, utilise 1. Si le prix unitaire est absent mais le total est présent (ou l'inverse), déduis l'un de l'autre quand c'est sans ambiguïté ; sinon mets null.",
+                "Devine à quelle pièce de la maison chaque ligne se rattache le plus probablement si c'est évident du texte (ex: 'cuisine', 'salle de bain'), sinon laisse suggestedRoom à null.",
+                "Réponds uniquement en JSON valide, sans markdown, sans texte autour.",
+                'Schéma exact: {"lines":[{"description":"string","quantity":number,"unitPrice":number|null,"total":number|null,"currency":"EUR","suggestedRoom":"string|null"}]}.',
+                "Texte du devis:",
+                text.slice(0, 15000),
+              ].join("\n"),
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  const payload = await openaiResponse.json();
+  if (!openaiResponse.ok) {
+    throw Object.assign(new Error(payload.error?.message || "Analyse OpenAI échouée."), { status: openaiResponse.status });
+  }
+  return parseDevisLines(payload.output_text || "");
+}
+
 export async function generateImage({ image, prompt }: { image: string; prompt: string }) {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) throw Object.assign(new Error("OPENAI_API_KEY manquante."), { status: 500 });

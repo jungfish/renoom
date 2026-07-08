@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
 // Bouton "⋯" toujours visible qui regroupe les actions secondaires d'un item
-// (ajouter échéance, assigner, sélectionner pour l'achat, supprimer) — remplace
-// les icônes qui n'apparaissaient qu'au survol (inutilisables au toucher).
-export function ItemRowActions({ item, showPurchaseToggle = false, isSelectedForPurchase = false, onAddDueDate, onAddAssignee, onTogglePurchase, onEditTitle, onEditPrice, onDelete }) {
+// (ajouter échéance, assigner, modifier, supprimer) — remplace les icônes qui
+// n'apparaissaient qu'au survol (inutilisables au toucher). La sélection pour
+// l'achat se fait désormais via le select de statut affiché sur la ligne.
+export function ItemRowActions({ item, onAddDueDate, onAddAssignee, onEditTitle, onEditPrice, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -48,13 +49,6 @@ export function ItemRowActions({ item, showPurchaseToggle = false, isSelectedFor
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-600 hover:bg-slate-50">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
               Ajouter un prix
-            </button>
-          )}
-          {showPurchaseToggle && (
-            <button type="button" onClick={() => { onTogglePurchase(); setOpen(false); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-600 hover:bg-slate-50">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-              {isSelectedForPurchase ? "Retirer de l'achat" : "Sélectionner pour l'achat"}
             </button>
           )}
           <div className="my-1 border-t border-black/5" />

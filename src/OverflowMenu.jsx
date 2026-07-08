@@ -1,15 +1,21 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 // Regroupe les onglets secondaires sous un déclencheur "Plus" — évite d'afficher
 // en permanence tous les onglets (divulgation progressive). Utilisé dans la
 // sidebar et dans les deux barres d'onglets (générale et par pièce).
 export function OverflowMenu({ items, activeKey, onSelect, variant = "topbar" }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const [coords, setCoords] = useState(null);
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const h = (e) => {
+      if (buttonRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
@@ -21,9 +27,21 @@ export function OverflowMenu({ items, activeKey, onSelect, variant = "topbar" })
     ? `group relative flex w-full items-center gap-1.5 rounded-md px-2 py-[6px] text-left text-[13px] transition-colors ${isActive ? "bg-black/[0.05] font-medium text-[#1C1A17]" : "text-[#4D4A47] hover:bg-black/[0.04] hover:text-[#1C1A17]"}`
     : `flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${isActive ? "bg-[#1C1A17] text-white" : "text-[#4D4A47] hover:bg-black/[0.06] hover:text-[#1C1A17]"}`;
 
+  const toggleOpen = () => {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setCoords(
+        variant === "sidebar"
+          ? { top: rect.bottom + 4, left: rect.left }
+          : { top: rect.bottom + 4, right: window.innerWidth - rect.right }
+      );
+    }
+    setOpen((v) => !v);
+  };
+
   return (
-    <div className={variant === "sidebar" ? "relative" : "relative shrink-0"} ref={ref}>
-      <button type="button" onClick={() => setOpen((v) => !v)} className={triggerClass}>
+    <div className={variant === "sidebar" ? "relative" : "relative shrink-0"}>
+      <button ref={buttonRef} type="button" onClick={toggleOpen} className={triggerClass}>
         {variant === "sidebar" && isActive && (
           <span className="absolute -left-2 bottom-1 top-1 w-[2.5px] rounded-r bg-[#CDAA73]" />
         )}
@@ -33,8 +51,8 @@ export function OverflowMenu({ items, activeKey, onSelect, variant = "topbar" })
         )}
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </button>
-      {open && (
-        <div className={`absolute z-50 w-44 rounded-xl border border-black/10 bg-white py-1 shadow-xl ${variant === "sidebar" ? "left-0" : "right-0"}`} style={{ top: "calc(100% + 4px)" }}>
+      {open && coords && createPortal(
+        <div ref={menuRef} className="fixed z-50 w-44 rounded-xl border border-black/10 bg-white py-1 shadow-xl" style={coords}>
           {items.map(({ key, label, badge, mention }) => (
             <button key={key} type="button" onClick={() => { onSelect(key); setOpen(false); }}
               className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs ${activeKey === key ? "bg-slate-50 font-medium text-[#1C1A17]" : "text-slate-600 hover:bg-slate-50"}`}>
@@ -46,7 +64,8 @@ export function OverflowMenu({ items, activeKey, onSelect, variant = "topbar" })
               ) : null}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

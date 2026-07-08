@@ -102,7 +102,14 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                           <img src={item.image} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" />
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm text-[#1C1A17]">{item.url ? linkItemTitle(item) : item.text}</p>
+                          <p className="truncate text-sm text-[#1C1A17]">
+                            {item.url ? (
+                              <a href={item.url} target="_blank" rel="noopener noreferrer" draggable={false}
+                                className="hover:underline">
+                                {linkItemTitle(item)}
+                              </a>
+                            ) : item.text}
+                          </p>
                           {typeof item.price === "number" && (
                             <p className="text-xs font-medium text-slate-500">{formatPrice(item.price, item.priceCurrency)}</p>
                           )}

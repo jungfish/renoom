@@ -138,6 +138,20 @@ Deno.serve(async (req) => {
       return corsResponse(200, { ok: true });
     }
 
+    // --- chat-message DELETE ---
+    if (action === "chat-message" && req.method === "DELETE") {
+      const { projectId, roomKey } = body;
+      if (!projectId || !roomKey)
+        return corsResponse(400, { error: "projectId et roomKey requis." });
+
+      const { data: member } = await supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", user.id).maybeSingle();
+      if (!member) return corsResponse(403, { error: "Accès refusé." });
+
+      const { error } = await supabase.from("chat_messages").delete().eq("project_id", projectId).eq("room_key", roomKey);
+      if (error) throw new Error(error.message);
+      return corsResponse(200, { ok: true });
+    }
+
     // --- note ---
     if (action === "note" && req.method === "POST") {
       const { projectId, roomKey, content } = body;

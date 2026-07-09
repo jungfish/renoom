@@ -5658,6 +5658,18 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
         {todosPanel}
       </div>
       <div className="hidden lg:block space-y-6">
+        <div className="flex gap-2">
+          <input type="url" value={linkInput.shopping.url}
+            onChange={(e) => setLinkInput((prev) => ({ ...prev, shopping: { ...prev.shopping, url: e.target.value } }))}
+            onKeyDown={(e) => { if (e.key === "Enter") addLinkItem("shopping"); }}
+            placeholder="https://…" className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
+          <input type="text" value={linkInput.shopping.label}
+            onChange={(e) => setLinkInput((prev) => ({ ...prev, shopping: { ...prev.shopping, label: e.target.value } }))}
+            onKeyDown={(e) => { if (e.key === "Enter") addLinkItem("shopping"); }}
+            placeholder="Titre (optionnel)" className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
+          <button type="button" onClick={() => addLinkItem("shopping")} disabled={!linkInput.shopping.url.trim()}
+            className="shrink-0 rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Ajouter</button>
+        </div>
         <ShoppingKanban
           items={shopping}
           formatPrice={formatPrice}
@@ -8938,10 +8950,17 @@ export default function App() {
                 const primary = ["liste", "inspirations", "couleurs", "discussions"].map((key) => ({
                   key, label: { liste: "Liste", inspirations: "Inspirations", couleurs: "Teintes", discussions: "Discussions" }[key], ...badgesFor(key),
                 }));
-                const secondary = ["documents"].map((key) => {
-                  const { pending, mentionBadge } = badgesFor(key);
-                  return { key, label: "Documents", badge: pending, mention: mentionBadge };
-                });
+                const secondary = [
+                  ...["documents"].map((key) => {
+                    const { pending, mentionBadge } = badgesFor(key);
+                    return { key, label: "Documents", badge: pending, mention: mentionBadge };
+                  }),
+                  { key: "export-pdf", label: isExportingPdf ? "Export..." : "Exporter PDF" },
+                ];
+                const selectSecondary = (key) => {
+                  if (key === "export-pdf") handleExportRoomPdf();
+                  else handleSetRoomMode(key);
+                };
                 return (
                   <>
                     {primary.map(({ key, label, pending, mentionBadge }) => (
@@ -8961,20 +8980,11 @@ export default function App() {
                         ) : null}
                       </button>
                     ))}
-                    <OverflowMenu items={secondary} activeKey={roomMode} onSelect={handleSetRoomMode} variant="topbar" />
+                    <OverflowMenu items={secondary} activeKey={roomMode} onSelect={selectSecondary} variant="topbar" />
                   </>
                 );
               })()}
             </div>
-            <button
-              type="button"
-              onClick={handleExportRoomPdf}
-              disabled={isExportingPdf}
-              title="Exporter cette pièce en PDF"
-              className="ml-2 flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-black/15 bg-white px-3 py-1.5 text-sm font-medium text-[#4D4A47] transition-colors hover:bg-black/[0.05] disabled:opacity-50"
-            >
-              {isExportingPdf ? "Export..." : "Exporter PDF"}
-            </button>
           </div>
         ) : null}
 

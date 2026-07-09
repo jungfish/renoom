@@ -1141,6 +1141,232 @@ function AddInspirationModal({ onClose, onFiles, onUrl, onInstagram }) {
   );
 }
 
+function DueDateAssigneeFields({ dueDate, setDueDate, assignee, setAssignee, allPersons, onCreatePerson }) {
+  const [openPicker, setOpenPicker] = useState(false);
+  const dateInputRef = useRef(null);
+  const openDatePicker = () => {
+    const el = dateInputRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === "function") el.showPicker();
+    else el.focus();
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={openDatePicker}
+        className="flex items-center gap-1.5 rounded-md border border-black/8 bg-slate-50 px-2 py-1 text-xs text-slate-500 hover:bg-slate-100">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span className={dueDate ? "font-medium text-slate-700" : ""}>{dueDate ? formatDueDate(dueDate) : "Échéance"}</span>
+      </button>
+      <input ref={dateInputRef} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="sr-only" />
+      {dueDate && (
+        <button type="button" onClick={() => setDueDate("")} className="text-xs leading-none text-slate-300 hover:text-slate-500">×</button>
+      )}
+      <div className="relative">
+        <button type="button" onClick={() => setOpenPicker((v) => !v)}
+          className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${assignee ? "border-slate-700 bg-slate-800 text-white" : "border-black/8 bg-slate-50 text-slate-500 hover:bg-slate-100"}`}>
+          {assignee ? (
+            <>
+              <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-white/20 text-[7px] font-bold">{personInitials(assignee)}</span>
+              {assignee}
+            </>
+          ) : (
+            <>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
+              Assigné à
+            </>
+          )}
+        </button>
+        {openPicker && (
+          <PersonPicker allPersons={allPersons} value={assignee}
+            onSelect={(name) => { setAssignee(name); setOpenPicker(false); }}
+            onCreatePerson={(name) => { onCreatePerson(name); setAssignee(name); setOpenPicker(false); }}
+            onClose={() => setOpenPicker(false)} />
+        )}
+      </div>
+      {assignee && (
+        <button type="button" onClick={() => setAssignee("")} className="text-xs leading-none text-slate-300 hover:text-slate-500">×</button>
+      )}
+    </div>
+  );
+}
+
+function AddShoppingItemModal({ onAdd, onClose, allPersons, onCreatePerson }) {
+  const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [price, setPrice] = useState("");
+  const [status, setStatus] = useState("envie");
+  const [dueDate, setDueDate] = useState("");
+  const [assignee, setAssignee] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [isFetching, setIsFetching] = useState(false);
+
+  const doFetchPreview = async (rawUrl) => {
+    if (!rawUrl.trim() || isFetching) return;
+    setIsFetching(true);
+    try {
+      const p = await fetchLinkPreview(rawUrl.trim());
+      setPreview(p);
+      if (!title.trim() && p.title) setTitle(p.title);
+      if (!price && p.price != null) setPrice(String(p.price));
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  const canSave = url.trim() || title.trim();
+
+  const handleSave = () => {
+    const parsedPrice = parseFloat(price.replace(",", "."));
+    onAdd({
+      url: url.trim() || undefined,
+      text: title.trim() || url.trim(),
+      image: preview?.image || "",
+      price: isNaN(parsedPrice) ? undefined : parsedPrice,
+      currency: preview?.currency || "EUR",
+      status,
+      dueDate: dueDate || undefined,
+      assignee: assignee || undefined,
+    });
+    onClose();
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="mx-4 w-full max-w-sm rounded-xl border border-black/10 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900">Ajouter aux courses</h2>
+          <button type="button" onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700 leading-none">×</button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Lien</label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                autoFocus
+                value={url}
+                onChange={(e) => { setUrl(e.target.value); setPreview(null); }}
+                onBlur={() => url.trim() && doFetchPreview(url)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); url.trim() && doFetchPreview(url); } }}
+                placeholder="https://..."
+                className="w-full rounded-lg border border-black/15 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/20"
+              />
+              {isFetching && <span className="shrink-0 self-center text-xs text-slate-400">...</span>}
+            </div>
+          </div>
+          {preview?.image && (
+            <img src={preview.image} alt="" className="h-32 w-full rounded-lg object-cover" />
+          )}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Titre</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Ex : Interrupteur blanc à levier"
+              className="w-full rounded-lg border border-black/15 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/20"
+            />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="mb-1 block text-xs font-medium text-slate-600">Prix</label>
+              <input
+                type="number"
+                step="0.01"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0,00"
+                className="w-full rounded-lg border border-black/15 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="mb-1 block text-xs font-medium text-slate-600">État</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full rounded-lg border border-black/15 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/20"
+              >
+                {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.title}</option>)}
+              </select>
+            </div>
+          </div>
+          <DueDateAssigneeFields dueDate={dueDate} setDueDate={setDueDate} assignee={assignee} setAssignee={setAssignee}
+            allPersons={allPersons} onCreatePerson={onCreatePerson} />
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" className="rounded-lg border border-black/15 px-4 py-2 text-sm hover:bg-slate-50" onClick={onClose}>
+            Annuler
+          </button>
+          <button
+            type="button"
+            disabled={!canSave}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-40"
+            onClick={handleSave}
+          >
+            Ajouter
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function AddTaskModal({ onAdd, onClose, allPersons, onCreatePerson }) {
+  const [text, setText] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [assignee, setAssignee] = useState("");
+
+  const canSave = text.trim();
+
+  const handleSave = () => {
+    if (!canSave) return;
+    onAdd({ text: text.trim(), dueDate: dueDate || undefined, assignee: assignee || undefined });
+    onClose();
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="mx-4 w-full max-w-sm rounded-xl border border-black/10 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900">Ajouter une tâche</h2>
+          <button type="button" onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700 leading-none">×</button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Tâche</label>
+            <input
+              type="text"
+              autoFocus
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+              placeholder="Ex : Appeler l'électricien"
+              className="w-full rounded-lg border border-black/15 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/20"
+            />
+          </div>
+          <DueDateAssigneeFields dueDate={dueDate} setDueDate={setDueDate} assignee={assignee} setAssignee={setAssignee}
+            allPersons={allPersons} onCreatePerson={onCreatePerson} />
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" className="rounded-lg border border-black/15 px-4 py-2 text-sm hover:bg-slate-50" onClick={onClose}>
+            Annuler
+          </button>
+          <button
+            type="button"
+            disabled={!canSave}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-40"
+            onClick={handleSave}
+          >
+            Ajouter
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function RepoImage({ src, alt, onMissingChange, objectFit = "cover" }) {
   const [missing, setMissing] = useState(false);
 
@@ -4574,14 +4800,16 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
             </button>
           ) : null}
           {/* Assignee */}
-          {item.assignee && (
+          {(item.assignee || openPicker === pickerKey) && (
             <div className="relative shrink-0">
-              <button type="button"
-                onClick={() => setOpenPicker(openPicker === pickerKey ? null : pickerKey)}
-                className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white"
-                style={{ background: personColor(item.assignee) }} title={item.assignee}>
-                {personInitials(item.assignee)}
-              </button>
+              {item.assignee && (
+                <button type="button"
+                  onClick={() => setOpenPicker(openPicker === pickerKey ? null : pickerKey)}
+                  className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white"
+                  style={{ background: personColor(item.assignee) }} title={item.assignee}>
+                  {personInitials(item.assignee)}
+                </button>
+              )}
               {openPicker === pickerKey && (
                 <PersonPicker allPersons={allPersons} value={item.assignee || ""}
                   onSelect={name => { updateItemMeta(roomKey, listKey, id, { assignee: name || undefined }); setOpenPicker(null); }}
@@ -4595,7 +4823,7 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
             onAddDueDate={() => setEditingDate(dateKey)}
             onAddAssignee={() => setOpenPicker(pickerKey)}
             onEditTitle={item.url ? () => { setEditingTitleId(id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
-            onEditPrice={item.url ? () => { setEditingPriceId(id); setEditingPriceValue(""); } : undefined}
+            onEditPrice={item.url ? () => { setEditingPriceId(id); setEditingPriceValue(item.price != null ? String(item.price) : ""); } : undefined}
             onDelete={() => deleteItem(roomKey, listKey, id)}
           />
         </div>
@@ -5228,18 +5456,18 @@ function ReactionRow({ itemId, reactions, currentUserId, onToggle }) {
 // ─── Section listes (tâches + courses) ───────────────────────────────────────
 
 function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoomItemsFn, projectMembers = [], persons = [], setPersons, savePersonsFn, onLogActivity, itemReactions = {}, currentUserId = null, onToggleReaction = null }) {
-  const [shopInput, setShopInput] = useState("");
-  const [todoInput, setTodoInput] = useState("");
-  const [linkMode, setLinkMode] = useState({ shopping: false, todos: false });
   const [linkInput, setLinkInput] = useState({ shopping: { label: "", url: "" }, todos: { label: "", url: "" } });
   const [newMeta, setNewMeta] = useState({ shopping: { dueDate: "", assignee: "" }, todos: { dueDate: "", assignee: "" } });
   const [openPicker, setOpenPicker] = useState(null);
+  const newDateInputRef = useRef(null);
   const [editingDate, setEditingDate] = useState(null);
   const [editingTitleId, setEditingTitleId] = useState(null);
   const [editingTitleValue, setEditingTitleValue] = useState("");
   const [editingPriceId, setEditingPriceId] = useState(null);
   const [editingPriceValue, setEditingPriceValue] = useState("");
   const [showSelectedOnly, setShowSelectedOnly] = useState(false);
+  const [addShoppingModalOpen, setAddShoppingModalOpen] = useState(false);
+  const [addTaskModalOpen, setAddTaskModalOpen] = useState(false);
   const migratedItemIds = useRef(new Set());
 
   const list = roomLists[room] || {};
@@ -5300,45 +5528,6 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     if (savePersonsFn && projectId) savePersonsFn(projectId, updated);
   };
 
-  const addItem = async (listKey, text, setter) => {
-    if (!text.trim()) return;
-    const { dueDate, assignee } = newMeta[listKey];
-    const id = `${listKey}-${Date.now()}`;
-    const urlMatch = text.trim().match(/https?:\/\/[^\s]+/);
-    const url = urlMatch ? urlMatch[0] : null;
-    const newItem = { id, text: text.trim(), url: url || undefined, done: false,
-      ...(url ? { previewLoading: true } : {}),
-      ...(dueDate ? { dueDate } : {}), ...(assignee ? { assignee } : {}) };
-    setNewMeta(prev => ({ ...prev, [listKey]: { dueDate: "", assignee: "" } }));
-    const currentItems = (roomLists[room] || {})[listKey] || [];
-    const newItems = [...currentItems, newItem];
-    setRoomLists((prev) => ({ ...prev, [room]: { ...(prev[room] || {}), [listKey]: newItems } }));
-    setter("");
-    if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, newItems);
-    if (onLogActivity) onLogActivity(listKey === 'todos' ? 'todo_added' : 'shopping_added', room, { text: text.trim() });
-    if (url) {
-      try {
-        const preview = await fetchLinkPreview(url);
-        setRoomLists((prev) => {
-          const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
-            item.id === id
-              ? { ...item, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title ? { previewTitle: preview.title } : {}), ...(preview.price != null ? { price: preview.price, priceCurrency: preview.currency || undefined } : {}) }
-              : item
-          );
-          if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, updatedItems);
-          return { ...prev, [room]: { ...(prev[room] || {}), [listKey]: updatedItems } };
-        });
-      } catch {
-        setRoomLists((prev) => {
-          const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
-            item.id === id ? { ...item, previewLoading: false } : item
-          );
-          return { ...prev, [room]: { ...(prev[room] || {}), [listKey]: updatedItems } };
-        });
-      }
-    }
-  };
-
   const toggleItem = (listKey, id) => {
     const currentItems = (roomLists[room] || {})[listKey] || [];
     const newItems = currentItems.map((item) => (item.id === id ? { ...item, done: !item.done } : item));
@@ -5371,13 +5560,37 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     updateItemMeta("shopping", itemId, { status: targetStatus, ...deriveFlagsFromStatus(targetStatus) });
   };
 
+  const addShoppingItemFromModal = ({ url, text, image, price, currency, status, dueDate, assignee }) => {
+    const id = `shopping-${Date.now()}`;
+    const newItem = {
+      id, text: text || url, url, status, ...deriveFlagsFromStatus(status),
+      ...(image ? { image } : {}),
+      ...(price != null ? { price, priceCurrency: currency || "EUR" } : {}),
+      ...(dueDate ? { dueDate } : {}), ...(assignee ? { assignee } : {}),
+    };
+    const currentItems = (roomLists[room] || {}).shopping || [];
+    const newItems = [...currentItems, newItem];
+    setRoomLists((prev) => ({ ...prev, [room]: { ...(prev[room] || {}), shopping: newItems } }));
+    if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, "shopping", newItems);
+    if (onLogActivity) onLogActivity("shopping_added", room, { text: text || url });
+  };
+
+  const addTaskItemFromModal = ({ text, dueDate, assignee }) => {
+    const id = `todos-${Date.now()}`;
+    const newItem = { id, text, done: false, ...(dueDate ? { dueDate } : {}), ...(assignee ? { assignee } : {}) };
+    const currentItems = (roomLists[room] || {}).todos || [];
+    const newItems = [...currentItems, newItem];
+    setRoomLists((prev) => ({ ...prev, [room]: { ...(prev[room] || {}), todos: newItems } }));
+    if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, "todos", newItems);
+    if (onLogActivity) onLogActivity("todo_added", room, { text });
+  };
+
   const addLinkItem = async (listKey) => {
     const { label: lbl, url } = linkInput[listKey];
     if (!url.trim()) return;
     const { dueDate, assignee } = newMeta[listKey];
     const id = `${listKey}-${Date.now()}`;
     setLinkInput((prev) => ({ ...prev, [listKey]: { label: "", url: "" } }));
-    setLinkMode((prev) => ({ ...prev, [listKey]: false }));
     setNewMeta(prev => ({ ...prev, [listKey]: { dueDate: "", assignee: "" } }));
     const currentItems = (roomLists[room] || {})[listKey] || [];
     const newItem = { id, text: lbl.trim() || url.trim(), url: url.trim(), done: false, previewLoading: true,
@@ -5406,7 +5619,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     }
   };
 
-  const renderList = (listKey, items, input, setInput, title, eyebrow, placeholder) => {
+  const renderList = (listKey, items, title, eyebrow) => {
     const pending = items.filter((i) => !i.done);
     const done = items.filter((i) => i.done);
     const meta = newMeta[listKey];
@@ -5436,89 +5649,82 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
               </div>
             );
           })()}
-        </div>
-        {listKey !== "shopping" && !linkMode[listKey] ? (
-          <div className="flex gap-2">
-            <input type="text" value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") addItem(listKey, input, setInput); }}
-              placeholder={placeholder} className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
-            <button type="button" onClick={() => setLinkMode((prev) => ({ ...prev, [listKey]: true }))}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-black/15 bg-white text-slate-500 hover:bg-slate-50"
-              title="Ajouter un lien avec un nom" aria-label="Ajouter un lien avec un nom">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-              </svg>
+          {listKey === "todos" && (
+            <button type="button" title="Ajouter une tâche" aria-label="Ajouter une tâche"
+              onClick={() => setAddTaskModalOpen(true)}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-black/15 bg-white text-lg leading-none shadow-sm hover:bg-[#fcf8d5]">
+              +
             </button>
-            <button type="button" onClick={() => addItem(listKey, input, setInput)}
-              className="shrink-0 rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white">Ajouter</button>
+          )}
+        </div>
+        {addTaskModalOpen && listKey === "todos" && (
+          <AddTaskModal onAdd={addTaskItemFromModal} onClose={() => setAddTaskModalOpen(false)}
+            allPersons={allPersons} onCreatePerson={createPerson} />
+        )}
+        {listKey === "shopping" && (
+          <div className="flex gap-2">
+            <input type="url" value={linkInput[listKey].url}
+              onChange={(e) => setLinkInput((prev) => ({ ...prev, [listKey]: { ...prev[listKey], url: e.target.value } }))}
+              onKeyDown={(e) => { if (e.key === "Enter") addLinkItem(listKey); }}
+              placeholder="https://…" className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
+            <input type="text" value={linkInput[listKey].label}
+              onChange={(e) => setLinkInput((prev) => ({ ...prev, [listKey]: { ...prev[listKey], label: e.target.value } }))}
+              onKeyDown={(e) => { if (e.key === "Enter") addLinkItem(listKey); }}
+              placeholder="Titre (optionnel)" className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
+            <button type="button" onClick={() => addLinkItem(listKey)} disabled={!linkInput[listKey].url.trim()}
+              className="shrink-0 rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Ajouter</button>
           </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <input type="url" value={linkInput[listKey].url}
-                onChange={(e) => setLinkInput((prev) => ({ ...prev, [listKey]: { ...prev[listKey], url: e.target.value } }))}
-                onKeyDown={(e) => { if (e.key === "Enter") addLinkItem(listKey); }}
-                placeholder="https://…" className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
-              <input type="text" value={linkInput[listKey].label}
-                onChange={(e) => setLinkInput((prev) => ({ ...prev, [listKey]: { ...prev[listKey], label: e.target.value } }))}
-                onKeyDown={(e) => { if (e.key === "Enter") addLinkItem(listKey); }}
-                placeholder={listKey === "shopping" ? "Titre (optionnel)" : "Nom du lien…"} className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
-              <button type="button" onClick={() => addLinkItem(listKey)} disabled={!linkInput[listKey].url.trim()}
-                className="shrink-0 rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Ajouter</button>
-            </div>
-            {listKey !== "shopping" && (
-              <button type="button" onClick={() => setLinkMode((prev) => ({ ...prev, [listKey]: false }))}
-                className="inline-flex items-center gap-1 rounded-md border border-black/10 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                Texte libre
+        )}
+        {/* Options optionnelles : échéance + assigné (ajout rapide "envie" en liste mobile) */}
+        {listKey === "shopping" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => {
+                const el = newDateInputRef.current;
+                if (!el) return;
+                if (typeof el.showPicker === "function") el.showPicker();
+                else el.focus();
+              }}
+              className="flex items-center gap-1.5 rounded-md border border-black/8 bg-slate-50 px-2 py-1 text-xs text-slate-500 hover:bg-slate-100">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span className={meta.dueDate ? (isDueOverdue(meta.dueDate) ? "font-medium text-red-500" : isDueSoonDate(meta.dueDate) ? "font-medium text-amber-600" : "font-medium text-slate-700") : ""}>
+                {meta.dueDate ? formatDueDate(meta.dueDate) : "Échéance"}
+              </span>
+            </button>
+            <input ref={newDateInputRef} type="date" value={meta.dueDate}
+              onChange={e => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], dueDate: e.target.value } }))}
+              className="sr-only" />
+            {meta.dueDate && (
+              <button type="button" onClick={() => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], dueDate: "" } }))}
+                className="text-xs leading-none text-slate-300 hover:text-slate-500">×</button>
+            )}
+            <div className="relative">
+              <button type="button" onClick={() => setOpenPicker(openPicker === pickerKey ? null : pickerKey)}
+                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${meta.assignee ? "border-slate-700 bg-slate-800 text-white" : "border-black/8 bg-slate-50 text-slate-500 hover:bg-slate-100"}`}>
+                {meta.assignee ? (
+                  <>
+                    <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-white/20 text-[7px] font-bold">{personInitials(meta.assignee)}</span>
+                    {meta.assignee}
+                  </>
+                ) : (
+                  <>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
+                    Assigné à
+                  </>
+                )}
               </button>
+              {openPicker === pickerKey && (
+                <PersonPicker allPersons={allPersons} value={meta.assignee}
+                  onSelect={name => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], assignee: name } }))}
+                  onCreatePerson={name => { createPerson(name); setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], assignee: name } })); }}
+                  onClose={() => setOpenPicker(null)} />
+              )}
+            </div>
+            {meta.assignee && (
+              <button type="button" onClick={() => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], assignee: "" } }))}
+                className="text-xs leading-none text-slate-300 hover:text-slate-500">×</button>
             )}
           </div>
         )}
-        {/* Options optionnelles : échéance + assigné */}
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex cursor-pointer items-center gap-1.5 rounded-md border border-black/8 bg-slate-50 px-2 py-1 text-xs text-slate-500 hover:bg-slate-100">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <span className={meta.dueDate ? (isDueOverdue(meta.dueDate) ? "font-medium text-red-500" : isDueSoonDate(meta.dueDate) ? "font-medium text-amber-600" : "font-medium text-slate-700") : ""}>
-              {meta.dueDate ? formatDueDate(meta.dueDate) : "Échéance"}
-            </span>
-            <input type="date" value={meta.dueDate}
-              onChange={e => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], dueDate: e.target.value } }))}
-              className="sr-only" />
-          </label>
-          {meta.dueDate && (
-            <button type="button" onClick={() => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], dueDate: "" } }))}
-              className="text-xs leading-none text-slate-300 hover:text-slate-500">×</button>
-          )}
-          <div className="relative">
-            <button type="button" onClick={() => setOpenPicker(openPicker === pickerKey ? null : pickerKey)}
-              className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${meta.assignee ? "border-slate-700 bg-slate-800 text-white" : "border-black/8 bg-slate-50 text-slate-500 hover:bg-slate-100"}`}>
-              {meta.assignee ? (
-                <>
-                  <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-white/20 text-[7px] font-bold">{personInitials(meta.assignee)}</span>
-                  {meta.assignee}
-                </>
-              ) : (
-                <>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
-                  Assigné à
-                </>
-              )}
-            </button>
-            {openPicker === pickerKey && (
-              <PersonPicker allPersons={allPersons} value={meta.assignee}
-                onSelect={name => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], assignee: name } }))}
-                onCreatePerson={name => { createPerson(name); setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], assignee: name } })); }}
-                onClose={() => setOpenPicker(null)} />
-            )}
-          </div>
-          {meta.assignee && (
-            <button type="button" onClick={() => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], assignee: "" } }))}
-              className="text-xs leading-none text-slate-300 hover:text-slate-500">×</button>
-          )}
-        </div>
         {items.length === 0 ? (
           <div className="py-8 text-center text-sm text-slate-400">Aucun élément pour l'instant.</div>
         ) : (
@@ -5564,14 +5770,16 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                   </button>
                 ) : null}
                 {/* Badge assigné */}
-                {item.assignee && (
+                {(item.assignee || openPicker === `item-${item.id}`) && (
                   <div className="relative shrink-0">
-                    <button type="button"
-                      onClick={() => setOpenPicker(openPicker === `item-${item.id}` ? null : `item-${item.id}`)}
-                      className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white"
-                      style={{ background: personColor(item.assignee) }} title={item.assignee}>
-                      {personInitials(item.assignee)}
-                    </button>
+                    {item.assignee && (
+                      <button type="button"
+                        onClick={() => setOpenPicker(openPicker === `item-${item.id}` ? null : `item-${item.id}`)}
+                        className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white"
+                        style={{ background: personColor(item.assignee) }} title={item.assignee}>
+                        {personInitials(item.assignee)}
+                      </button>
+                    )}
                     {openPicker === `item-${item.id}` && (
                       <PersonPicker allPersons={allPersons} value={item.assignee || ""}
                         onSelect={name => updateItemMeta(listKey, item.id, { assignee: name || undefined })}
@@ -5585,7 +5793,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
                   onAddDueDate={() => setEditingDate(item.id)}
                   onAddAssignee={() => setOpenPicker(`item-${item.id}`)}
                   onEditTitle={listKey === "shopping" && item.url ? () => { setEditingTitleId(item.id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
-                  onEditPrice={listKey === "shopping" && item.url ? () => { setEditingPriceId(item.id); setEditingPriceValue(""); } : undefined}
+                  onEditPrice={listKey === "shopping" && item.url ? () => { setEditingPriceId(item.id); setEditingPriceValue(item.price != null ? String(item.price) : ""); } : undefined}
                   onDelete={() => removeItem(listKey, item.id)}
                 />
                 </div>
@@ -5645,7 +5853,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
 
   const todosPanel = (
     <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-      {renderList("todos", todos, todoInput, setTodoInput, "À faire", "Tâches", "Ajouter une tâche…")}
+      {renderList("todos", todos, "À faire", "Tâches")}
     </div>
   );
 
@@ -5653,33 +5861,40 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     <>
       <div className="grid gap-6 xl:grid-cols-2 lg:hidden">
         <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-          {renderList("shopping", shopping, shopInput, setShopInput, "Mes envies", label, "Ajouter une envie…")}
+          {renderList("shopping", shopping, "Mes achats", label)}
         </div>
         {todosPanel}
       </div>
       <div className="hidden lg:block space-y-6">
-        <div className="flex gap-2">
-          <input type="url" value={linkInput.shopping.url}
-            onChange={(e) => setLinkInput((prev) => ({ ...prev, shopping: { ...prev.shopping, url: e.target.value } }))}
-            onKeyDown={(e) => { if (e.key === "Enter") addLinkItem("shopping"); }}
-            placeholder="https://…" className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
-          <input type="text" value={linkInput.shopping.label}
-            onChange={(e) => setLinkInput((prev) => ({ ...prev, shopping: { ...prev.shopping, label: e.target.value } }))}
-            onKeyDown={(e) => { if (e.key === "Enter") addLinkItem("shopping"); }}
-            placeholder="Titre (optionnel)" className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
-          <button type="button" onClick={() => addLinkItem("shopping")} disabled={!linkInput.shopping.url.trim()}
-            className="shrink-0 rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Ajouter</button>
-        </div>
-        <ShoppingKanban
-          items={shopping}
-          formatPrice={formatPrice}
-          onMoveItem={handleKanbanMove}
-          onDelete={(id) => removeItem("shopping", id)}
-          onSetDueDate={(id, date) => updateItemMeta("shopping", id, { dueDate: date || undefined })}
-          onSetAssignee={(id, name) => updateItemMeta("shopping", id, { assignee: name || undefined })}
-          allPersons={allPersons}
-          onCreatePerson={createPerson}
-        />
+        <section className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
+              <h3 className="type-h3">Mes achats</h3>
+            </div>
+            <button type="button" title="Ajouter aux courses" aria-label="Ajouter aux courses"
+              onClick={() => setAddShoppingModalOpen(true)}
+              className="grid h-11 w-11 place-items-center rounded-full border border-black/15 bg-white text-lg leading-none shadow-sm hover:bg-[#fcf8d5]">
+              +
+            </button>
+          </div>
+          {addShoppingModalOpen && (
+            <AddShoppingItemModal onAdd={addShoppingItemFromModal} onClose={() => setAddShoppingModalOpen(false)}
+              allPersons={allPersons} onCreatePerson={createPerson} />
+          )}
+          <ShoppingKanban
+            items={shopping}
+            formatPrice={formatPrice}
+            onMoveItem={handleKanbanMove}
+            onDelete={(id) => removeItem("shopping", id)}
+            onSetDueDate={(id, date) => updateItemMeta("shopping", id, { dueDate: date || undefined })}
+            onSetAssignee={(id, name) => updateItemMeta("shopping", id, { assignee: name || undefined })}
+            onSetTitle={(id, text) => updateItemMeta("shopping", id, { text })}
+            onSetPrice={(id, price, currency) => updateItemMeta("shopping", id, price == null ? { price: undefined, priceCurrency: undefined } : { price, priceCurrency: currency || "EUR" })}
+            allPersons={allPersons}
+            onCreatePerson={createPerson}
+          />
+        </section>
         {todosPanel}
       </div>
     </>

@@ -5,27 +5,32 @@ import {
 } from "./lib/itemHelpers.jsx";
 import { STATUSES, effectiveStatus } from "./lib/itemStatus.js";
 
-function GripIcon() {
-  return (
-    <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" className="shrink-0 text-slate-300 group-hover:text-slate-400">
-      <circle cx="2.5" cy="2.5" r="1.3" /><circle cx="7.5" cy="2.5" r="1.3" />
-      <circle cx="2.5" cy="8" r="1.3" /><circle cx="7.5" cy="8" r="1.3" />
-      <circle cx="2.5" cy="13.5" r="1.3" /><circle cx="7.5" cy="13.5" r="1.3" />
-    </svg>
-  );
-}
-
 // Kanban desktop (lg:+) des envies/courses — dérive ses colonnes du champ
 // `status` (7 étapes). La liste mobile garde le select de statut équivalent
 // pour rester utilisable sans glisser-déposer. Les colonnes sans item se
 // replient automatiquement (cliquables pour les déplier) afin qu'un cycle
 // à 7 étapes reste lisible sans configuration.
-export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSetDueDate, onSetAssignee, allPersons, onCreatePerson }) {
+export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSetDueDate, onSetAssignee, onSetTitle, onSetPrice, allPersons, onCreatePerson }) {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
   const [editingDateId, setEditingDateId] = useState(null);
   const [openPickerId, setOpenPickerId] = useState(null);
+  const [editingTitleId, setEditingTitleId] = useState(null);
+  const [editingTitleValue, setEditingTitleValue] = useState("");
+  const [editingPriceId, setEditingPriceId] = useState(null);
+  const [editingPriceValue, setEditingPriceValue] = useState("");
   const [forceExpanded, setForceExpanded] = useState(() => new Set());
+
+  const commitTitle = (item) => {
+    const value = editingTitleValue.trim();
+    if (value) onSetTitle(item.id, value);
+    setEditingTitleId(null);
+  };
+  const commitPrice = (item) => {
+    const parsed = parseFloat(editingPriceValue.replace(",", "."));
+    onSetPrice(item.id, isNaN(parsed) ? undefined : parsed, item.priceCurrency);
+    setEditingPriceId(null);
+  };
 
   const columns = STATUSES.map((s) => ({
     ...s,
@@ -73,7 +78,7 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                 setDragOverColumn(null);
                 if (id) onMoveItem(id, col.key);
               }}
-              className={`flex w-[240px] shrink-0 flex-col gap-2 rounded-xl border p-2 transition-colors ${
+              className={`flex w-64 shrink-0 flex-col gap-2 rounded-xl border p-2 transition-colors ${
                 dragOverColumn === col.key ? "border-[#CDAA73] bg-[#FCF8D5]/30" : "border-black/10 bg-[#faf7f2]"
               }`}>
               <div className="flex items-center justify-between px-1">
@@ -92,17 +97,22 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                     draggable
                     onDragStart={(e) => { e.dataTransfer.setData("text/plain", item.id); e.dataTransfer.effectAllowed = "move"; setDraggedId(item.id); }}
                     onDragEnd={() => { setDraggedId(null); setDragOverColumn(null); }}
-                    className={`group flex cursor-grab items-start gap-1.5 rounded-lg border border-black/10 bg-white p-2 shadow-sm transition-all active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-md ${
+                    className={`group flex cursor-grab flex-col rounded-lg border border-black/10 bg-white shadow-sm transition-all active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-md ${
                       draggedId === item.id ? "rotate-1 scale-[1.02] opacity-50 shadow-lg" : ""
                     }`}>
-                    <span className="mt-1 shrink-0"><GripIcon /></span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start gap-2">
-                        {item.image && (
-                          <img src={item.image} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm text-[#1C1A17]">
+                    {item.image && (
+                      <img src={item.image} alt="" draggable={false} className="h-24 w-full rounded-t-lg object-cover" />
+                    )}
+                    <div className="flex flex-col gap-1.5 p-2">
+                      <div className="flex items-start gap-1.5">
+                        {editingTitleId === item.id ? (
+                          <input autoFocus value={editingTitleValue}
+                            onChange={(e) => setEditingTitleValue(e.target.value)}
+                            onBlur={() => commitTitle(item)}
+                            onKeyDown={(e) => { if (e.key === "Enter") commitTitle(item); if (e.key === "Escape") setEditingTitleId(null); }}
+                            className="min-w-0 flex-1 rounded border border-amber-300 bg-amber-50 px-1 text-sm leading-snug text-[#1C1A17] outline-none" />
+                        ) : (
+                          <p className="line-clamp-2 flex-1 text-sm leading-snug text-[#1C1A17]">
                             {item.url ? (
                               <a href={item.url} target="_blank" rel="noopener noreferrer" draggable={false}
                                 className="hover:underline">
@@ -110,18 +120,30 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                               </a>
                             ) : item.text}
                           </p>
-                          {typeof item.price === "number" && (
-                            <p className="text-xs font-medium text-slate-500">{formatPrice(item.price, item.priceCurrency)}</p>
-                          )}
-                        </div>
+                        )}
                         <ItemRowActions
                           item={item}
                           onAddDueDate={() => setEditingDateId(item.id)}
                           onAddAssignee={() => setOpenPickerId(`item-${item.id}`)}
+                          onEditTitle={() => { setEditingTitleId(item.id); setEditingTitleValue(linkItemTitle(item)); }}
+                          onEditPrice={() => { setEditingPriceId(item.id); setEditingPriceValue(item.price != null ? String(item.price) : ""); }}
                           onDelete={() => onDelete(item.id)}
                         />
                       </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      {editingPriceId === item.id ? (
+                        <input type="number" step="0.01" autoFocus value={editingPriceValue}
+                          onChange={(e) => setEditingPriceValue(e.target.value)}
+                          onBlur={() => commitPrice(item)}
+                          onKeyDown={(e) => { if (e.key === "Enter") commitPrice(item); if (e.key === "Escape") setEditingPriceId(null); }}
+                          placeholder="Prix"
+                          className="w-20 rounded border border-amber-300 bg-amber-50 px-1 py-0.5 text-xs outline-none" />
+                      ) : typeof item.price === "number" ? (
+                        <button type="button" onClick={() => { setEditingPriceId(item.id); setEditingPriceValue(String(item.price)); }}
+                          className="text-left text-xs font-medium text-slate-500 hover:underline" title="Modifier le prix">
+                          {formatPrice(item.price, item.priceCurrency)}
+                        </button>
+                      ) : null}
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <select value={effectiveStatus(item)}
                           onChange={(e) => onMoveItem(item.id, e.target.value)}
                           className="rounded-md border border-black/15 bg-white px-1 py-0.5 text-[10px] text-slate-600">
@@ -138,13 +160,15 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                             {formatDueDate(item.dueDate)}
                           </button>
                         ) : null}
-                        {item.assignee && (
+                        {(item.assignee || openPickerId === `item-${item.id}`) && (
                           <div className="relative">
-                            <button type="button" onClick={() => setOpenPickerId(openPickerId === `item-${item.id}` ? null : `item-${item.id}`)}
-                              className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white"
-                              style={{ background: personColor(item.assignee) }} title={item.assignee}>
-                              {personInitials(item.assignee)}
-                            </button>
+                            {item.assignee && (
+                              <button type="button" onClick={() => setOpenPickerId(openPickerId === `item-${item.id}` ? null : `item-${item.id}`)}
+                                className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white"
+                                style={{ background: personColor(item.assignee) }} title={item.assignee}>
+                                {personInitials(item.assignee)}
+                              </button>
+                            )}
                             {openPickerId === `item-${item.id}` && (
                               <PersonPicker allPersons={allPersons} value={item.assignee || ""}
                                 onSelect={(name) => { onSetAssignee(item.id, name); setOpenPickerId(null); }}

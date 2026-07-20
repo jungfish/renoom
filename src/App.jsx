@@ -5456,10 +5456,7 @@ function ReactionRow({ itemId, reactions, currentUserId, onToggle }) {
 // ─── Section listes (tâches + courses) ───────────────────────────────────────
 
 function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoomItemsFn, projectMembers = [], persons = [], setPersons, savePersonsFn, onLogActivity, itemReactions = {}, currentUserId = null, onToggleReaction = null }) {
-  const [linkInput, setLinkInput] = useState({ shopping: { label: "", url: "" }, todos: { label: "", url: "" } });
-  const [newMeta, setNewMeta] = useState({ shopping: { dueDate: "", assignee: "" }, todos: { dueDate: "", assignee: "" } });
   const [openPicker, setOpenPicker] = useState(null);
-  const newDateInputRef = useRef(null);
   const [editingDate, setEditingDate] = useState(null);
   const [editingTitleId, setEditingTitleId] = useState(null);
   const [editingTitleValue, setEditingTitleValue] = useState("");
@@ -5585,70 +5582,16 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     if (onLogActivity) onLogActivity("todo_added", room, { text });
   };
 
-  const addLinkItem = async (listKey) => {
-    const { label: lbl, url } = linkInput[listKey];
-    if (!url.trim()) return;
-    const { dueDate, assignee } = newMeta[listKey];
-    const id = `${listKey}-${Date.now()}`;
-    setLinkInput((prev) => ({ ...prev, [listKey]: { label: "", url: "" } }));
-    setNewMeta(prev => ({ ...prev, [listKey]: { dueDate: "", assignee: "" } }));
-    const currentItems = (roomLists[room] || {})[listKey] || [];
-    const newItem = { id, text: lbl.trim() || url.trim(), url: url.trim(), done: false, previewLoading: true,
-      ...(dueDate ? { dueDate } : {}), ...(assignee ? { assignee } : {}) };
-    const newItems = [...currentItems, newItem];
-    setRoomLists((prev) => ({ ...prev, [room]: { ...(prev[room] || {}), [listKey]: newItems } }));
-    if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, newItems);
-    try {
-      const preview = await fetchLinkPreview(url.trim());
-      setRoomLists((prev) => {
-        const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
-          item.id === id
-            ? { ...item, previewLoading: false, ...(preview.image ? { image: preview.image } : {}), ...(preview.title && !lbl.trim() ? { previewTitle: preview.title } : {}), ...(preview.price != null ? { price: preview.price, priceCurrency: preview.currency || undefined } : {}) }
-            : item
-        );
-        if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, updatedItems);
-        return { ...prev, [room]: { ...(prev[room] || {}), [listKey]: updatedItems } };
-      });
-    } catch {
-      setRoomLists((prev) => {
-        const updatedItems = ((prev[room] || {})[listKey] || []).map((item) =>
-          item.id === id ? { ...item, previewLoading: false } : item
-        );
-        return { ...prev, [room]: { ...(prev[room] || {}), [listKey]: updatedItems } };
-      });
-    }
-  };
-
   const renderList = (listKey, items, title, eyebrow) => {
     const pending = items.filter((i) => !i.done);
     const done = items.filter((i) => i.done);
-    const meta = newMeta[listKey];
-    const pickerKey = `new-${listKey}`;
     return (
       <div className="space-y-3">
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{eyebrow}</p>
             <h3 className="type-h3">{title}</h3>
           </div>
-          {listKey === "shopping" && (() => {
-            const selectedItems = items.filter(item => item.selectedForPurchase);
-            const selectedCount = selectedItems.length;
-            if (selectedCount === 0 && !showSelectedOnly) return null;
-            const selectedTotal = selectedItems.reduce((sum, item) => sum + (typeof item.price === "number" ? item.price : 0), 0);
-            const totalCurrency = selectedItems.find(item => item.priceCurrency)?.priceCurrency;
-            return (
-              <div className="mb-0.5 flex shrink-0 flex-wrap items-center gap-2">
-                {selectedTotal > 0 && (
-                  <span className="text-xs font-semibold text-slate-600">{formatPrice(selectedTotal, totalCurrency)}</span>
-                )}
-                <button type="button" onClick={() => setShowSelectedOnly(v => !v)}
-                  className={`shrink-0 rounded-full border px-2 py-0.5 text-xs transition-colors ${showSelectedOnly ? "border-amber-300 bg-amber-100 text-amber-700" : "border-black/15 text-slate-500 hover:bg-slate-50"}`}>
-                  {showSelectedOnly ? "Tout afficher" : `Sélectionnés pour l'achat (${selectedCount})`}
-                </button>
-              </div>
-            );
-          })()}
           {listKey === "todos" && (
             <button type="button" title="Ajouter une tâche" aria-label="Ajouter une tâche"
               onClick={() => setAddTaskModalOpen(true)}
@@ -5656,75 +5599,32 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
               +
             </button>
           )}
-        </div>
-        {addTaskModalOpen && listKey === "todos" && (
-          <AddTaskModal onAdd={addTaskItemFromModal} onClose={() => setAddTaskModalOpen(false)}
-            allPersons={allPersons} onCreatePerson={createPerson} />
-        )}
-        {listKey === "shopping" && (
-          <div className="flex gap-2">
-            <input type="url" value={linkInput[listKey].url}
-              onChange={(e) => setLinkInput((prev) => ({ ...prev, [listKey]: { ...prev[listKey], url: e.target.value } }))}
-              onKeyDown={(e) => { if (e.key === "Enter") addLinkItem(listKey); }}
-              placeholder="https://…" className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
-            <input type="text" value={linkInput[listKey].label}
-              onChange={(e) => setLinkInput((prev) => ({ ...prev, [listKey]: { ...prev[listKey], label: e.target.value } }))}
-              onKeyDown={(e) => { if (e.key === "Enter") addLinkItem(listKey); }}
-              placeholder="Titre (optionnel)" className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm" />
-            <button type="button" onClick={() => addLinkItem(listKey)} disabled={!linkInput[listKey].url.trim()}
-              className="shrink-0 rounded-md border border-black/15 bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Ajouter</button>
-          </div>
-        )}
-        {/* Options optionnelles : échéance + assigné (ajout rapide "envie" en liste mobile) */}
-        {listKey === "shopping" && (
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => {
-                const el = newDateInputRef.current;
-                if (!el) return;
-                if (typeof el.showPicker === "function") el.showPicker();
-                else el.focus();
-              }}
-              className="flex items-center gap-1.5 rounded-md border border-black/8 bg-slate-50 px-2 py-1 text-xs text-slate-500 hover:bg-slate-100">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              <span className={meta.dueDate ? (isDueOverdue(meta.dueDate) ? "font-medium text-red-500" : isDueSoonDate(meta.dueDate) ? "font-medium text-amber-600" : "font-medium text-slate-700") : ""}>
-                {meta.dueDate ? formatDueDate(meta.dueDate) : "Échéance"}
-              </span>
+          {listKey === "shopping" && (
+            <button type="button" title="Ajouter aux courses" aria-label="Ajouter aux courses"
+              onClick={() => setAddShoppingModalOpen(true)}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-black/15 bg-white text-lg leading-none shadow-sm hover:bg-[#fcf8d5]">
+              +
             </button>
-            <input ref={newDateInputRef} type="date" value={meta.dueDate}
-              onChange={e => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], dueDate: e.target.value } }))}
-              className="sr-only" />
-            {meta.dueDate && (
-              <button type="button" onClick={() => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], dueDate: "" } }))}
-                className="text-xs leading-none text-slate-300 hover:text-slate-500">×</button>
-            )}
-            <div className="relative">
-              <button type="button" onClick={() => setOpenPicker(openPicker === pickerKey ? null : pickerKey)}
-                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${meta.assignee ? "border-slate-700 bg-slate-800 text-white" : "border-black/8 bg-slate-50 text-slate-500 hover:bg-slate-100"}`}>
-                {meta.assignee ? (
-                  <>
-                    <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-white/20 text-[7px] font-bold">{personInitials(meta.assignee)}</span>
-                    {meta.assignee}
-                  </>
-                ) : (
-                  <>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
-                    Assigné à
-                  </>
-                )}
-              </button>
-              {openPicker === pickerKey && (
-                <PersonPicker allPersons={allPersons} value={meta.assignee}
-                  onSelect={name => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], assignee: name } }))}
-                  onCreatePerson={name => { createPerson(name); setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], assignee: name } })); }}
-                  onClose={() => setOpenPicker(null)} />
+          )}
+        </div>
+        {listKey === "shopping" && (() => {
+          const selectedItems = items.filter(item => item.selectedForPurchase);
+          const selectedCount = selectedItems.length;
+          if (selectedCount === 0 && !showSelectedOnly) return null;
+          const selectedTotal = selectedItems.reduce((sum, item) => sum + (typeof item.price === "number" ? item.price : 0), 0);
+          const totalCurrency = selectedItems.find(item => item.priceCurrency)?.priceCurrency;
+          return (
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedTotal > 0 && (
+                <span className="text-xs font-semibold text-slate-600">{formatPrice(selectedTotal, totalCurrency)}</span>
               )}
+              <button type="button" onClick={() => setShowSelectedOnly(v => !v)}
+                className={`shrink-0 rounded-full border px-2 py-0.5 text-xs transition-colors ${showSelectedOnly ? "border-amber-300 bg-amber-100 text-amber-700" : "border-black/15 text-slate-500 hover:bg-slate-50"}`}>
+                {showSelectedOnly ? "Tout afficher" : `Sélectionnés pour l'achat (${selectedCount})`}
+              </button>
             </div>
-            {meta.assignee && (
-              <button type="button" onClick={() => setNewMeta(prev => ({ ...prev, [listKey]: { ...prev[listKey], assignee: "" } }))}
-                className="text-xs leading-none text-slate-300 hover:text-slate-500">×</button>
-            )}
-          </div>
-        )}
+          );
+        })()}
         {items.length === 0 ? (
           <div className="py-8 text-center text-sm text-slate-400">Aucun élément pour l'instant.</div>
         ) : (
@@ -5859,7 +5759,7 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
 
   return (
     <>
-      <div className="grid gap-6 xl:grid-cols-2 lg:hidden">
+      <div className="flex flex-col gap-6 lg:hidden">
         <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
           {renderList("shopping", shopping, "Mes achats", label)}
         </div>
@@ -5878,10 +5778,6 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
               +
             </button>
           </div>
-          {addShoppingModalOpen && (
-            <AddShoppingItemModal onAdd={addShoppingItemFromModal} onClose={() => setAddShoppingModalOpen(false)}
-              allPersons={allPersons} onCreatePerson={createPerson} />
-          )}
           <ShoppingKanban
             items={shopping}
             formatPrice={formatPrice}
@@ -5897,6 +5793,14 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
         </section>
         {todosPanel}
       </div>
+      {addTaskModalOpen && (
+        <AddTaskModal onAdd={addTaskItemFromModal} onClose={() => setAddTaskModalOpen(false)}
+          allPersons={allPersons} onCreatePerson={createPerson} />
+      )}
+      {addShoppingModalOpen && (
+        <AddShoppingItemModal onAdd={addShoppingItemFromModal} onClose={() => setAddShoppingModalOpen(false)}
+          allPersons={allPersons} onCreatePerson={createPerson} />
+      )}
     </>
   );
 }

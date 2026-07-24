@@ -22,6 +22,7 @@ export function Dashboard({
   getRoomColors,
   roomLists,
   totalPending,
+  totalCourses,
   totalUnread,
   totalMentionUnread,
   totalActivity,
@@ -53,10 +54,17 @@ export function Dashboard({
   const cards = [
     {
       key: "todos",
-      label: "À faire",
+      label: "Tâches",
       value: totalPending,
       hint: totalPending > 0 ? `${totalPending} en attente` : "Rien en attente",
       highlight: totalPending > 0,
+    },
+    {
+      key: "courses",
+      label: "Courses",
+      value: totalCourses,
+      hint: totalCourses > 0 ? `${totalCourses} en attente` : "Rien en attente",
+      highlight: totalCourses > 0,
     },
     {
       key: "discussions",
@@ -86,7 +94,7 @@ export function Dashboard({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {cards.map(({ key, label, value, hint, highlight }) => (
           <button key={key} type="button" onClick={() => onNavigateGeneral(key)}
             className={`rounded-xl border p-4 text-left transition-colors ${highlight ? "border-[#CDAA73] bg-[#FBF6EC]" : "border-black/10 bg-white hover:bg-black/[0.02]"}`}>

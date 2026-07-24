@@ -3,7 +3,7 @@ import { ItemRowActions } from "./ItemRowActions.jsx";
 import {
   formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, PersonPicker,
 } from "./lib/itemHelpers.jsx";
-import { STATUSES, effectiveStatus } from "./lib/itemStatus.js";
+import { STATUSES, effectiveStatus, selectStyleForStatus } from "./lib/itemStatus.js";
 
 // Kanban desktop (lg:+) des envies/courses — dérive ses colonnes du champ
 // `status` (7 étapes). La liste mobile garde le select de statut équivalent
@@ -146,7 +146,7 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                       <div className="flex flex-wrap items-center gap-1.5">
                         <select value={effectiveStatus(item)}
                           onChange={(e) => onMoveItem(item.id, e.target.value)}
-                          className="rounded-md border border-black/15 bg-white px-1 py-0.5 text-[10px] text-slate-600">
+                          className={`rounded-md border-0 px-1 py-0.5 text-[10px] font-medium ${selectStyleForStatus(effectiveStatus(item))}`}>
                           {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.title}</option>)}
                         </select>
                         {editingDateId === item.id ? (

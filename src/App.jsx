@@ -12,7 +12,7 @@ import { SUPPORT_EMAIL } from "./config";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { FB, fbLabel, describeColor, familyOfHex, FARROW_BALL_FAMILIES, FARROW_BALL_LIBRARY } from "./farrowBall.js";
-import { STATUSES, effectiveStatus, deriveFlagsFromStatus, styleForStatus } from "./lib/itemStatus.js";
+import { STATUSES, effectiveStatus, deriveFlagsFromStatus, selectStyleForStatus } from "./lib/itemStatus.js";
 import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, PersonPicker } from "./lib/itemHelpers.jsx";
 import { ShoppingKanban } from "./ShoppingKanban.jsx";
 import { BudgetView } from "./BudgetView.jsx";
@@ -4626,8 +4626,9 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
   );
 }
 
-function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null }) {
-  const [filter, setFilter] = useState("all");
+function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null }) {
+  const isCourses = scope === "courses";
+  const [filter, setFilter] = useState("all"); // courses uniquement : "all" | "selected"
   const [hideDone, setHideDone] = useState(true);
   const [groupBy, setGroupBy] = useState("room"); // "room" | "week"
   const [roomInputs, setRoomInputs] = useState({}); // { [roomKey]: string }
@@ -4698,13 +4699,12 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
   // Collect all items across all rooms + the room-agnostic "Appartement" bucket
   const allItemsFlat = ["general", ...orderedActiveRooms].flatMap((roomKey) => {
     const list = roomLists[roomKey] || {};
-    const shopping = filter !== "todos"
-      ? (list.shopping || [])
-          .filter((i) => filter !== "courses" || isSelectedForPurchase(i))
-          .map((i) => ({ ...i, listKey: "shopping", roomKey }))
-      : [];
-    const todos = filter === "all" || filter === "todos" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey })) : [];
-    return [...shopping, ...todos];
+    if (isCourses) {
+      return (list.shopping || [])
+        .filter((i) => filter !== "selected" || isSelectedForPurchase(i))
+        .map((i) => ({ ...i, listKey: "shopping", roomKey }));
+    }
+    return (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey }));
   });
 
   const visibleItems = hideDone ? allItemsFlat.filter((i) => !i.done) : allItemsFlat;
@@ -4757,9 +4757,7 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
     return (
       <li key={id}
         className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${
-          item.done ? "border-black/5 bg-white opacity-50"
-          : listKey === "shopping" && isSelectedForPurchase(item) ? "border-[#c9d3b6] bg-[#eef1e4]"
-          : "border-black/10 bg-white"
+          item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"
         }`}>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => toggleItem(roomKey, listKey, id)}
@@ -4776,7 +4774,7 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
               {roomKey === "general" ? "Appartement" : allRoomPresets[roomKey]?.label}
             </span>
           )}
-          {filter === "all" && listKey === "shopping" && (
+          {listKey === "shopping" && (
             isSelectedForPurchase(item) ? (
               <span className="shrink-0 rounded-full bg-[#e3e8d5] px-2 py-0.5 text-[10px] font-medium text-[#4f5d3a]" title="Sélectionné pour l'achat">
                 🛒 Sélectionné
@@ -4865,8 +4863,8 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
   };
 
   useEffect(() => {
-    if (filter !== "envies" && filter !== "courses" && groupBy === "site") setGroupBy("room");
-  }, [filter, groupBy]);
+    if (!isCourses && groupBy === "site") setGroupBy("room");
+  }, [isCourses, groupBy]);
 
   const weekGroups = groupBy === "week" ? buildWeekGroups(visibleItems) : null;
 
@@ -4903,13 +4901,13 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
       {/* Header */}
       <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
         <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
-        <h2 className="type-h2">Tous les todos</h2>
+        <h2 className="type-h2">{isCourses ? "Toutes les courses" : "Toutes les tâches"}</h2>
         <p className="mt-1 text-sm text-slate-600">
           {totalPending > 0 ? `${totalPending} élément${totalPending > 1 ? "s" : ""} en attente.` : "Tout est fait — rien en attente."}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {[{ key: "all", label: "Tout" }, { key: "todos", label: "À faire" }, { key: "envies", label: "Envies" }, { key: "courses", label: "Courses" }].map(({ key, label }) => (
-            <button key={key} type="button" onClick={() => { setFilter(key); if (key === "envies" || key === "courses") setGroupBy("site"); else if (groupBy === "site") setGroupBy("room"); }}
+          {isCourses && [{ key: "all", label: "Toutes" }, { key: "selected", label: "Sélectionnées pour achat" }].map(({ key, label }) => (
+            <button key={key} type="button" onClick={() => setFilter(key)}
               className={`rounded-lg border px-3 py-1.5 text-sm ${filter === key ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white hover:bg-slate-50"}`}>
               {label}
             </button>
@@ -4929,7 +4927,7 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 Semaine
               </button>
-              {(filter === "envies" || filter === "courses") && (
+              {isCourses && (
                 <button type="button" onClick={() => setGroupBy("site")}
                   className={`flex items-center gap-1.5 border-l border-black/15 px-3 py-1.5 text-sm ${groupBy === "site" ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}
                   title="Grouper par site d'achat">
@@ -4950,18 +4948,16 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
       {groupBy === "room" && ["general", ...orderedActiveRooms].map((key) => {
         const preset = key === "general" ? { label: "Appartement" } : allRoomPresets[key];
         const list = roomLists[key] || {};
-        const shopping = filter !== "todos"
+        const allItems = isCourses
           ? (list.shopping || [])
-              .filter((i) => filter !== "courses" || isSelectedForPurchase(i))
+              .filter((i) => filter !== "selected" || isSelectedForPurchase(i))
               .map((i) => ({ ...i, listKey: "shopping", roomKey: key }))
-          : [];
-        const todos = filter === "all" || filter === "todos" ? (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey: key })) : [];
-        const allItems = [...shopping, ...todos];
+          : (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey: key }));
         const visible = hideDone ? allItems.filter((i) => !i.done) : allItems;
         const sorted = [...visible.filter((i) => !i.done), ...visible.filter((i) => i.done)];
         const isOpen = roomInputOpen[key] || false;
         const inputVal = roomInputs[key] || "";
-        const addListKey = (filter === "envies" || filter === "courses") ? "shopping" : "todos";
+        const addListKey = isCourses ? "shopping" : "todos";
         return (
           <div key={key} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
             <div className="mb-3 flex items-center justify-between">
@@ -5030,9 +5026,9 @@ function TodosGlobalView({ orderedActiveRooms, allRoomPresets, roomLists, setRoo
         if (sites.length === 0 && noSite.items.length === 0) {
           return (
             <div className="py-12 text-center text-sm text-slate-400">
-              {filter === "courses"
+              {filter === "selected"
                 ? "Aucun article sélectionné pour l'achat — sélectionnez des articles depuis une pièce pour les voir ici."
-                : "Aucune envie pour l'instant — ajoutez des articles depuis une pièce pour les voir ici."}
+                : "Aucune course pour l'instant — ajoutez des articles depuis une pièce pour les voir ici."}
             </div>
           );
         }
@@ -5455,7 +5451,7 @@ function ReactionRow({ itemId, reactions, currentUserId, onToggle }) {
 
 // ─── Section listes (tâches + courses) ───────────────────────────────────────
 
-function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoomItemsFn, projectMembers = [], persons = [], setPersons, savePersonsFn, onLogActivity, itemReactions = {}, currentUserId = null, onToggleReaction = null }) {
+function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, saveRoomItemsFn, projectMembers = [], persons = [], setPersons, savePersonsFn, onLogActivity, itemReactions = {}, currentUserId = null, onToggleReaction = null }) {
   const [openPicker, setOpenPicker] = useState(null);
   const [editingDate, setEditingDate] = useState(null);
   const [editingTitleId, setEditingTitleId] = useState(null);
@@ -5635,15 +5631,13 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
             ).map((item) => (
               <li key={item.id}
                 className={`group flex flex-col gap-0.5 rounded-lg border px-3 py-2 ${
-                  listKey === "shopping" ? styleForStatus(effectiveStatus(item))
-                  : item.done ? "border-black/5 bg-white opacity-50"
-                  : "border-black/10 bg-white"
+                  item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"
                 }`}>
                 <div className="flex flex-wrap items-center gap-2">
                 {listKey === "shopping" ? (
                   <select value={effectiveStatus(item)}
                     onChange={(e) => updateItemMeta(listKey, item.id, { status: e.target.value, ...deriveFlagsFromStatus(e.target.value) })}
-                    className="shrink-0 rounded-md border border-black/15 bg-white px-1.5 py-1 text-[11px] text-slate-600">
+                    className={`shrink-0 rounded-md border-0 px-1.5 py-1 text-[11px] font-medium ${selectStyleForStatus(effectiveStatus(item))}`}>
                     {STATUSES.map(s => <option key={s.key} value={s.key}>{s.title}</option>)}
                   </select>
                 ) : (
@@ -5757,48 +5751,54 @@ function ListeSection({ room, label, roomLists, setRoomLists, projectId, saveRoo
     </div>
   );
 
+  if (scope === "courses") {
+    return (
+      <>
+        <div className="lg:hidden">
+          <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
+            {renderList("shopping", shopping, "Mes achats", label)}
+          </div>
+        </div>
+        <div className="hidden lg:block">
+          <section className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
+                <h3 className="type-h3">Mes achats</h3>
+              </div>
+              <button type="button" title="Ajouter aux courses" aria-label="Ajouter aux courses"
+                onClick={() => setAddShoppingModalOpen(true)}
+                className="grid h-11 w-11 place-items-center rounded-full border border-black/15 bg-white text-lg leading-none shadow-sm hover:bg-[#fcf8d5]">
+                +
+              </button>
+            </div>
+            <ShoppingKanban
+              items={shopping}
+              formatPrice={formatPrice}
+              onMoveItem={handleKanbanMove}
+              onDelete={(id) => removeItem("shopping", id)}
+              onSetDueDate={(id, date) => updateItemMeta("shopping", id, { dueDate: date || undefined })}
+              onSetAssignee={(id, name) => updateItemMeta("shopping", id, { assignee: name || undefined })}
+              onSetTitle={(id, text) => updateItemMeta("shopping", id, { text })}
+              onSetPrice={(id, price, currency) => updateItemMeta("shopping", id, price == null ? { price: undefined, priceCurrency: undefined } : { price, priceCurrency: currency || "EUR" })}
+              allPersons={allPersons}
+              onCreatePerson={createPerson}
+            />
+          </section>
+        </div>
+        {addShoppingModalOpen && (
+          <AddShoppingItemModal onAdd={addShoppingItemFromModal} onClose={() => setAddShoppingModalOpen(false)}
+            allPersons={allPersons} onCreatePerson={createPerson} />
+        )}
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="flex flex-col gap-6 lg:hidden">
-        <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-          {renderList("shopping", shopping, "Mes achats", label)}
-        </div>
-        {todosPanel}
-      </div>
-      <div className="hidden lg:block space-y-6">
-        <section className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
-              <h3 className="type-h3">Mes achats</h3>
-            </div>
-            <button type="button" title="Ajouter aux courses" aria-label="Ajouter aux courses"
-              onClick={() => setAddShoppingModalOpen(true)}
-              className="grid h-11 w-11 place-items-center rounded-full border border-black/15 bg-white text-lg leading-none shadow-sm hover:bg-[#fcf8d5]">
-              +
-            </button>
-          </div>
-          <ShoppingKanban
-            items={shopping}
-            formatPrice={formatPrice}
-            onMoveItem={handleKanbanMove}
-            onDelete={(id) => removeItem("shopping", id)}
-            onSetDueDate={(id, date) => updateItemMeta("shopping", id, { dueDate: date || undefined })}
-            onSetAssignee={(id, name) => updateItemMeta("shopping", id, { assignee: name || undefined })}
-            onSetTitle={(id, text) => updateItemMeta("shopping", id, { text })}
-            onSetPrice={(id, price, currency) => updateItemMeta("shopping", id, price == null ? { price: undefined, priceCurrency: undefined } : { price, priceCurrency: currency || "EUR" })}
-            allPersons={allPersons}
-            onCreatePerson={createPerson}
-          />
-        </section>
-        {todosPanel}
-      </div>
+      {todosPanel}
       {addTaskModalOpen && (
         <AddTaskModal onAdd={addTaskItemFromModal} onClose={() => setAddTaskModalOpen(false)}
-          allPersons={allPersons} onCreatePerson={createPerson} />
-      )}
-      {addShoppingModalOpen && (
-        <AddShoppingItemModal onAdd={addShoppingItemFromModal} onClose={() => setAddShoppingModalOpen(false)}
           allPersons={allPersons} onCreatePerson={createPerson} />
       )}
     </>
@@ -6656,12 +6656,12 @@ function ActivityFeedView({ activityFeed, allRoomPresets, onNavigate }) {
 
   const tabForAction = (type) => {
     switch (type) {
-      case "todo_added":
-      case "shopping_added": return "liste";
+      case "todo_added": return "taches";
+      case "shopping_added": return "courses";
       case "inspiration_added":
       case "inspiration_link_added": return "inspirations";
       case "discussion_added": return "discussions";
-      case "reaction_added": return "liste";
+      case "reaction_added": return "courses";
       default: return null;
     }
   };
@@ -6828,7 +6828,11 @@ function DialogHost() {
 function computeGeneralBadges({ orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user }) {
   const tPending = orderedActiveRooms.reduce((acc, k) => {
     const l = roomLists[k] || {};
-    return acc + [...(l.shopping || []), ...(l.todos || [])].filter((i) => !i.done).length;
+    return acc + (l.todos || []).filter((i) => !i.done).length;
+  }, 0);
+  const tCourses = orderedActiveRooms.reduce((acc, k) => {
+    const l = roomLists[k] || {};
+    return acc + (l.shopping || []).filter((i) => !i.done).length;
   }, 0);
   const tUnread = ["general", ...orderedActiveRooms].reduce(
     (acc, k) => acc + (discussionsCache[k] || []).reduce((s, d) => s + (d.unread_count || 0), 0),
@@ -6837,7 +6841,7 @@ function computeGeneralBadges({ orderedActiveRooms, roomLists, discussionsCache,
   const tDocs = orderedActiveRooms.reduce((acc, k) => acc + (roomDocuments[k] || []).length, 0);
   const tMention = (mentionNotifications || []).filter((n) => !n.read_at).length;
   const tActivity = activityFeed.filter(e => e.user_id !== user?.id && (!activityLastViewed || e.created_at > activityLastViewed)).length;
-  return { tPending, tUnread, tDocs, tMention, tActivity };
+  return { tPending, tCourses, tUnread, tDocs, tMention, tActivity };
 }
 
 export default function App() {
@@ -6951,7 +6955,7 @@ export default function App() {
   const [showColorCatalog, setShowColorCatalog] = useState(false);
   const [roomNotes, setRoomNotes] = useState({});
   const [viewMode, setViewMode] = useState("general");
-  const [roomMode, setRoomMode] = useState("liste");
+  const [roomMode, setRoomMode] = useState("taches");
   const [generalMode, setGeneralMode] = useState("accueil");
   const lastRoomModeRef = useRef({});
 
@@ -8425,7 +8429,7 @@ export default function App() {
   }, [showProjectPicker]);
 
   useEffect(() => {
-    setRoomMode(lastRoomModeRef.current[room] || "liste");
+    setRoomMode(lastRoomModeRef.current[room] || "taches");
   }, [room]);
 
   const getRoomColors = (roomKey) => {
@@ -8441,10 +8445,9 @@ export default function App() {
     return { dominant: { name: getColorName(dColor), hex: dHex }, secondary: { name: getColorName(sColor), hex: sHex }, accent: { name: aName, hex: aHex } };
   };
 
-  const roomPendingCount = (key) => {
-    const list = roomLists[key] || {};
-    return [...(list.shopping || []), ...(list.todos || [])].filter((item) => !item.done).length;
-  };
+  const roomTodoCount = (key) => (roomLists[key]?.todos || []).filter((item) => !item.done).length;
+  const roomCourseCount = (key) => (roomLists[key]?.shopping || []).filter((item) => !item.done).length;
+  const roomPendingCount = (key) => roomTodoCount(key) + roomCourseCount(key);
 
   // ── Guards auth ──────────────────────────────────────────────────────────
   if (authLoading) return <div className="min-h-screen bg-[#FAF6F0]" />;
@@ -8574,7 +8577,7 @@ export default function App() {
               Vue générale
             </span>
             {(() => {
-              const { tPending, tUnread, tMention, tActivity } = computeGeneralBadges({
+              const { tPending, tCourses, tUnread, tMention, tActivity } = computeGeneralBadges({
                 orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
               });
               const selectGeneral = (key) => {
@@ -8585,7 +8588,8 @@ export default function App() {
               };
               const primary = [
                 { key: "accueil", label: "Accueil", badge: 0, mention: 0 },
-                { key: "todos", label: "Todos", badge: tPending, mention: 0 },
+                { key: "todos", label: "Tâches", badge: tPending, mention: 0 },
+                { key: "courses", label: "Courses", badge: tCourses, mention: 0 },
                 { key: "budget", label: "Budget", badge: 0, mention: 0 },
                 { key: "couleurs", label: "Teintes", badge: 0, mention: 0 },
                 { key: "discussions", label: "Discussions", badge: tUnread, mention: tMention },
@@ -9060,14 +9064,14 @@ export default function App() {
             <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {(() => {
                 const badgesFor = (key) => {
-                  const pending = key === "liste" ? roomPendingCount(room) : key === "discussions" ? (discussionsCache[room] || []).reduce((sum, d) => sum + (d.unread_count || 0), 0) : 0;
+                  const pending = key === "taches" ? roomTodoCount(room) : key === "courses" ? roomCourseCount(room) : key === "discussions" ? (discussionsCache[room] || []).reduce((sum, d) => sum + (d.unread_count || 0), 0) : 0;
                   const mentionBadge = key === "discussions"
                     ? (mentionNotifications || []).filter(n => !n.read_at && (discussionsCache[room] || []).some(d => d.id === n.discussion_id)).length
                     : 0;
                   return { pending, mentionBadge };
                 };
-                const primary = ["liste", "inspirations", "couleurs", "discussions"].map((key) => ({
-                  key, label: { liste: "Liste", inspirations: "Inspirations", couleurs: "Teintes", discussions: "Discussions" }[key], ...badgesFor(key),
+                const primary = ["taches", "courses", "inspirations", "couleurs", "discussions"].map((key) => ({
+                  key, label: { taches: "Tâches", courses: "Courses", inspirations: "Inspirations", couleurs: "Teintes", discussions: "Discussions" }[key], ...badgesFor(key),
                 }));
                 const secondary = [
                   ...["documents"].map((key) => {
@@ -9116,13 +9120,14 @@ export default function App() {
             <div className="mr-2 h-3.5 w-px flex-shrink-0 bg-black/10 lg:hidden" />
             <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {(() => {
-                const { tPending: totalPending, tUnread: totalUnread, tMention: totalMentionUnread, tActivity: totalActivity } = computeGeneralBadges({
+                const { tPending: totalPending, tCourses: totalCourses, tUnread: totalUnread, tMention: totalMentionUnread, tActivity: totalActivity } = computeGeneralBadges({
                   orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
                 });
                 const selectGeneral = (key) => { setGeneralMode(key); if (key === "activite") markActivityViewed(); };
                 const primary = [
                   { key: "accueil", label: "Accueil", badge: 0 },
-                  { key: "todos", label: "Todos", badge: totalPending },
+                  { key: "todos", label: "Tâches", badge: totalPending },
+                  { key: "courses", label: "Courses", badge: totalCourses },
                   { key: "budget", label: "Budget", badge: 0 },
                   { key: "couleurs", label: "Teintes", badge: 0 },
                   { key: "discussions", label: "Discussions", badge: totalUnread, mentionBadge: totalMentionUnread },
@@ -9162,7 +9167,7 @@ export default function App() {
         <div className="mx-auto w-full max-w-5xl space-y-5 p-4 md:space-y-6 md:p-6">
         {viewMode === "general" ? (
           generalMode === "accueil" ? (() => {
-            const { tPending, tUnread, tMention, tActivity } = computeGeneralBadges({
+            const { tPending, tCourses, tUnread, tMention, tActivity } = computeGeneralBadges({
               orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
             });
             return (
@@ -9174,6 +9179,7 @@ export default function App() {
                 getRoomColors={getRoomColors}
                 roomLists={roomLists}
                 totalPending={tPending}
+                totalCourses={tCourses}
                 totalUnread={tUnread}
                 totalMentionUnread={tMention}
                 totalActivity={tActivity}
@@ -9187,6 +9193,24 @@ export default function App() {
             );
           })() : generalMode === "todos" ? (
             <TodosGlobalView
+              scope="todos"
+              orderedActiveRooms={orderedActiveRooms}
+              allRoomPresets={allRoomPresets}
+              roomLists={roomLists}
+              setRoomLists={setRoomLists}
+              projectId={projectId}
+              saveRoomItemsFn={saveRoomItemsToServer}
+              itemReactions={itemReactions}
+              currentUserId={user?.id}
+              onToggleReaction={toggleReaction}
+              persons={persons}
+              projectMembers={projectMembers}
+              setPersons={setPersons}
+              savePersonsFn={savePersonsToServer}
+            />
+          ) : generalMode === "courses" ? (
+            <TodosGlobalView
+              scope="courses"
               orderedActiveRooms={orderedActiveRooms}
               allRoomPresets={allRoomPresets}
               roomLists={roomLists}
@@ -9213,10 +9237,10 @@ export default function App() {
               onSetBudgetTarget={setBudgetTarget}
               formatPrice={formatPrice}
               onNavigateToRoom={(key) => {
-                lastRoomModeRef.current[key] = "liste";
+                lastRoomModeRef.current[key] = "courses";
                 setRoom(key);
                 setViewMode("room");
-                setRoomMode("liste");
+                setRoomMode("courses");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             />
@@ -9893,9 +9917,30 @@ export default function App() {
               />
             </section>
           </>
-        ) : roomMode === "liste" ? (
+        ) : roomMode === "taches" ? (
           <div className="space-y-6">
             <ListeSection
+              scope="taches"
+              room={room}
+              label={preset.label}
+              roomLists={roomLists}
+              setRoomLists={setRoomLists}
+              projectId={projectId}
+              saveRoomItemsFn={saveRoomItemsToServer}
+              projectMembers={projectMembers}
+              persons={persons}
+              setPersons={setPersons}
+              savePersonsFn={savePersonsToServer}
+              onLogActivity={logActivity}
+              itemReactions={itemReactions}
+              currentUserId={user?.id}
+              onToggleReaction={toggleReaction}
+            />
+          </div>
+        ) : roomMode === "courses" ? (
+          <div className="space-y-6">
+            <ListeSection
+              scope="courses"
               room={room}
               label={preset.label}
               roomLists={roomLists}

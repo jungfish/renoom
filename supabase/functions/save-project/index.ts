@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
       room_order:        state.roomOrder        || null,
       general_resources: state.generalResources || [],
       budget_target:     typeof state.budgetTarget === "number" ? state.budgetTarget : null,
+      global_palette:    state.globalPalette     || null,
     };
 
     if (isNewProject) {

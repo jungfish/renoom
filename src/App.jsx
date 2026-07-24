@@ -6881,6 +6881,9 @@ export default function App() {
   });
   const [activePaletteSlot, setActivePaletteSlot] = useState(null);
   const [activePaletteFamily, setActivePaletteFamily] = useState(FARROW_BALL_FAMILIES[0].key);
+  const [customColorRole, setCustomColorRole] = useState(null);
+  const [customColorFamily, setCustomColorFamily] = useState(FARROW_BALL_FAMILIES[0].key);
+  useEffect(() => { setCustomColorRole(null); }, [room]);
 
   const [logoPaletteChanged, setLogoPaletteChanged] = useState(false);
   const isFirstPaletteRender = useRef(true);
@@ -9075,9 +9078,11 @@ export default function App() {
                     return { key, label: "Documents", badge: pending, mention: mentionBadge };
                   }),
                   { key: "export-pdf", label: isExportingPdf ? "Export..." : "Exporter PDF" },
+                  ...(orderedActiveRooms.length > 1 ? [{ key: "delete-room", label: "Supprimer la pièce", danger: true }] : []),
                 ];
                 const selectSecondary = (key) => {
                   if (key === "export-pdf") handleExportRoomPdf();
+                  else if (key === "delete-room") deleteRoom();
                   else handleSetRoomMode(key);
                 };
                 return (
@@ -9679,20 +9684,7 @@ export default function App() {
 
               <div className="space-y-4 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
                 <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Pièce active</p>
-                <div className="flex items-start justify-between gap-3">
-                  <h2 className="type-h2">{preset.label}</h2>
-                  {orderedActiveRooms.length > 1 ? (
-                    <button
-                      type="button"
-                      onClick={deleteRoom}
-                      title="Supprimer cette pièce"
-                      aria-label="Supprimer cette pièce"
-                      className="grid h-11 w-11 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-base font-bold text-red-600 shadow-sm hover:bg-red-50"
-                    >
-                      ×
-                    </button>
-                  ) : null}
-                </div>
+                <h2 className="type-h2">{preset.label}</h2>
                 <p className="text-sm text-slate-700">{preset.line}</p>
                 <div className="space-y-4">
                   {[
@@ -9700,6 +9692,14 @@ export default function App() {
                     { role: "secondaryColor", label: "Couleur secondaire" },
                   ].map(({ role, label }) => {
                     const selectedColor = activeNuance[role] || (role === "dominantColor" ? preset.dominant : preset.secondary);
+                    const isCustom = typeof selectedColor === "string" && selectedColor.startsWith("#");
+                    const fallbackSlot = role === "dominantColor" ? "dominante" : "secondaire";
+                    const startHex = isCustom
+                      ? selectedColor
+                      : (globalPalette[selectedColor]?.hex || globalPalette[fallbackSlot].hex);
+                    const customHex = startHex;
+                    const isPickerOpen = customColorRole === role;
+                    const customFamily = FARROW_BALL_FAMILIES.find(f => f.key === customColorFamily) || FARROW_BALL_FAMILIES[0];
                     return (
                       <div key={role}>
                         <p className="mb-1.5 text-sm font-medium text-slate-700">{label}</p>
@@ -9712,7 +9712,7 @@ export default function App() {
                             <button
                               key={key}
                               type="button"
-                              onClick={() => updateRoomNuance(role, key)}
+                              onClick={() => { updateRoomNuance(role, key); setCustomColorRole(null); }}
                               title={name}
                               className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
                                 selectedColor === key ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
@@ -9722,29 +9722,178 @@ export default function App() {
                               <span className="text-[10px] leading-tight text-slate-500">{name.split(" ")[0]}</span>
                             </button>
                           ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isPickerOpen) {
+                                setCustomColorRole(null);
+                                return;
+                              }
+                              if (!isCustom) {
+                                // Préselectionne la teinte actuellement utilisée (slot de la palette générale) comme point de départ
+                                updateRoomNuance(role, startHex);
+                              }
+                              setCustomColorFamily(familyOfHex(startHex) || FARROW_BALL_FAMILIES[0].key);
+                              setCustomColorRole(role);
+                            }}
+                            title="Teinte personnalisée pour cette pièce"
+                            className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                              isCustom ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                            }`}
+                          >
+                            <span
+                              className="block h-6 w-full rounded-md border border-dashed border-black/20"
+                              style={{ backgroundColor: isCustom ? customHex : "transparent" }}
+                            />
+                            <span className="text-[10px] leading-tight text-slate-500">Personnalisé</span>
+                          </button>
                         </div>
+                        {isPickerOpen ? (
+                          <div className="mt-2 space-y-2 rounded-xl border border-black/10 bg-slate-50 p-3">
+                            <p className="text-[11px] text-slate-400">Teintes proches de la palette générale — change de famille si besoin.</p>
+                            <div className="flex gap-1 overflow-x-auto pb-1">
+                              {FARROW_BALL_FAMILIES.map(family => (
+                                <button
+                                  key={family.key}
+                                  type="button"
+                                  onClick={() => setCustomColorFamily(family.key)}
+                                  className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+                                    customColorFamily === family.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
+                                  }`}
+                                >
+                                  {family.label}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
+                              {customFamily.colors.map(c => (
+                                <button
+                                  key={c.hex}
+                                  type="button"
+                                  onClick={() => updateRoomNuance(role, c.hex)}
+                                  title={fbLabel(c)}
+                                  className={`flex flex-col overflow-hidden rounded-lg border-2 transition-all ${
+                                    customHex === c.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
+                                  }`}
+                                >
+                                  <span className="block h-7 w-full" style={{ backgroundColor: c.hex }} />
+                                  <span className="w-full truncate px-1 py-0.5 text-left text-[9px] leading-tight text-slate-600">{c.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="color"
+                                value={customHex}
+                                onChange={e => updateRoomNuance(role, e.target.value)}
+                                className="h-7 w-7 cursor-pointer rounded border border-black/15"
+                              />
+                              <span className="text-xs text-slate-500">Couleur libre</span>
+                              <span className="ml-auto text-[11px] text-slate-400">{describeColor(customHex)}</span>
+                            </label>
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })}
-                  <div>
-                    <p className="mb-1.5 text-sm font-medium text-slate-700">Accent pièce</p>
-                    <div className="flex gap-2">
-                      {globalPalette.accents.map((accent, i) => (
-                        <button
-                          key={accent.hex}
-                          type="button"
-                          onClick={() => updateRoomNuance("accent", accent.hex)}
-                          title={accent.name}
-                          className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
-                            (activeNuance.accent === accent.hex || accents[activeNuance.accent]?.hex === accent.hex || (activeNuance.accent === "bois" && accent.hex === baseColors.bois.hex)) ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
-                          }`}
-                        >
-                          <span className="block h-6 w-full rounded-md" style={{ backgroundColor: accent.hex }} />
-                          <span className="text-[10px] leading-tight text-slate-500">{accent.name.split(" ")[0]}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  {(() => {
+                    const isAccentCustom = typeof activeNuance.accent === "string"
+                      && activeNuance.accent.startsWith("#")
+                      && !globalPalette.accents.some(a => a.hex === activeNuance.accent);
+                    const isAccentPickerOpen = customColorRole === "accent";
+                    const customAccentFamily = FARROW_BALL_FAMILIES.find(f => f.key === customColorFamily) || FARROW_BALL_FAMILIES[0];
+                    return (
+                      <div>
+                        <p className="mb-1.5 text-sm font-medium text-slate-700">Accent pièce</p>
+                        <div className="flex gap-2">
+                          {globalPalette.accents.map((accent, i) => (
+                            <button
+                              key={accent.hex}
+                              type="button"
+                              onClick={() => { updateRoomNuance("accent", accent.hex); setCustomColorRole(null); }}
+                              title={accent.name}
+                              className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                                (activeNuance.accent === accent.hex || accents[activeNuance.accent]?.hex === accent.hex || (activeNuance.accent === "bois" && accent.hex === baseColors.bois.hex)) ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                              }`}
+                            >
+                              <span className="block h-6 w-full rounded-md" style={{ backgroundColor: accent.hex }} />
+                              <span className="text-[10px] leading-tight text-slate-500">{accent.name.split(" ")[0]}</span>
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isAccentPickerOpen) {
+                                setCustomColorRole(null);
+                                return;
+                              }
+                              if (!isAccentCustom) {
+                                // Préselectionne l'accent actuellement utilisé comme point de départ
+                                updateRoomNuance("accent", accentHex);
+                              }
+                              setCustomColorFamily(familyOfHex(accentHex) || FARROW_BALL_FAMILIES[0].key);
+                              setCustomColorRole("accent");
+                            }}
+                            title="Accent personnalisé pour cette pièce"
+                            className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                              isAccentCustom ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                            }`}
+                          >
+                            <span
+                              className="block h-6 w-full rounded-md border border-dashed border-black/20"
+                              style={{ backgroundColor: isAccentCustom ? accentHex : "transparent" }}
+                            />
+                            <span className="text-[10px] leading-tight text-slate-500">Personnalisé</span>
+                          </button>
+                        </div>
+                        {isAccentPickerOpen ? (
+                          <div className="mt-2 space-y-2 rounded-xl border border-black/10 bg-slate-50 p-3">
+                            <p className="text-[11px] text-slate-400">Teintes proches de la palette générale — change de famille si besoin.</p>
+                            <div className="flex gap-1 overflow-x-auto pb-1">
+                              {FARROW_BALL_FAMILIES.map(family => (
+                                <button
+                                  key={family.key}
+                                  type="button"
+                                  onClick={() => setCustomColorFamily(family.key)}
+                                  className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+                                    customColorFamily === family.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
+                                  }`}
+                                >
+                                  {family.label}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
+                              {customAccentFamily.colors.map(c => (
+                                <button
+                                  key={c.hex}
+                                  type="button"
+                                  onClick={() => updateRoomNuance("accent", c.hex)}
+                                  title={fbLabel(c)}
+                                  className={`flex flex-col overflow-hidden rounded-lg border-2 transition-all ${
+                                    accentHex === c.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
+                                  }`}
+                                >
+                                  <span className="block h-7 w-full" style={{ backgroundColor: c.hex }} />
+                                  <span className="w-full truncate px-1 py-0.5 text-left text-[9px] leading-tight text-slate-600">{c.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                            <label className="flex cursor-pointer items-center gap-2">
+                              <input
+                                type="color"
+                                value={accentHex}
+                                onChange={e => updateRoomNuance("accent", e.target.value)}
+                                className="h-7 w-7 cursor-pointer rounded border border-black/15"
+                              />
+                              <span className="text-xs text-slate-500">Couleur libre</span>
+                              <span className="ml-auto text-[11px] text-slate-400">{describeColor(accentHex)}</span>
+                            </label>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <Swatch title={getColorName(activeDominantColor)} subtitle="Dominante" hex={dominantHex} />

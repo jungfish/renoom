@@ -53,9 +53,9 @@ export function OverflowMenu({ items, activeKey, onSelect, variant = "topbar" })
       </button>
       {open && coords && createPortal(
         <div ref={menuRef} className="fixed z-50 w-44 rounded-xl border border-black/10 bg-white py-1 shadow-xl" style={coords}>
-          {items.map(({ key, label, badge, mention }) => (
+          {items.map(({ key, label, badge, mention, danger }) => (
             <button key={key} type="button" onClick={() => { onSelect(key); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs ${activeKey === key ? "bg-slate-50 font-medium text-[#1C1A17]" : "text-slate-600 hover:bg-slate-50"}`}>
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs ${danger ? "text-red-600 hover:bg-red-50" : activeKey === key ? "bg-slate-50 font-medium text-[#1C1A17]" : "text-slate-600 hover:bg-slate-50"}`}>
               <span className="min-w-0 flex-1 truncate">{label}</span>
               {mention > 0 ? (
                 <span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#CDAA73] px-1 text-[10px] font-bold text-white">{mention}</span>

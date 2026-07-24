@@ -6830,10 +6830,6 @@ function computeGeneralBadges({ orderedActiveRooms, roomLists, discussionsCache,
     const l = roomLists[k] || {};
     return acc + (l.todos || []).filter((i) => !i.done).length;
   }, 0);
-  const tCourses = orderedActiveRooms.reduce((acc, k) => {
-    const l = roomLists[k] || {};
-    return acc + (l.shopping || []).filter((i) => !i.done).length;
-  }, 0);
   const tUnread = ["general", ...orderedActiveRooms].reduce(
     (acc, k) => acc + (discussionsCache[k] || []).reduce((s, d) => s + (d.unread_count || 0), 0),
     0
@@ -6841,7 +6837,7 @@ function computeGeneralBadges({ orderedActiveRooms, roomLists, discussionsCache,
   const tDocs = orderedActiveRooms.reduce((acc, k) => acc + (roomDocuments[k] || []).length, 0);
   const tMention = (mentionNotifications || []).filter((n) => !n.read_at).length;
   const tActivity = activityFeed.filter(e => e.user_id !== user?.id && (!activityLastViewed || e.created_at > activityLastViewed)).length;
-  return { tPending, tCourses, tUnread, tDocs, tMention, tActivity };
+  return { tPending, tUnread, tDocs, tMention, tActivity };
 }
 
 export default function App() {
@@ -8577,7 +8573,7 @@ export default function App() {
               Vue générale
             </span>
             {(() => {
-              const { tPending, tCourses, tUnread, tMention, tActivity } = computeGeneralBadges({
+              const { tPending, tUnread, tMention, tActivity } = computeGeneralBadges({
                 orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
               });
               const selectGeneral = (key) => {
@@ -8589,7 +8585,7 @@ export default function App() {
               const primary = [
                 { key: "accueil", label: "Accueil", badge: 0, mention: 0 },
                 { key: "todos", label: "Tâches", badge: tPending, mention: 0 },
-                { key: "courses", label: "Courses", badge: tCourses, mention: 0 },
+                { key: "courses", label: "Courses", badge: 0, mention: 0 },
                 { key: "budget", label: "Budget", badge: 0, mention: 0 },
                 { key: "couleurs", label: "Teintes", badge: 0, mention: 0 },
                 { key: "discussions", label: "Discussions", badge: tUnread, mention: tMention },
@@ -9064,7 +9060,7 @@ export default function App() {
             <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {(() => {
                 const badgesFor = (key) => {
-                  const pending = key === "taches" ? roomTodoCount(room) : key === "courses" ? roomCourseCount(room) : key === "discussions" ? (discussionsCache[room] || []).reduce((sum, d) => sum + (d.unread_count || 0), 0) : 0;
+                  const pending = key === "taches" ? roomTodoCount(room) : key === "discussions" ? (discussionsCache[room] || []).reduce((sum, d) => sum + (d.unread_count || 0), 0) : 0;
                   const mentionBadge = key === "discussions"
                     ? (mentionNotifications || []).filter(n => !n.read_at && (discussionsCache[room] || []).some(d => d.id === n.discussion_id)).length
                     : 0;
@@ -9120,14 +9116,14 @@ export default function App() {
             <div className="mr-2 h-3.5 w-px flex-shrink-0 bg-black/10 lg:hidden" />
             <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {(() => {
-                const { tPending: totalPending, tCourses: totalCourses, tUnread: totalUnread, tMention: totalMentionUnread, tActivity: totalActivity } = computeGeneralBadges({
+                const { tPending: totalPending, tUnread: totalUnread, tMention: totalMentionUnread, tActivity: totalActivity } = computeGeneralBadges({
                   orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
                 });
                 const selectGeneral = (key) => { setGeneralMode(key); if (key === "activite") markActivityViewed(); };
                 const primary = [
                   { key: "accueil", label: "Accueil", badge: 0 },
                   { key: "todos", label: "Tâches", badge: totalPending },
-                  { key: "courses", label: "Courses", badge: totalCourses },
+                  { key: "courses", label: "Courses", badge: 0 },
                   { key: "budget", label: "Budget", badge: 0 },
                   { key: "couleurs", label: "Teintes", badge: 0 },
                   { key: "discussions", label: "Discussions", badge: totalUnread, mentionBadge: totalMentionUnread },
@@ -9167,7 +9163,7 @@ export default function App() {
         <div className="mx-auto w-full max-w-5xl space-y-5 p-4 md:space-y-6 md:p-6">
         {viewMode === "general" ? (
           generalMode === "accueil" ? (() => {
-            const { tPending, tCourses, tUnread, tMention, tActivity } = computeGeneralBadges({
+            const { tPending, tUnread, tMention, tActivity } = computeGeneralBadges({
               orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
             });
             return (
@@ -9179,7 +9175,6 @@ export default function App() {
                 getRoomColors={getRoomColors}
                 roomLists={roomLists}
                 totalPending={tPending}
-                totalCourses={tCourses}
                 totalUnread={tUnread}
                 totalMentionUnread={tMention}
                 totalActivity={tActivity}

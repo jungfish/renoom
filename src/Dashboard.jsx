@@ -22,7 +22,6 @@ export function Dashboard({
   getRoomColors,
   roomLists,
   totalPending,
-  totalCourses,
   totalUnread,
   totalMentionUnread,
   totalActivity,
@@ -62,9 +61,9 @@ export function Dashboard({
     {
       key: "courses",
       label: "Courses",
-      value: totalCourses,
-      hint: totalCourses > 0 ? `${totalCourses} en attente` : "Rien en attente",
-      highlight: totalCourses > 0,
+      value: null,
+      hint: "Voir la liste",
+      highlight: false,
     },
     {
       key: "discussions",
@@ -99,8 +98,8 @@ export function Dashboard({
           <button key={key} type="button" onClick={() => onNavigateGeneral(key)}
             className={`rounded-xl border p-4 text-left transition-colors ${highlight ? "border-[#CDAA73] bg-[#FBF6EC]" : "border-black/10 bg-white hover:bg-black/[0.02]"}`}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{label}</p>
-            <p className="mt-1 text-2xl font-semibold text-[#1C1A17]">{value}</p>
-            <p className="mt-0.5 text-xs text-slate-500">{hint}</p>
+            {value != null && <p className="mt-1 text-2xl font-semibold text-[#1C1A17]">{value}</p>}
+            <p className={value != null ? "mt-0.5 text-xs text-slate-500" : "mt-1 text-sm text-slate-500"}>{hint}</p>
           </button>
         ))}
       </div>

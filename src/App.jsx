@@ -7031,12 +7031,6 @@ export default function App() {
   const [viewMode, setViewMode] = useState("general");
   const [roomMode, setRoomMode] = useState("taches");
   const [generalMode, setGeneralMode] = useState("accueil");
-  const lastRoomModeRef = useRef({});
-
-  const handleSetRoomMode = (mode) => {
-    lastRoomModeRef.current[room] = mode;
-    setRoomMode(mode);
-  };
   const [lightbox, setLightbox] = useState(null);
   const [show3D, setShow3D] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -8502,10 +8496,6 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showProjectPicker]);
 
-  useEffect(() => {
-    setRoomMode(lastRoomModeRef.current[room] || "taches");
-  }, [room]);
-
   const getRoomColors = (roomKey) => {
     const p = allRoomPresets[roomKey];
     if (!p) return null;
@@ -9158,7 +9148,7 @@ export default function App() {
                 const selectSecondary = (key) => {
                   if (key === "export-pdf") handleExportRoomPdf();
                   else if (key === "delete-room") deleteRoom();
-                  else handleSetRoomMode(key);
+                  else setRoomMode(key);
                 };
                 return (
                   <>
@@ -9166,7 +9156,7 @@ export default function App() {
                       <button
                         key={key}
                         type="button"
-                        onClick={() => handleSetRoomMode(key)}
+                        onClick={() => setRoomMode(key)}
                         className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                           roomMode === key ? "bg-[#1C1A17] text-white" : "text-[#4D4A47] hover:bg-black/[0.06] hover:text-[#1C1A17]"
                         }`}
@@ -9312,7 +9302,6 @@ export default function App() {
               onSetBudgetTarget={setBudgetTarget}
               formatPrice={formatPrice}
               onNavigateToRoom={(key) => {
-                lastRoomModeRef.current[key] = "courses";
                 setRoom(key);
                 setViewMode("room");
                 setRoomMode("courses");
@@ -9548,7 +9537,6 @@ export default function App() {
               onNavigate={(roomKey, tab) => {
                 setRoom(roomKey);
                 setViewMode("room");
-                lastRoomModeRef.current[roomKey] = tab;
                 setRoomMode(tab);
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}

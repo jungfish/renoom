@@ -6449,7 +6449,7 @@ function SetNewPasswordScreen({ onUpdatePassword }) {
   );
 }
 
-// ─── Onglets catalogue + famille, réutilisés par tous les sélecteurs de teinte ──
+// ─── Onglets catalogue, réutilisés par le sélecteur de teinte ───────────────
 
 function CatalogTabs({ activeCatalogKey, onChange }) {
   return (
@@ -6459,10 +6459,18 @@ function CatalogTabs({ activeCatalogKey, onChange }) {
           key={cat.key}
           type="button"
           onClick={() => onChange(cat.key)}
-          className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-all ${
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-all ${
             activeCatalogKey === cat.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
           }`}
         >
+          {cat.logoUrl ? (
+            <img
+              src={cat.logoUrl}
+              alt=""
+              className={`h-3.5 w-auto max-w-[60px] object-contain ${activeCatalogKey === cat.key ? "brightness-0 invert" : ""}`}
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+          ) : null}
           {cat.label}
         </button>
       ))}
@@ -6470,67 +6478,14 @@ function CatalogTabs({ activeCatalogKey, onChange }) {
   );
 }
 
-function ColorFamilyPicker({ currentHex, catalogKey, onCatalogChange, familyKey, onFamilyChange, onSelect, helperText }) {
-  const catalog = COLOR_CATALOGS.find((c) => c.key === catalogKey) || COLOR_CATALOGS[0];
-  const activeFamily = catalog.families.find((f) => f.key === familyKey) || catalog.families[0];
-  return (
-    <div className="space-y-3 rounded-xl border border-black/10 bg-slate-50 p-3">
-      {helperText ? <p className="text-[11px] text-slate-400">{helperText}</p> : null}
-      <CatalogTabs activeCatalogKey={catalogKey} onChange={(key) => onCatalogChange(key)} />
-      <div className="flex gap-1 overflow-x-auto pb-1">
-        {catalog.families.map((family) => (
-          <button
-            key={family.key}
-            type="button"
-            onClick={() => onFamilyChange(family.key)}
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
-              familyKey === family.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
-            }`}
-          >
-            {family.label}
-          </button>
-        ))}
-      </div>
-      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
-        {activeFamily.colors.map((preset) => (
-          <button
-            key={preset.hex}
-            type="button"
-            onClick={() => onSelect(preset.hex, catalog.labelFor(preset))}
-            title={catalog.labelFor(preset)}
-            className={`flex flex-col overflow-hidden rounded-lg border-2 transition-all ${
-              currentHex === preset.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
-            }`}
-          >
-            <span className="block h-7 w-full" style={{ backgroundColor: preset.hex }} />
-            <span className="w-full truncate px-1 py-0.5 text-left text-[9px] leading-tight text-slate-600">{preset.name}</span>
-            <span className="w-full truncate px-1 pb-0.5 text-left text-[8px] leading-tight text-slate-400">
-              {formatColorCode(preset.number)}
-            </span>
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-2">
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="color"
-            value={currentHex}
-            onChange={(e) => onSelect(e.target.value, describeColor(e.target.value))}
-            className="h-7 w-7 cursor-pointer rounded border border-black/15"
-          />
-          <span className="text-xs text-slate-500">Couleur libre</span>
-        </label>
-        <span className="ml-auto text-[11px] text-slate-400">{describeColor(currentHex)}</span>
-      </div>
-    </div>
-  );
-}
-
 // ─── Catalogue de teintes (Farrow & Ball, Ressource…) ────────────────────────
+// mode "test" : parcourir et ajouter des teintes de test dans une pièce (plusieurs sélections).
+// mode "pick" : choisir une teinte unique pour un usage (palette, accent…), ferme la modale au choix.
 
-function ColorCatalogModal({ existingHexes = [], onAdd, onClose }) {
-  const [catalogKey, setCatalogKey] = useState(COLOR_CATALOGS[0].key);
-  const [family, setFamily] = useState(COLOR_CATALOGS[0].families[0].key);
+function ColorCatalogModal({ mode = "test", currentHex, onPick, existingHexes = [], onAdd, onClose }) {
+  const initialMatch = mode === "pick" ? catalogAndFamilyOfHex(currentHex) : null;
+  const [catalogKey, setCatalogKey] = useState(initialMatch?.catalogKey || COLOR_CATALOGS[0].key);
+  const [family, setFamily] = useState(initialMatch?.familyKey || COLOR_CATALOGS[0].families[0].key);
   const [query, setQuery] = useState("");
   const catalog = COLOR_CATALOGS.find((c) => c.key === catalogKey) || COLOR_CATALOGS[0];
   const activeFamily = catalog.families.find((f) => f.key === family) || catalog.families[0];
@@ -6545,13 +6500,34 @@ function ColorCatalogModal({ existingHexes = [], onAdd, onClose }) {
     setFamily(nextCatalog.families[0].key);
   };
 
+  const pickColor = (hex, label) => {
+    onPick(hex, label);
+    onClose();
+  };
+
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
       <div className="flex h-full w-full flex-col bg-white sm:h-[85vh] sm:max-w-4xl sm:rounded-2xl sm:shadow-2xl">
         <div className="flex items-center justify-between gap-3 border-b border-black/10 px-4 py-3 sm:px-6">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Catalogue</p>
-            <h2 className="type-h2">{catalog.label}</h2>
+            <a
+              href={catalog.websiteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-0.5 flex items-center gap-2 hover:underline"
+              title={`Voir ${catalog.label} sur son site officiel`}
+            >
+              {catalog.logoUrl ? (
+                <img
+                  src={catalog.logoUrl}
+                  alt=""
+                  className="h-4 w-auto max-w-[90px] object-contain"
+                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                />
+              ) : null}
+              <h2 className="type-h2">{catalog.label} ↗</h2>
+            </a>
           </div>
           <button
             type="button"
@@ -6591,7 +6567,7 @@ function ColorCatalogModal({ existingHexes = [], onAdd, onClose }) {
         <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
             {colors.map((c) => {
-              const already = existingHexes.includes(c.hex);
+              const already = mode === "test" ? existingHexes.includes(c.hex) : currentHex === c.hex;
               return (
                 <div key={c.hex} className="flex flex-col overflow-hidden rounded-xl border border-black/10">
                   <span className="block h-16 w-full" style={{ backgroundColor: c.hex }} />
@@ -6600,13 +6576,13 @@ function ColorCatalogModal({ existingHexes = [], onAdd, onClose }) {
                     <p className="text-[10px] text-slate-400">{formatColorCode(c.number)}</p>
                     <button
                       type="button"
-                      onClick={() => onAdd(c)}
-                      disabled={already}
+                      onClick={() => (mode === "test" ? onAdd(c) : pickColor(c.hex, catalog.labelFor(c)))}
+                      disabled={mode === "test" && already}
                       className={`mt-auto rounded-md border px-2 py-1 text-[11px] font-medium transition-all ${
                         already ? "border-emerald-200 bg-emerald-50 text-emerald-600" : "border-black/15 bg-white text-slate-600 hover:border-black/30"
                       }`}
                     >
-                      {already ? "Ajoutée ✓" : "Ajouter en test"}
+                      {mode === "test" ? (already ? "Ajoutée ✓" : "Ajouter en test") : (already ? "Sélectionnée ✓" : "Choisir")}
                     </button>
                   </div>
                 </div>
@@ -6615,6 +6591,20 @@ function ColorCatalogModal({ existingHexes = [], onAdd, onClose }) {
           </div>
           {colors.length === 0 ? <p className="text-sm text-slate-400">Aucune couleur ne correspond à la recherche.</p> : null}
         </div>
+        {mode === "pick" ? (
+          <div className="flex items-center gap-2 border-t border-black/10 px-4 py-3 sm:px-6">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="color"
+                value={currentHex || "#ffffff"}
+                onChange={(e) => pickColor(e.target.value, describeColor(e.target.value))}
+                className="h-8 w-8 cursor-pointer rounded border border-black/15"
+              />
+              <span className="text-xs text-slate-500">Couleur libre</span>
+            </label>
+            <span className="ml-auto text-[11px] text-slate-400">{describeColor(currentHex)}</span>
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body
@@ -6967,11 +6957,7 @@ export default function App() {
     ],
   });
   const [activePaletteSlot, setActivePaletteSlot] = useState(null);
-  const [activePaletteCatalog, setActivePaletteCatalog] = useState(COLOR_CATALOGS[0].key);
-  const [activePaletteFamily, setActivePaletteFamily] = useState(COLOR_CATALOGS[0].families[0].key);
   const [customColorRole, setCustomColorRole] = useState(null);
-  const [customCatalog, setCustomCatalog] = useState(COLOR_CATALOGS[0].key);
-  const [customColorFamily, setCustomColorFamily] = useState(COLOR_CATALOGS[0].families[0].key);
   useEffect(() => { setCustomColorRole(null); }, [room]);
 
   const [logoPaletteChanged, setLogoPaletteChanged] = useState(false);
@@ -9377,14 +9363,8 @@ export default function App() {
                     ? globalPalette.accents[parseInt(activePaletteSlot.split("-")[1])]?.hex
                     : globalPalette[activePaletteSlot]?.hex
                   : null;
-                const openSlot = (slotKey, hex) => {
-                  const next = activePaletteSlot === slotKey ? null : slotKey;
-                  setActivePaletteSlot(next);
-                  if (next) {
-                    const match = catalogAndFamilyOfHex(hex);
-                    setActivePaletteCatalog(match?.catalogKey || activePaletteCatalog);
-                    setActivePaletteFamily(match?.familyKey || activePaletteFamily);
-                  }
+                const openSlot = (slotKey) => {
+                  setActivePaletteSlot(prev => (prev === slotKey ? null : slotKey));
                 };
                 return (
                   <div className="space-y-3 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
@@ -9397,7 +9377,7 @@ export default function App() {
                         <button
                           key={slot.key}
                           type="button"
-                          onClick={() => openSlot(slot.key, slot.hex)}
+                          onClick={() => openSlot(slot.key)}
                           className={`flex flex-1 flex-col overflow-hidden rounded-xl border transition-all ${
                             activePaletteSlot === slot.key ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
                           }`}
@@ -9413,7 +9393,7 @@ export default function App() {
                         <button
                           key={i}
                           type="button"
-                          onClick={() => openSlot(`accent-${i}`, accent.hex)}
+                          onClick={() => openSlot(`accent-${i}`)}
                           className={`flex flex-1 flex-col overflow-hidden rounded-xl border transition-all ${
                             activePaletteSlot === `accent-${i}` ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
                           }`}
@@ -9427,13 +9407,11 @@ export default function App() {
                       ))}
                     </div>
                     {activePaletteSlot !== null && currentHex && (
-                      <ColorFamilyPicker
+                      <ColorCatalogModal
+                        mode="pick"
                         currentHex={currentHex}
-                        catalogKey={activePaletteCatalog}
-                        onCatalogChange={setActivePaletteCatalog}
-                        familyKey={activePaletteFamily}
-                        onFamilyChange={setActivePaletteFamily}
-                        onSelect={(hex, label) => applyColor(activePaletteSlot, hex, label)}
+                        onPick={(hex, label) => applyColor(activePaletteSlot, hex, label)}
+                        onClose={() => setActivePaletteSlot(null)}
                       />
                     )}
                     <button
@@ -9620,14 +9598,8 @@ export default function App() {
                     ? globalPalette.accents[parseInt(activePaletteSlot.split("-")[1])]?.hex
                     : globalPalette[activePaletteSlot]?.hex
                   : null;
-                const openSlot = (slotKey, hex) => {
-                  const next = activePaletteSlot === slotKey ? null : slotKey;
-                  setActivePaletteSlot(next);
-                  if (next) {
-                    const match = catalogAndFamilyOfHex(hex);
-                    setActivePaletteCatalog(match?.catalogKey || activePaletteCatalog);
-                    setActivePaletteFamily(match?.familyKey || activePaletteFamily);
-                  }
+                const openSlot = (slotKey) => {
+                  setActivePaletteSlot(prev => (prev === slotKey ? null : slotKey));
                 };
                 return (
                   <div className="space-y-4 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
@@ -9641,7 +9613,7 @@ export default function App() {
                         <button
                           key={slot.key}
                           type="button"
-                          onClick={() => openSlot(slot.key, slot.hex)}
+                          onClick={() => openSlot(slot.key)}
                           className={`flex flex-col overflow-hidden rounded-xl border transition-all ${
                             activePaletteSlot === slot.key ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
                           }`}
@@ -9663,7 +9635,7 @@ export default function App() {
                           <button
                             key={i}
                             type="button"
-                            onClick={() => openSlot(`accent-${i}`, accent.hex)}
+                            onClick={() => openSlot(`accent-${i}`)}
                             className={`flex flex-col overflow-hidden rounded-xl border transition-all ${
                               activePaletteSlot === `accent-${i}` ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
                             }`}
@@ -9678,15 +9650,12 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Picker inline */}
                     {activePaletteSlot !== null && currentHex && (
-                      <ColorFamilyPicker
+                      <ColorCatalogModal
+                        mode="pick"
                         currentHex={currentHex}
-                        catalogKey={activePaletteCatalog}
-                        onCatalogChange={setActivePaletteCatalog}
-                        familyKey={activePaletteFamily}
-                        onFamilyChange={setActivePaletteFamily}
-                        onSelect={(hex, label) => applyColor(activePaletteSlot, hex, label)}
+                        onPick={(hex, label) => applyColor(activePaletteSlot, hex, label)}
+                        onClose={() => setActivePaletteSlot(null)}
                       />
                     )}
                     <button
@@ -9753,9 +9722,6 @@ export default function App() {
                                 // Préselectionne la teinte actuellement utilisée (slot de la palette générale) comme point de départ
                                 updateRoomNuance(role, startHex);
                               }
-                              const match = catalogAndFamilyOfHex(startHex);
-                              setCustomCatalog(match?.catalogKey || customCatalog);
-                              setCustomColorFamily(match?.familyKey || customColorFamily);
                               setCustomColorRole(role);
                             }}
                             title="Teinte personnalisée pour cette pièce"
@@ -9771,14 +9737,11 @@ export default function App() {
                           </button>
                         </div>
                         {isPickerOpen ? (
-                          <ColorFamilyPicker
+                          <ColorCatalogModal
+                            mode="pick"
                             currentHex={customHex}
-                            catalogKey={customCatalog}
-                            onCatalogChange={setCustomCatalog}
-                            familyKey={customColorFamily}
-                            onFamilyChange={setCustomColorFamily}
-                            onSelect={(hex) => updateRoomNuance(role, hex)}
-                            helperText="Teintes proches de la palette générale — change de catalogue ou de famille si besoin."
+                            onPick={(hex) => updateRoomNuance(role, hex)}
+                            onClose={() => setCustomColorRole(null)}
                           />
                         ) : null}
                       </div>
@@ -9818,9 +9781,6 @@ export default function App() {
                                 // Préselectionne l'accent actuellement utilisé comme point de départ
                                 updateRoomNuance("accent", accentHex);
                               }
-                              const match = catalogAndFamilyOfHex(accentHex);
-                              setCustomCatalog(match?.catalogKey || customCatalog);
-                              setCustomColorFamily(match?.familyKey || customColorFamily);
                               setCustomColorRole("accent");
                             }}
                             title="Accent personnalisé pour cette pièce"
@@ -9836,14 +9796,11 @@ export default function App() {
                           </button>
                         </div>
                         {isAccentPickerOpen ? (
-                          <ColorFamilyPicker
+                          <ColorCatalogModal
+                            mode="pick"
                             currentHex={accentHex}
-                            catalogKey={customCatalog}
-                            onCatalogChange={setCustomCatalog}
-                            familyKey={customColorFamily}
-                            onFamilyChange={setCustomColorFamily}
-                            onSelect={(hex) => updateRoomNuance("accent", hex)}
-                            helperText="Teintes proches de la palette générale — change de catalogue ou de famille si besoin."
+                            onPick={(hex) => updateRoomNuance("accent", hex)}
+                            onClose={() => setCustomColorRole(null)}
                           />
                         ) : null}
                       </div>

@@ -1,12 +1,41 @@
 // Registre des catalogues de teintes disponibles dans le sélecteur de couleur.
-// Ajouter un catalogue = ajouter une entrée ici (voir farrowBall.js / ressource.js pour la forme des données).
+// Ajouter un catalogue = ajouter une entrée à COLOR_CATALOGS ci-dessous : un fichier de données
+// (voir farrowBall.js / ressource.js) qui exporte un dictionnaire de teintes {family, name, hex,
+// ...} + un libellé de famille + une fonction de label — defineCatalog() se charge du reste
+// (regroupement par famille, index par hex).
 
-import { fbLabel, FARROW_BALL_LIBRARY, FARROW_BALL_FAMILIES } from "./farrowBall.js";
-import { rsLabel, RESSOURCE_LIBRARY, RESSOURCE_FAMILIES } from "./ressource.js";
+import { FB, FARROW_BALL_FAMILY_LABELS, fbLabel } from "./farrowBall.js";
+import { RS, RESSOURCE_FAMILY_LABELS, rsLabel } from "./ressource.js";
+
+function defineCatalog({ key, label, colors, familyLabels, labelFor, logoUrl, websiteUrl }) {
+  const library = Object.values(colors);
+  const families = Object.keys(familyLabels).map((familyKey) => ({
+    key: familyKey,
+    label: familyLabels[familyKey],
+    colors: library.filter((entry) => entry.family === familyKey),
+  }));
+  return { key, label, library, families, labelFor, logoUrl, websiteUrl };
+}
 
 export const COLOR_CATALOGS = [
-  { key: "farrowBall", label: "Farrow & Ball", library: FARROW_BALL_LIBRARY, families: FARROW_BALL_FAMILIES, labelFor: fbLabel },
-  { key: "ressource", label: "Ressource", library: RESSOURCE_LIBRARY, families: RESSOURCE_FAMILIES, labelFor: rsLabel },
+  defineCatalog({
+    key: "farrowBall",
+    label: "Farrow & Ball",
+    colors: FB,
+    familyLabels: FARROW_BALL_FAMILY_LABELS,
+    labelFor: fbLabel,
+    logoUrl: "https://www.farrow-ball.com/static/version1784792610/frontend/FarrowAndBall/theme-frontend-farrow-and-ball/default/images/logo.svg",
+    websiteUrl: "https://www.farrow-ball.com/fr/",
+  }),
+  defineCatalog({
+    key: "ressource",
+    label: "Ressource",
+    colors: RS,
+    familyLabels: RESSOURCE_FAMILY_LABELS,
+    labelFor: rsLabel,
+    logoUrl: "https://ressource-peintures.com/wp-content/uploads/2024/04/logo-ressource-black-2024.webp",
+    websiteUrl: "https://ressource-peintures.com",
+  }),
 ];
 
 const ALL_COLORS = COLOR_CATALOGS.flatMap((catalog) =>
@@ -49,9 +78,10 @@ export function catalogAndFamilyOfHex(hex) {
 
 export const ALL_COLORS_LIBRARY = ALL_COLORS;
 
-// Formatte le code d'une teinte pour l'affichage : les références Ressource ("R111")
-// s'affichent telles quelles, les numéros Farrow & Ball ("2003") reçoivent le préfixe "N°".
+// Formatte le code d'une teinte pour l'affichage : les références alphanumériques ("R111",
+// "SL46") s'affichent telles quelles, les numéros purement numériques Farrow & Ball ("2003")
+// reçoivent le préfixe "N°".
 export function formatColorCode(code) {
   if (!code) return "";
-  return /^R\d/.test(code) ? code : `N°${code}`;
+  return /^\d+$/.test(code) ? `N°${code}` : code;
 }

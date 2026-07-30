@@ -147,14 +147,6 @@ export const FB = {
   basalt: { number: "2061", name: "Basalt", hex: "#4E4C49", family: "gris" },
 };
 
-export const FARROW_BALL_LIBRARY = Object.values(FB);
-
-export const FARROW_BALL_FAMILIES = Object.keys(FARROW_BALL_FAMILY_LABELS).map(key => ({
-  key,
-  label: FARROW_BALL_FAMILY_LABELS[key],
-  colors: FARROW_BALL_LIBRARY.filter(entry => entry.family === key),
-}));
-
 export function fbLabel(entry) {
   return `${entry.name} N°${entry.number}`;
 }

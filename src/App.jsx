@@ -7047,7 +7047,13 @@ export default function App() {
   const [lightbox, setLightbox] = useState(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isChatExpanded, setIsChatExpanded] = useState(false);
-  const [chatBubbleDismissed, setChatBubbleDismissed] = useState(false);
+  const [chatBubbleDismissed, setChatBubbleDismissed] = useState(
+    () => localStorage.getItem("chatBubbleDismissed") === "true"
+  );
+  const dismissChatBubble = () => {
+    setChatBubbleDismissed(true);
+    localStorage.setItem("chatBubbleDismissed", "true");
+  };
   const [chatDrafts, setChatDrafts] = useState({});
   const [discussionsCache, setDiscussionsCache] = useState({});
   const [projectMembers, setProjectMembers] = useState([]);
@@ -9697,7 +9703,7 @@ export default function App() {
                               type="button"
                               onClick={() => { updateRoomNuance(role, key); setCustomColorRole(null); }}
                               title={name}
-                              className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                              className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
                                 selectedColor === key ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
                               }`}
                             >
@@ -9719,7 +9725,7 @@ export default function App() {
                               setCustomColorRole(role);
                             }}
                             title="Teinte personnalisée pour cette pièce"
-                            className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                            className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
                               isCustom ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
                             }`}
                           >
@@ -9727,18 +9733,18 @@ export default function App() {
                               className="block h-6 w-full rounded-md border border-dashed border-black/20"
                               style={{ backgroundColor: isCustom ? customHex : "transparent" }}
                             />
-                            <span className="text-[10px] leading-tight text-slate-500">Personnalisé</span>
+                            <span className="w-full truncate text-center text-[10px] leading-tight text-slate-500">Personnalisé</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => { updateRoomNuance(role, "none"); setCustomColorRole(null); }}
                             title="Ne pas définir cette couleur pour cette pièce"
-                            className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                            className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
                               isNone ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
                             }`}
                           >
                             <span className="grid h-6 w-full place-items-center rounded-md border border-dashed border-black/20 text-[10px] text-slate-400">✕</span>
-                            <span className="text-[10px] leading-tight text-slate-500">Aucune</span>
+                            <span className="w-full truncate text-center text-[10px] leading-tight text-slate-500">Aucune</span>
                           </button>
                         </div>
                         {isPickerOpen ? (
@@ -9768,7 +9774,7 @@ export default function App() {
                               type="button"
                               onClick={() => { updateRoomNuance("accent", accent.hex); setCustomColorRole(null); }}
                               title={accent.name}
-                              className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                              className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
                                 (activeNuance.accent === accent.hex || accents[activeNuance.accent]?.hex === accent.hex || (activeNuance.accent === "bois" && accent.hex === baseColors.bois.hex)) ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
                               }`}
                             >
@@ -9790,7 +9796,7 @@ export default function App() {
                               setCustomColorRole("accent");
                             }}
                             title="Accent personnalisé pour cette pièce"
-                            className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                            className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
                               isAccentCustom ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
                             }`}
                           >
@@ -9798,18 +9804,18 @@ export default function App() {
                               className="block h-6 w-full rounded-md border border-dashed border-black/20"
                               style={{ backgroundColor: isAccentCustom ? accentHex : "transparent" }}
                             />
-                            <span className="text-[10px] leading-tight text-slate-500">Personnalisé</span>
+                            <span className="w-full truncate text-center text-[10px] leading-tight text-slate-500">Personnalisé</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => { updateRoomNuance("accent", "none"); setCustomColorRole(null); }}
                             title="Ne pas définir d'accent pour cette pièce"
-                            className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                            className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
                               isAccentNone ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
                             }`}
                           >
                             <span className="grid h-6 w-full place-items-center rounded-md border border-dashed border-black/20 text-[10px] text-slate-400">✕</span>
-                            <span className="text-[10px] leading-tight text-slate-500">Aucune</span>
+                            <span className="w-full truncate text-center text-[10px] leading-tight text-slate-500">Aucune</span>
                           </button>
                         </div>
                         {isAccentPickerOpen ? (
@@ -10078,7 +10084,7 @@ export default function App() {
               >
                 <button
                   type="button"
-                  onClick={() => setChatBubbleDismissed(true)}
+                  onClick={() => dismissChatBubble()}
                   className="absolute -top-1.5 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-600 text-white hover:bg-slate-500"
                   style={{ fontSize: 9 }}
                   aria-label="Fermer"
@@ -10090,7 +10096,7 @@ export default function App() {
             )}
             <button
               type="button"
-              onClick={() => { setIsChatOpen((v) => !v); setChatBubbleDismissed(true); }}
+              onClick={() => { setIsChatOpen((v) => !v); dismissChatBubble(); }}
               className={`relative flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-colors ${
                 isChatOpen ? "bg-slate-700 text-white" : "bg-slate-900 text-white hover:bg-slate-700"
               }`}

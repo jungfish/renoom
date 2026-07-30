@@ -31,14 +31,14 @@ export const FB = {
   ammonite: { number: "274", name: "Ammonite", hex: "#D4D2C8", family: "blancs" },
   skimmingStone: { number: "241", name: "Skimming Stone", hex: "#D6CFBF", family: "blancs" },
   joasWhite: { number: "226", name: "Joa's White", hex: "#D6C7B0", family: "blancs" },
+  archive: { number: "227", name: "Archive", hex: "#D2BE94", family: "blancs" },
   oxfordStone: { number: "264", name: "Oxford Stone", hex: "#D2C1AA", family: "blancs" },
   cord: { number: "16", name: "Cord", hex: "#C7B99E", family: "blancs" },
   elephantsBreath: { number: "229", name: "Elephant's Breath", hex: "#C4B49E", family: "blancs" },
-  fawn: { number: "285", name: "Fawn", hex: "#B39D82", family: "blancs" },
+  fawn: { number: "10", name: "Fawn", hex: "#B39D82", family: "blancs" },
   limeWhite: { number: "1", name: "Lime White", hex: "#F2EEDC", family: "blancs" },
   offWhite: { number: "3", name: "Off-White", hex: "#F1EAD4", family: "blancs" },
   whiteTie: { number: "2002", name: "White Tie", hex: "#F2ECDD", family: "blancs" },
-  barrowWhite: { number: "2008", name: "Barrow White", hex: "#EDE7D8", family: "blancs" },
   londonStone: { number: "6", name: "London Stone", hex: "#DCD3BE", family: "blancs" },
   matchstick: { number: "2013", name: "Matchstick", hex: "#E6DEC3", family: "blancs" },
   bone: { number: "15", name: "Bone", hex: "#D9CBAE", family: "blancs" },
@@ -48,6 +48,14 @@ export const FB = {
   pavilionGray: { number: "242", name: "Pavilion Gray", hex: "#C6C4B8", family: "blancs" },
   purbeckStone: { number: "275", name: "Purbeck Stone", hex: "#C9C0AC", family: "blancs" },
   worsted: { number: "284", name: "Worsted", hex: "#B7AFA0", family: "blancs" },
+  strongWhite: { number: "2001", name: "Strong White", hex: "#F1EEE4", family: "blancs" },
+  greatWhite: { number: "2006", name: "Great White", hex: "#F2F0E9", family: "blancs" },
+  dimity: { number: "2008", name: "Dimity", hex: "#E9E4DB", family: "blancs" },
+  jamesWhite: { number: "2010", name: "James White", hex: "#EFE9D9", family: "blancs" },
+  shadowWhite: { number: "282", name: "Shadow White", hex: "#DCD8CC", family: "blancs" },
+  dropCloth: { number: "283", name: "Drop Cloth", hex: "#E6DED0", family: "blancs" },
+  cabbageWhite: { number: "269", name: "Cabbage White", hex: "#E5E6DA", family: "blancs" },
+  hardwickWhite: { number: "5", name: "Hardwick White", hex: "#C4B8A0", family: "blancs" },
 
   // ── Bleus ────────────────────────────────────────────────────────────────
   borrowedLight: { number: "235", name: "Borrowed Light", hex: "#D9E1DE", family: "bleus" },
@@ -71,6 +79,11 @@ export const FB = {
   chineseBlue: { number: "90", name: "Chinese Blue", hex: "#4F6C7A", family: "bleus" },
   berringtonBlue: { number: "14", name: "Berrington Blue", hex: "#5D7B85", family: "bleus" },
   greenBlue: { number: "84", name: "Green Blue", hex: "#7A9992", family: "bleus" },
+  cromarty: { number: "285", name: "Cromarty", hex: "#C7CFC8", family: "bleus" },
+  bamboozle: { number: "304", name: "Bamboozle", hex: "#6E7C94", family: "bleus" },
+  hopperHead: { number: "305", name: "Hopper Head", hex: "#3A424A", family: "bleus" },
+  selvedge: { number: "306", name: "Selvedge", hex: "#3E4A5C", family: "bleus" },
+  dixBlue: { number: "82", name: "Dix Blue", hex: "#8C9E92", family: "bleus" },
 
   // ── Verts ────────────────────────────────────────────────────────────────
   greenGround: { number: "206", name: "Green Ground", hex: "#CDD9C7", family: "verts" },
@@ -87,12 +100,13 @@ export const FB = {
   cardRoomGreen: { number: "79", name: "Card Room Green", hex: "#7F8F74", family: "verts" },
   bancha: { number: "298", name: "Bancha", hex: "#6C7F5C", family: "verts" },
   calkeGreen: { number: "34", name: "Calke Green", hex: "#54634E", family: "verts" },
-  duckGreen: { number: "74", name: "Duck Green", hex: "#37473A", family: "verts" },
+  duckGreen: { number: "W55", name: "Duck Green", hex: "#37473A", family: "verts" },
   studioGreen: { number: "93", name: "Studio Green", hex: "#2E3B22", family: "verts" },
   chappellGreen: { number: "83", name: "Chappell Green", hex: "#7C8567", family: "verts" },
   sapGreen: { number: "248", name: "Sap Green", hex: "#5C6B4E", family: "verts" },
   follyGreen: { number: "76", name: "Folly Green", hex: "#5A6E4F", family: "verts" },
   arsenic: { number: "214", name: "Arsenic", hex: "#7F9284", family: "verts" },
+  treron: { number: "292", name: "Treron", hex: "#8C9482", family: "verts" },
 
   // ── Jaunes & ocres ───────────────────────────────────────────────────────
   dayroomYellow: { number: "233", name: "Dayroom Yellow", hex: "#E8D9A0", family: "jaunes" },
@@ -104,7 +118,8 @@ export const FB = {
   sudburyYellow: { number: "51", name: "Sudbury Yellow", hex: "#C99A45", family: "jaunes" },
   indiaYellow: { number: "66", name: "India Yellow", hex: "#BE8A3E", family: "jaunes" },
   yellowCake: { number: "279", name: "Yellow Cake", hex: "#C08A3E", family: "jaunes" },
-  archive: { number: "334", name: "Archive", hex: "#E6D9A8", family: "jaunes" },
+  dorsetCream: { number: "68", name: "Dorset Cream", hex: "#E8DBA8", family: "jaunes" },
+  citron: { number: "74", name: "Citron", hex: "#C4B33E", family: "jaunes" },
 
   // ── Roses & terracotta ───────────────────────────────────────────────────
   calamine: { number: "230", name: "Calamine", hex: "#E0C4BC", family: "roses" },

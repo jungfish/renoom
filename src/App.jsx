@@ -432,7 +432,11 @@ function buildImagePrompt({ aiContext, imageKind, imageTitle }) {
     `Propose une modification réaliste et éditoriale de cette image pour la pièce: ${aiContext.roomLabel}.`,
     `Type d'image: ${imageKind}. Élément: ${imageTitle}.`,
     `Ligne directrice: ${aiContext.line}`,
-    `Nuances choisies: dominante ${aiContext.dominantName} (${aiContext.dominantHex}), secondaire ${aiContext.secondaryName} (${aiContext.secondaryHex}), accent ${aiContext.accentName} (${aiContext.accentHex}).`,
+    `Nuances choisies: ${[
+      aiContext.dominantHex ? `dominante ${aiContext.dominantName} (${aiContext.dominantHex})` : null,
+      aiContext.secondaryHex ? `secondaire ${aiContext.secondaryName} (${aiContext.secondaryHex})` : null,
+      aiContext.accentHex ? `accent ${aiContext.accentName} (${aiContext.accentHex})` : null,
+    ].filter(Boolean).join(", ") || "aucune nuance définie"}.`,
     aiContext.roomNote ? `Notes utilisateur: ${aiContext.roomNote}` : "Notes utilisateur: aucune note spécifique.",
     currentMetadata ? `Métadonnées de l'image source: ${currentMetadata}` : "Métadonnées de l'image source: utilise l'image visible comme référence de style, de composition et de matières.",
     roomMetadata ? `Contexte visuel des autres images de la pièce:\n- ${roomMetadata}` : "Contexte visuel des autres images de la pièce: aucun autre contexte indexé.",
@@ -2937,17 +2941,17 @@ function GeneralPaletteSection({ orderedActiveRooms, allRoomPresets, getRoomColo
               onClick={() => onNavigateToRoom(key)}
               className="group rounded-xl border border-black/10 bg-white p-4 text-left transition-all hover:border-slate-400/40 hover:shadow-md"
             >
-              <div className="mb-3 h-2 w-full rounded-full" style={{ backgroundColor: colors.dominant.hex }} />
+              <div className="mb-3 h-2 w-full rounded-full" style={{ backgroundColor: colors.dominant?.hex || "#EEEAE0" }} />
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div className="font-medium text-slate-900">{p.label}</div>
                 <span className="shrink-0 text-slate-300 transition-colors group-hover:text-slate-500">→</span>
               </div>
               <div className="flex gap-2">
                 {[
-                  { ...colors.dominant, sublabel: "Dom." },
-                  { ...colors.secondary, sublabel: "Sec." },
-                  { ...colors.accent, sublabel: "Acc." },
-                ].map(({ hex, name, sublabel }) => (
+                  colors.dominant && { ...colors.dominant, sublabel: "Dom." },
+                  colors.secondary && { ...colors.secondary, sublabel: "Sec." },
+                  colors.accent && { ...colors.accent, sublabel: "Acc." },
+                ].filter(Boolean).map(({ hex, name, sublabel }) => (
                   <div key={sublabel} className="min-w-0 flex-1">
                     <div className="mb-1 h-7 rounded border border-black/10" style={{ backgroundColor: hex }} />
                     <div className="truncate text-[10px] text-slate-400">{sublabel}</div>
@@ -6497,7 +6501,7 @@ function ColorCatalogModal({ mode = "test", currentHex, onPick, existingHexes = 
   const q = query.trim().toLowerCase();
   const colors = q
     ? ALL_COLORS_LIBRARY.filter((c) => c.name.toLowerCase().includes(q) || (c.number || "").toLowerCase().includes(q))
-    : activeFamily.colors.map((c) => ({ ...c, catalogKey }));
+    : activeFamily.colors.map((c) => ({ ...c, catalogKey, label: catalog.labelFor(c) }));
 
   const changeCatalog = (key) => {
     setCatalogKey(key);
@@ -6548,7 +6552,7 @@ function ColorCatalogModal({ mode = "test", currentHex, onPick, existingHexes = 
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher par nom ou référence…"
+            placeholder="Rechercher par nom ou référence, tous catalogues confondus…"
             className="w-full rounded-lg border border-black/15 bg-[#fafaf8] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20"
           />
           {!q ? (
@@ -6572,15 +6576,20 @@ function ColorCatalogModal({ mode = "test", currentHex, onPick, existingHexes = 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
             {colors.map((c) => {
               const already = mode === "test" ? existingHexes.includes(c.hex) : currentHex === c.hex;
+              const sourceCatalog = q ? COLOR_CATALOGS.find((cat) => cat.key === c.catalogKey) : null;
               return (
-                <div key={c.hex} className="flex flex-col overflow-hidden rounded-xl border border-black/10">
-                  <span className="block h-16 w-full" style={{ backgroundColor: c.hex }} />
+                <div key={`${c.catalogKey}-${c.hex}`} className="flex flex-col overflow-hidden rounded-xl border border-black/10">
+                  <span className="relative block h-16 w-full" style={{ backgroundColor: c.hex }}>
+                    {sourceCatalog ? (
+                      <CatalogIcon catalog={sourceCatalog} className="absolute left-1.5 top-1.5 h-5 w-5 shadow-sm" />
+                    ) : null}
+                  </span>
                   <div className="flex flex-1 flex-col gap-1 p-2">
                     <p className="text-xs font-medium leading-tight text-slate-700">{c.name}</p>
                     <p className="text-[10px] text-slate-400">{formatColorCode(c.number)}</p>
                     <button
                       type="button"
-                      onClick={() => (mode === "test" ? onAdd(c) : pickColor(c.hex, catalog.labelFor(c)))}
+                      onClick={() => (mode === "test" ? onAdd(c) : pickColor(c.hex, c.label))}
                       disabled={mode === "test" && already}
                       className={`mt-auto rounded-md border px-2 py-1 text-[11px] font-medium transition-all ${
                         already ? "border-emerald-200 bg-emerald-50 text-emerald-600" : "border-black/15 bg-white text-slate-600 hover:border-black/30"
@@ -7114,10 +7123,11 @@ export default function App() {
   const activeNuance = roomNuances[room] || INITIAL_ROOM_NUANCES[room] || { dominant: "moyen", secondary: "moyen", accent: globalAccent };
   const activeDominantColor = activeNuance.dominantColor || preset.dominant;
   const activeSecondaryColor = activeNuance.secondaryColor || preset.secondary;
-  const dominantHex = getShade(activeDominantColor, activeNuance.dominant);
-  const secondaryHex = getShade(activeSecondaryColor, activeNuance.secondary);
+  const dominantHex = activeDominantColor === "none" ? null : getShade(activeDominantColor, activeNuance.dominant);
+  const secondaryHex = activeSecondaryColor === "none" ? null : getShade(activeSecondaryColor, activeNuance.secondary);
   const accentHex = (() => {
     const a = activeNuance.accent;
+    if (a === "none") return null;
     if (!a) return globalPalette.accents[0].hex;
     if (a.startsWith("#")) return a;
     if (a === "bois") return baseColors.bois.hex;
@@ -7125,6 +7135,7 @@ export default function App() {
   })();
   const accentName = (() => {
     const a = activeNuance.accent;
+    if (a === "none") return null;
     if (!a) return globalPalette.accents[0].name;
     if (a.startsWith("#")) return globalPalette.accents.find(ac => ac.hex === a)?.name || describeColor(a);
     if (a === "bois") return baseColors.bois.name;
@@ -7221,9 +7232,9 @@ export default function App() {
   const aiContext = {
     roomLabel: preset.label,
     line: preset.line,
-    dominantName: getColorName(activeDominantColor),
+    dominantName: dominantHex ? getColorName(activeDominantColor) : null,
     dominantHex,
-    secondaryName: getColorName(activeSecondaryColor),
+    secondaryName: secondaryHex ? getColorName(activeSecondaryColor) : null,
     secondaryHex,
     accentName,
     accentHex,
@@ -7311,9 +7322,9 @@ export default function App() {
             accent: globalPalette.accents?.[0],
           }}
           palette={{
-            dominant: { name: aiContext.dominantName, hex: aiContext.dominantHex },
-            secondary: { name: aiContext.secondaryName, hex: aiContext.secondaryHex },
-            accent: { name: aiContext.accentName, hex: aiContext.accentHex },
+            dominant: aiContext.dominantHex ? { name: aiContext.dominantName, hex: aiContext.dominantHex } : null,
+            secondary: aiContext.secondaryHex ? { name: aiContext.secondaryName, hex: aiContext.secondaryHex } : null,
+            accent: aiContext.accentHex ? { name: aiContext.accentName, hex: aiContext.accentHex } : null,
           }}
           testColors={roomColorTests[room] || []}
           inspirationImages={(aiInspirations[room] || []).filter((_, i) => !deletedImages[`${room}-ai-${i}`])}
@@ -8492,11 +8503,15 @@ export default function App() {
     const nuance = roomNuances[roomKey] || INITIAL_ROOM_NUANCES[roomKey] || { dominant: "moyen", secondary: "moyen", accent: globalAccent };
     const dColor = nuance.dominantColor || p.dominant;
     const sColor = nuance.secondaryColor || p.secondary;
-    const dHex = getShade(dColor, nuance.dominant);
-    const sHex = getShade(sColor, nuance.secondary);
-    const aHex = (() => { const a = nuance.accent; if (!a) return globalPalette.accents[0].hex; if (a.startsWith("#")) return a; if (a === "bois") return baseColors.bois.hex; return accents[a]?.hex || globalPalette.accents[0].hex; })();
-    const aName = (() => { const a = nuance.accent; if (!a) return globalPalette.accents[0].name; if (a.startsWith("#")) return globalPalette.accents.find(ac => ac.hex === a)?.name || describeColor(a); if (a === "bois") return baseColors.bois.name; return accents[a]?.name || globalPalette.accents[0].name; })();
-    return { dominant: { name: getColorName(dColor), hex: dHex }, secondary: { name: getColorName(sColor), hex: sHex }, accent: { name: aName, hex: aHex } };
+    const dHex = dColor === "none" ? null : getShade(dColor, nuance.dominant);
+    const sHex = sColor === "none" ? null : getShade(sColor, nuance.secondary);
+    const aHex = (() => { const a = nuance.accent; if (a === "none") return null; if (!a) return globalPalette.accents[0].hex; if (a.startsWith("#")) return a; if (a === "bois") return baseColors.bois.hex; return accents[a]?.hex || globalPalette.accents[0].hex; })();
+    const aName = (() => { const a = nuance.accent; if (a === "none") return null; if (!a) return globalPalette.accents[0].name; if (a.startsWith("#")) return globalPalette.accents.find(ac => ac.hex === a)?.name || describeColor(a); if (a === "bois") return baseColors.bois.name; return accents[a]?.name || globalPalette.accents[0].name; })();
+    return {
+      dominant: dHex ? { name: getColorName(dColor), hex: dHex } : null,
+      secondary: sHex ? { name: getColorName(sColor), hex: sHex } : null,
+      accent: aHex ? { name: aName, hex: aHex } : null,
+    };
   };
 
   const roomTodoCount = (key) => (roomLists[key]?.todos || []).filter((item) => !item.done).length;
@@ -9435,10 +9450,10 @@ export default function App() {
                       </div>
                       <div className="mb-3 flex gap-2">
                         {[
-                          { ...colors.dominant, sublabel: "Dom." },
-                          { ...colors.secondary, sublabel: "Sec." },
-                          { ...colors.accent, sublabel: "Acc." },
-                        ].map(({ hex, name, sublabel }) => (
+                          colors.dominant && { ...colors.dominant, sublabel: "Dom." },
+                          colors.secondary && { ...colors.secondary, sublabel: "Sec." },
+                          colors.accent && { ...colors.accent, sublabel: "Acc." },
+                        ].filter(Boolean).map(({ hex, name, sublabel }) => (
                           <div key={sublabel} className="min-w-0 flex-1">
                             <div className="mb-1 h-7 rounded border border-black/10" style={{ backgroundColor: hex }} />
                             <div className="truncate text-[10px] text-slate-400">{sublabel}</div>
@@ -9661,6 +9676,7 @@ export default function App() {
                   ].map(({ role, label }) => {
                     const selectedColor = activeNuance[role] || (role === "dominantColor" ? preset.dominant : preset.secondary);
                     const isCustom = typeof selectedColor === "string" && selectedColor.startsWith("#");
+                    const isNone = selectedColor === "none";
                     const fallbackSlot = role === "dominantColor" ? "dominante" : "secondaire";
                     const startHex = isCustom
                       ? selectedColor
@@ -9713,6 +9729,17 @@ export default function App() {
                             />
                             <span className="text-[10px] leading-tight text-slate-500">Personnalisé</span>
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => { updateRoomNuance(role, "none"); setCustomColorRole(null); }}
+                            title="Ne pas définir cette couleur pour cette pièce"
+                            className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                              isNone ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                            }`}
+                          >
+                            <span className="grid h-6 w-full place-items-center rounded-md border border-dashed border-black/20 text-[10px] text-slate-400">✕</span>
+                            <span className="text-[10px] leading-tight text-slate-500">Aucune</span>
+                          </button>
                         </div>
                         {isPickerOpen ? (
                           <ColorCatalogModal
@@ -9729,6 +9756,7 @@ export default function App() {
                     const isAccentCustom = typeof activeNuance.accent === "string"
                       && activeNuance.accent.startsWith("#")
                       && !globalPalette.accents.some(a => a.hex === activeNuance.accent);
+                    const isAccentNone = activeNuance.accent === "none";
                     const isAccentPickerOpen = customColorRole === "accent";
                     return (
                       <div>
@@ -9756,8 +9784,8 @@ export default function App() {
                                 return;
                               }
                               if (!isAccentCustom) {
-                                // Préselectionne l'accent actuellement utilisé comme point de départ
-                                updateRoomNuance("accent", accentHex);
+                                // Préselectionne l'accent actuellement utilisé (ou celui de la palette générale si aucun) comme point de départ
+                                updateRoomNuance("accent", accentHex || globalPalette.accents[0].hex);
                               }
                               setCustomColorRole("accent");
                             }}
@@ -9772,11 +9800,22 @@ export default function App() {
                             />
                             <span className="text-[10px] leading-tight text-slate-500">Personnalisé</span>
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => { updateRoomNuance("accent", "none"); setCustomColorRole(null); }}
+                            title="Ne pas définir d'accent pour cette pièce"
+                            className={`flex flex-1 flex-col items-center gap-1 rounded-lg border p-1.5 transition-all ${
+                              isAccentNone ? "border-slate-900 shadow-sm" : "border-black/10 hover:border-black/30"
+                            }`}
+                          >
+                            <span className="grid h-6 w-full place-items-center rounded-md border border-dashed border-black/20 text-[10px] text-slate-400">✕</span>
+                            <span className="text-[10px] leading-tight text-slate-500">Aucune</span>
+                          </button>
                         </div>
                         {isAccentPickerOpen ? (
                           <ColorCatalogModal
                             mode="pick"
-                            currentHex={accentHex}
+                            currentHex={accentHex || globalPalette.accents[0].hex}
                             onPick={(hex) => updateRoomNuance("accent", hex)}
                             onClose={() => setCustomColorRole(null)}
                           />
@@ -9786,9 +9825,12 @@ export default function App() {
                   })()}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <Swatch title={getColorName(activeDominantColor)} subtitle="Dominante" hex={dominantHex} />
-                  <Swatch title={getColorName(activeSecondaryColor)} subtitle="Secondaire" hex={secondaryHex} />
-                  <Swatch title={accentName} subtitle="Accent" hex={accentHex} />
+                  {dominantHex ? <Swatch title={getColorName(activeDominantColor)} subtitle="Dominante" hex={dominantHex} /> : null}
+                  {secondaryHex ? <Swatch title={getColorName(activeSecondaryColor)} subtitle="Secondaire" hex={secondaryHex} /> : null}
+                  {accentHex ? <Swatch title={accentName} subtitle="Accent" hex={accentHex} /> : null}
+                  {!dominantHex && !secondaryHex && !accentHex ? (
+                    <p className="text-sm text-slate-400">Aucune couleur définie pour cette pièce.</p>
+                  ) : null}
                 </div>
                 <label className="block text-sm">
                   Note de la pièce

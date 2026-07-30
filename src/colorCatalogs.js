@@ -7,14 +7,14 @@
 import { FB, FARROW_BALL_FAMILY_LABELS, fbLabel } from "./farrowBall.js";
 import { RS, RESSOURCE_FAMILY_LABELS, rsLabel } from "./ressource.js";
 
-function defineCatalog({ key, label, colors, familyLabels, labelFor, logoUrl, websiteUrl }) {
+function defineCatalog({ key, label, colors, familyLabels, labelFor, iconUrl, websiteUrl, description }) {
   const library = Object.values(colors);
   const families = Object.keys(familyLabels).map((familyKey) => ({
     key: familyKey,
     label: familyLabels[familyKey],
     colors: library.filter((entry) => entry.family === familyKey),
   }));
-  return { key, label, library, families, labelFor, logoUrl, websiteUrl };
+  return { key, label, library, families, labelFor, iconUrl, websiteUrl, description };
 }
 
 export const COLOR_CATALOGS = [
@@ -24,8 +24,9 @@ export const COLOR_CATALOGS = [
     colors: FB,
     familyLabels: FARROW_BALL_FAMILY_LABELS,
     labelFor: fbLabel,
-    logoUrl: "https://www.farrow-ball.com/static/version1784792610/frontend/FarrowAndBall/theme-frontend-farrow-and-ball/default/images/logo.svg",
+    iconUrl: "https://www.farrow-ball.com/media/favicon/websites/5/New_Favicon_2024.jpg",
     websiteUrl: "https://www.farrow-ball.com/fr/",
+    description: "Peinture artisanale britannique depuis 1946 — teintes sourdes et intemporelles, pigments naturels.",
   }),
   defineCatalog({
     key: "ressource",
@@ -33,8 +34,9 @@ export const COLOR_CATALOGS = [
     colors: RS,
     familyLabels: RESSOURCE_FAMILY_LABELS,
     labelFor: rsLabel,
-    logoUrl: "https://ressource-peintures.com/wp-content/uploads/2024/04/logo-ressource-black-2024.webp",
+    iconUrl: "https://ressource-peintures.com/wp-content/uploads/2024/04/favicon-logo-ressource-2024-200x200.png",
     websiteUrl: "https://ressource-peintures.com",
+    description: "Peinture française haut de gamme — nuancier riche de 360 teintes aux noms poétiques, finitions chaux et minérales.",
   }),
 ];
 

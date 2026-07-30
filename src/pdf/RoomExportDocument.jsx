@@ -96,9 +96,12 @@ export function RoomExportDocument({
           <Text style={styles.sectionTitle}>Palette de la pièce — {roomLabel}</Text>
           <Text style={styles.caption}>Nuances propres à cette pièce (peuvent différer de l'appartement).</Text>
           <View style={styles.swatchRow}>
-            <Swatch label="Dominante" name={palette?.dominant?.name} hex={palette?.dominant?.hex} />
-            <Swatch label="Secondaire" name={palette?.secondary?.name} hex={palette?.secondary?.hex} />
-            <Swatch label="Accent" name={palette?.accent?.name} hex={palette?.accent?.hex} />
+            {palette?.dominant ? <Swatch label="Dominante" name={palette.dominant.name} hex={palette.dominant.hex} /> : null}
+            {palette?.secondary ? <Swatch label="Secondaire" name={palette.secondary.name} hex={palette.secondary.hex} /> : null}
+            {palette?.accent ? <Swatch label="Accent" name={palette.accent.name} hex={palette.accent.hex} /> : null}
+            {!palette?.dominant && !palette?.secondary && !palette?.accent ? (
+              <Text style={styles.caption}>Aucune teinte définie pour cette pièce.</Text>
+            ) : null}
           </View>
           {testColors.length > 0 && (
             <View style={{ marginTop: 12 }}>

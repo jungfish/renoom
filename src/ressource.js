@@ -36,6 +36,8 @@ export const RS = {
   laPamoison: { ref: "R153", number: "R153", name: "La Pâmoison", hex: "#E9DED5", family: "blancs" },
   // Collection "Maison de Vacances" (peinture/enduit à la chaux) x Ressource.
   meringue: { ref: "RMDV03", number: "RMDV03", name: "Meringue", hex: "#F0E9DC", family: "blancs" },
+  // Collection Antoinette Poisson x Ressource.
+  poudreDeRiz: { ref: "AP08", number: "AP08", name: "Poudre de Riz", hex: "#F0E8DA", family: "blancs" },
 
   // ── Beiges ───────────────────────────────────────────────────────────────
   laPleiade: { ref: "R185", number: "R185", name: "La Pléiade", hex: "#C9B98A", family: "beiges" },
@@ -50,6 +52,16 @@ export const RS = {
   leMeistre: { ref: "R047", number: "R047", name: "Le Meistre", hex: "#BFA97C", family: "beiges" },
   linstinct: { ref: "R028", number: "R028", name: "L'Instinct", hex: "#BDAE8E", family: "beiges" },
   larome: { ref: "R206", number: "R206", name: "L'Arôme", hex: "#B39F7C", family: "beiges" },
+  laDelicatesse: { ref: "R143", number: "R143", name: "La Délicatesse", hex: "#DED0B4", family: "beiges" },
+  laJouvencelle: { ref: "R151", number: "R151", name: "La Jouvencelle", hex: "#E6DEC0", family: "beiges" },
+  laFelicite: { ref: "R027", number: "R027", name: "La Félicité", hex: "#E0CBA8", family: "beiges" },
+  laCorolle: { ref: "R084", number: "R084", name: "La Corolle", hex: "#DDCBAE", family: "beiges" },
+  laridite: { ref: "R175", number: "R175", name: "L'Aridité", hex: "#C7B48C", family: "beiges" },
+  leRelief: { ref: "R118", number: "R118", name: "Le Relief", hex: "#B8A182", family: "beiges" },
+  laNostalgie: { ref: "R155", number: "R155", name: "La Nostalgie", hex: "#C2A98C", family: "beiges" },
+  leDessert: { ref: "R141", number: "R141", name: "Le Dessert", hex: "#E8DCC4", family: "beiges" },
+  lempathie: { ref: "R058", number: "R058", name: "L'Empathie", hex: "#E6DBC2", family: "beiges" },
+  laMadeleine: { ref: "R315", number: "R315", name: "La Madeleine", hex: "#EAE0BE", family: "beiges" },
 
   // ── Gris ─────────────────────────────────────────────────────────────────
   leMurmure: { ref: "R203", number: "R203", name: "Le Murmure", hex: "#E4E1DA", family: "gris" },
@@ -65,6 +77,17 @@ export const RS = {
   leBrouillard: { ref: "R161", number: "R161", name: "Le Brouillard", hex: "#A3A5A0", family: "gris" },
   leternite: { ref: "R164", number: "R164", name: "L'Eternité", hex: "#94918A", family: "gris" },
   lesquisse: { ref: "R249", number: "R249", name: "L'Esquisse", hex: "#9C9C96", family: "gris" },
+  leRegal: { ref: "R018", number: "R018", name: "Le Régal", hex: "#D6D5CE", family: "gris" },
+  laPerle: { ref: "R045", number: "R045", name: "La Perle", hex: "#D2D0C8", family: "gris" },
+  leSecret: { ref: "R147", number: "R147", name: "Le Secret", hex: "#8C99A0", family: "gris" },
+  limprevu: { ref: "R156", number: "R156", name: "L'Imprévu", hex: "#767D80", family: "gris" },
+  leSymbole: { ref: "R006", number: "R006", name: "Le Symbole", hex: "#A8A6A0", family: "gris" },
+  leRituel: { ref: "R208", number: "R208", name: "Le Rituel", hex: "#B6B3AC", family: "gris" },
+  leBanquet: { ref: "R247", number: "R247", name: "Le Banquet", hex: "#9C9992", family: "gris" },
+  leChevalier: { ref: "R225", number: "R225", name: "Le Chevalier", hex: "#8E8C86", family: "gris" },
+  lanecdote: { ref: "R162", number: "R162", name: "L'Anecdote", hex: "#A6988A", family: "gris" },
+  leDessein: { ref: "R174", number: "R174", name: "Le Dessein", hex: "#8E9484", family: "gris" },
+  laCaptive: { ref: "R209", number: "R209", name: "La Captive", hex: "#A09E96", family: "gris" },
 
   // ── Bruns ────────────────────────────────────────────────────────────────
   lePelerin: { ref: "R125", number: "R125", name: "Le Pèlerin", hex: "#B7A077", family: "bruns" },
@@ -79,6 +102,9 @@ export const RS = {
   laGabardine: { ref: "R059", number: "R059", name: "La Gabardine", hex: "#5A4430", family: "bruns" },
   leTaciturne: { ref: "R133", number: "R133", name: "Le Taciturne", hex: "#4F3B28", family: "bruns" },
   leCentaure: { ref: "R011", number: "R011", name: "Le Centaure", hex: "#4A3626", family: "bruns" },
+  leBandit: { ref: "R019", number: "R019", name: "Le Bandit", hex: "#6E4E38", family: "bruns" },
+  leGourmet: { ref: "R289", number: "R289", name: "Le Gourmet", hex: "#8A6244", family: "bruns" },
+  lebeniste: { ref: "R256", number: "R256", name: "L'Ebéniste", hex: "#5C4530", family: "bruns" },
 
   // ── Noirs ────────────────────────────────────────────────────────────────
   laMeteorite: { ref: "R054", number: "R054", name: "La Météorite", hex: "#55524C", family: "noirs" },
@@ -93,6 +119,15 @@ export const RS = {
   leTumulte: { ref: "R002", number: "R002", name: "Le Tumulte", hex: "#3B3936", family: "noirs" },
   laSignature: { ref: "R172", number: "R172", name: "La Signature", hex: "#292A2B", family: "noirs" },
   loctave: { ref: "R250", number: "R250", name: "L'Octave", hex: "#201F1E", family: "noirs" },
+  leMacadam: { ref: "R176", number: "R176", name: "Le Macadam", hex: "#2E2C29", family: "noirs" },
+  laTempete: { ref: "R026", number: "R026", name: "La Tempête", hex: "#26282A", family: "noirs" },
+  laPartition: { ref: "R073", number: "R073", name: "La Partition", hex: "#232323", family: "noirs" },
+  laSatire: { ref: "R082", number: "R082", name: "La Satire", hex: "#38393A", family: "noirs" },
+  leCachou: { ref: "R201", number: "R201", name: "Le Cachou", hex: "#2C2A28", family: "noirs" },
+  legance: { ref: "R199", number: "R199", name: "L'Elégance", hex: "#1E1E1F", family: "noirs" },
+  laStatue: { ref: "R182", number: "R182", name: "La Statue", hex: "#2A2A2C", family: "noirs" },
+  lalbatros: { ref: "R076", number: "R076", name: "L'Albatros", hex: "#20211F", family: "noirs" },
+  lenvoutement: { ref: "R025", number: "R025", name: "L'Envoûtement", hex: "#191A1A", family: "noirs" },
 
   // ── Violets ──────────────────────────────────────────────────────────────
   laFleurette: { ref: "R487", number: "R487", name: "La Fleurette", hex: "#A99AC4", family: "violets" },
@@ -105,6 +140,12 @@ export const RS = {
   laCuriosite: { ref: "R495", number: "R495", name: "La Curiosité", hex: "#4A2E3D", family: "violets" },
   laDelectation: { ref: "R267", number: "R267", name: "La Délectation", hex: "#4E3A5C", family: "violets" },
   lextase: { ref: "R254", number: "R254", name: "L'Extase", hex: "#593548", family: "violets" },
+  laPrincesse: { ref: "R321", number: "R321", name: "La Princesse", hex: "#A79CC4", family: "violets" },
+  laFrivolite: { ref: "R369", number: "R369", name: "La Frivolité", hex: "#B5A8CC", family: "violets" },
+  leVignoble: { ref: "R277", number: "R277", name: "Le Vignoble", hex: "#4E3255", family: "violets" },
+  laSottise: { ref: "R258", number: "R258", name: "La Sottise", hex: "#6E2E4A", family: "violets" },
+  laCantatrice: { ref: "R442", number: "R442", name: "La Cantatrice", hex: "#8C3A72", family: "violets" },
+  lensorcellement: { ref: "R787", number: "R787", name: "L'Ensorcellement", hex: "#6A4A8C", family: "violets" },
 
   // ── Verts ────────────────────────────────────────────────────────────────
   laLiqueur: { ref: "R257", number: "R257", name: "La Liqueur", hex: "#B7C46A", family: "verts" },
@@ -120,6 +161,13 @@ export const RS = {
   leQuatuor: { ref: "R101", number: "R101", name: "Le Quatuor", hex: "#6E7048", family: "verts" },
   leMarais: { ref: "R196", number: "R196", name: "Le Marais", hex: "#566B4A", family: "verts" },
   lintrigue: { ref: "R089", number: "R089", name: "L'Intrigue", hex: "#4E6B45", family: "verts" },
+  laSagesse: { ref: "R420", number: "R420", name: "La Sagesse", hex: "#6E6548", family: "verts" },
+  leMerite: { ref: "R433", number: "R433", name: "Le Mérite", hex: "#8CA88E", family: "verts" },
+  leTotem: { ref: "R601", number: "R601", name: "Le Totem", hex: "#6E7548", family: "verts" },
+  leSauvageon: { ref: "R670", number: "R670", name: "Le Sauvageon", hex: "#7C8858", family: "verts" },
+  lhedoniste: { ref: "R732", number: "R732", name: "L'Hédoniste", hex: "#8FA060", family: "verts" },
+  larcher: { ref: "R559", number: "R559", name: "L'Archer", hex: "#6E6540", family: "verts" },
+  lePhilanthrope: { ref: "R502", number: "R502", name: "Le Philanthrope", hex: "#7C7548", family: "verts" },
 
   // ── Bleus ────────────────────────────────────────────────────────────────
   lextravagance: { ref: "R763", number: "R763", name: "L'Extravagance", hex: "#6A5FA0", family: "bleus" },
@@ -133,6 +181,19 @@ export const RS = {
   leCrepuscule: { ref: "R755", number: "R755", name: "Le Crépuscule", hex: "#223347", family: "bleus" },
   leCosmos: { ref: "R901", number: "R901", name: "Le Cosmos", hex: "#2B2E33", family: "bleus" },
   leFirmament: { ref: "R829", number: "R829", name: "Le Firmament", hex: "#1A2233", family: "bleus" },
+  leMatelot: { ref: "R975", number: "R975", name: "Le Matelot", hex: "#4A6FA8", family: "bleus" },
+  laPerseverance: { ref: "R906", number: "R906", name: "La Persévérance", hex: "#2E5C99", family: "bleus" },
+  lallegresse: { ref: "R771", number: "R771", name: "L'Allégresse", hex: "#1E4A9C", family: "bleus" },
+  leChenapan: { ref: "R811", number: "R811", name: "Le Chenapan", hex: "#2A3D6E", family: "bleus" },
+  laConquete: { ref: "R869", number: "R869", name: "La Conquête", hex: "#3E4A8C", family: "bleus" },
+  leCyclone: { ref: "R843", number: "R843", name: "Le Cyclone", hex: "#35597A", family: "bleus" },
+  laFoudre: { ref: "R961", number: "R961", name: "La Foudre", hex: "#5A6B78", family: "bleus" },
+  lepopee: { ref: "R968", number: "R968", name: "L'Epopée", hex: "#6E7B82", family: "bleus" },
+  linfini: { ref: "R815", number: "R815", name: "L'Infini", hex: "#6E8CA8", family: "bleus" },
+  leScaphandre: { ref: "R885", number: "R885", name: "Le Scaphandre", hex: "#4E5F6E", family: "bleus" },
+  louragan: { ref: "R810", number: "R810", name: "L'Ouragan", hex: "#1F4E7A", family: "bleus" },
+  laVolontaire: { ref: "R911", number: "R911", name: "La Volontaire", hex: "#3A6EA5", family: "bleus" },
+  lunivers: { ref: "R943", number: "R943", name: "L'Univers", hex: "#1A2942", family: "bleus" },
 
   // ── Rouges ───────────────────────────────────────────────────────────────
   leFestin: { ref: "R455", number: "R455", name: "Le Festin", hex: "#B4874A", family: "rouges" },
@@ -144,6 +205,17 @@ export const RS = {
   lobsession: { ref: "R329", number: "R329", name: "L'Obsession", hex: "#8B3A2E", family: "rouges" },
   laDuchesse: { ref: "R481", number: "R481", name: "La Duchesse", hex: "#6E2E24", family: "rouges" },
   laFriandise: { ref: "R477", number: "R477", name: "La Friandise", hex: "#4A2036", family: "rouges" },
+  laBacchanale: { ref: "R463", number: "R463", name: "La Bacchanale", hex: "#5C2430", family: "rouges" },
+  laPassion: { ref: "R290", number: "R290", name: "La Passion", hex: "#8C2B4A", family: "rouges" },
+  leLyrisme: { ref: "R419", number: "R419", name: "Le Lyrisme", hex: "#6E3428", family: "rouges" },
+  leBienAime: { ref: "R409", number: "R409", name: "Le Bien-Aimé", hex: "#9C5A3A", family: "rouges" },
+  laConvoitise: { ref: "R388", number: "R388", name: "La Convoitise", hex: "#A8283A", family: "rouges" },
+  laBaroque: { ref: "R279", number: "R279", name: "La Baroque", hex: "#6E2430", family: "rouges" },
+  leRendezVous: { ref: "R281", number: "R281", name: "Le Rendez-Vous", hex: "#7A2530", family: "rouges" },
+  laDispute: { ref: "R391", number: "R391", name: "La Dispute", hex: "#6E2A48", family: "rouges" },
+  leBaisemain: { ref: "R308", number: "R308", name: "Le Baisemain", hex: "#8C3A3A", family: "rouges" },
+  laPulsion: { ref: "R464", number: "R464", name: "La Pulsion", hex: "#B8302A", family: "rouges" },
+  lopera: { ref: "R431", number: "R431", name: "L'Opéra", hex: "#7A222A", family: "rouges" },
 
   // ── Oranges ──────────────────────────────────────────────────────────────
   lhydromel: { ref: "R298", number: "R298", name: "L'Hydromel", hex: "#C99A3E", family: "oranges" },
@@ -158,6 +230,9 @@ export const RS = {
   leRougeoiement: { ref: "R326", number: "R326", name: "Le Rougeoiement", hex: "#C8642E", family: "oranges" },
   leCharbonArdent: { ref: "R404", number: "R404", name: "Le Charbon Ardent", hex: "#A8492E", family: "oranges" },
   laube: { ref: "R490", number: "R490", name: "L'Aube", hex: "#D8763A", family: "oranges" },
+  lorangeraie: { ref: "R432", number: "R432", name: "L'Orangeraie", hex: "#D97A3E", family: "oranges" },
+  laFortune: { ref: "R461", number: "R461", name: "La Fortune", hex: "#D9702A", family: "oranges" },
+  laMesange: { ref: "R482", number: "R482", name: "La Mésange", hex: "#E8A83E", family: "oranges" },
 
   // ── Jaunes ───────────────────────────────────────────────────────────────
   lePoeme: { ref: "R012", number: "R012", name: "Le Poème", hex: "#EDE0B8", family: "jaunes" },
@@ -175,6 +250,12 @@ export const RS = {
   leuphorbe: { ref: "R264", number: "R264", name: "L'Euphorbe", hex: "#C7C24A", family: "jaunes" },
   laPreciosite: { ref: "R411", number: "R411", name: "La Préciosité", hex: "#B8B23E", family: "jaunes" },
   lantidote: { ref: "R271", number: "R271", name: "L'Antidote", hex: "#C9B430", family: "jaunes" },
+  leMiracle: { ref: "R459", number: "R459", name: "Le Miracle", hex: "#E8D06A", family: "jaunes" },
+  leParchemin: { ref: "R318", number: "R318", name: "Le Parchemin", hex: "#D9C68E", family: "jaunes" },
+  lhumaniste: { ref: "R288", number: "R288", name: "L'Humaniste", hex: "#C9B23E", family: "jaunes" },
+  lorfevre: { ref: "R265", number: "R265", name: "L'Orfèvre", hex: "#C99A3A", family: "jaunes" },
+  lePhilosophe: { ref: "R492", number: "R492", name: "Le Philosophe", hex: "#B87A3E", family: "jaunes" },
+  laChrysalide: { ref: "R526", number: "R526", name: "La Chrysalide", hex: "#C7C468", family: "jaunes" },
 
   // ── Roses ────────────────────────────────────────────────────────────────
   laDouceur: { ref: "R299", number: "R299", name: "La Douceur", hex: "#E4CFC8", family: "roses" },
@@ -188,6 +269,14 @@ export const RS = {
   laBerceuse: { ref: "R241", number: "R241", name: "La Berceuse", hex: "#DDAAA0", family: "roses" },
   laSensation: { ref: "R384", number: "R384", name: "La Sensation", hex: "#D89C9E", family: "roses" },
   laPudeur: { ref: "R333", number: "R333", name: "La Pudeur", hex: "#C98C94", family: "roses" },
+  leBambin: { ref: "R284", number: "R284", name: "Le Bambin", hex: "#E8C4B4", family: "roses" },
+  laBallerine: { ref: "R401", number: "R401", name: "La Ballerine", hex: "#E8D0CE", family: "roses" },
+  laPoupee: { ref: "R468", number: "R468", name: "La Poupée", hex: "#E4A8A2", family: "roses" },
+  leDelice: { ref: "R328", number: "R328", name: "Le Délice", hex: "#E8AEB2", family: "roses" },
+  laDulcinee: { ref: "R379", number: "R379", name: "La Dulcinée", hex: "#E89C96", family: "roses" },
+  laCourtoisie: { ref: "R292", number: "R292", name: "La Courtoisie", hex: "#DCB4B8", family: "roses" },
+  lePetale: { ref: "R486", number: "R486", name: "Le Pétale", hex: "#E4A0AA", family: "roses" },
+  laBelleDeJour: { ref: "R394", number: "R394", name: "La Belle de Jour", hex: "#B83A78", family: "roses" },
 };
 
 export function rsLabel(entry) {

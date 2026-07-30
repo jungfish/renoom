@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { RoomViewer3D } from "./RoomViewer3D";
 import { OnboardingWizard } from "./OnboardingWizard.jsx";
 import { ItemRowActions } from "./ItemRowActions.jsx";
 import { OverflowMenu } from "./OverflowMenu.jsx";
@@ -6451,6 +6450,19 @@ function SetNewPasswordScreen({ onUpdatePassword }) {
 
 // ─── Onglets catalogue, réutilisés par le sélecteur de teinte ───────────────
 
+function CatalogIcon({ catalog, className = "h-5 w-5" }) {
+  if (!catalog?.iconUrl) return null;
+  return (
+    <img
+      src={catalog.iconUrl}
+      alt={catalog.label}
+      title={catalog.label}
+      className={`shrink-0 rounded-full border border-black/10 bg-white object-cover ${className}`}
+      onError={(e) => { e.currentTarget.style.display = "none"; }}
+    />
+  );
+}
+
 function CatalogTabs({ activeCatalogKey, onChange }) {
   return (
     <div className="flex gap-1.5">
@@ -6463,14 +6475,7 @@ function CatalogTabs({ activeCatalogKey, onChange }) {
             activeCatalogKey === cat.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
           }`}
         >
-          {cat.logoUrl ? (
-            <img
-              src={cat.logoUrl}
-              alt=""
-              className={`h-3.5 w-auto max-w-[60px] object-contain ${activeCatalogKey === cat.key ? "brightness-0 invert" : ""}`}
-              onError={(e) => { e.currentTarget.style.display = "none"; }}
-            />
-          ) : null}
+          <CatalogIcon catalog={cat} className="h-4 w-4" />
           {cat.label}
         </button>
       ))}
@@ -6491,8 +6496,8 @@ function ColorCatalogModal({ mode = "test", currentHex, onPick, existingHexes = 
   const activeFamily = catalog.families.find((f) => f.key === family) || catalog.families[0];
   const q = query.trim().toLowerCase();
   const colors = q
-    ? catalog.library.filter((c) => c.name.toLowerCase().includes(q) || (c.number || "").toLowerCase().includes(q))
-    : activeFamily.colors;
+    ? ALL_COLORS_LIBRARY.filter((c) => c.name.toLowerCase().includes(q) || (c.number || "").toLowerCase().includes(q))
+    : activeFamily.colors.map((c) => ({ ...c, catalogKey }));
 
   const changeCatalog = (key) => {
     setCatalogKey(key);
@@ -6508,26 +6513,25 @@ function ColorCatalogModal({ mode = "test", currentHex, onPick, existingHexes = 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
       <div className="flex h-full w-full flex-col bg-white sm:h-[85vh] sm:max-w-4xl sm:rounded-2xl sm:shadow-2xl">
-        <div className="flex items-center justify-between gap-3 border-b border-black/10 px-4 py-3 sm:px-6">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Catalogue</p>
-            <a
-              href={catalog.websiteUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-0.5 flex items-center gap-2 hover:underline"
-              title={`Voir ${catalog.label} sur son site officiel`}
-            >
-              {catalog.logoUrl ? (
-                <img
-                  src={catalog.logoUrl}
-                  alt=""
-                  className="h-4 w-auto max-w-[90px] object-contain"
-                  onError={(e) => { e.currentTarget.style.display = "none"; }}
-                />
+        <div className="flex items-start justify-between gap-3 border-b border-black/10 px-4 py-3 sm:px-6">
+          <div className="flex items-start gap-2.5">
+            <CatalogIcon catalog={catalog} className="mt-0.5 h-9 w-9" />
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Catalogue</p>
+              <a
+                href={catalog.websiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 hover:underline"
+                title={`Voir ${catalog.label} sur son site officiel`}
+              >
+                <h2 className="type-h2">{catalog.label}</h2>
+                <span aria-hidden="true" className="text-sm text-slate-400">↗</span>
+              </a>
+              {catalog.description ? (
+                <p className="mt-0.5 max-w-sm text-[11px] leading-snug text-slate-500">{catalog.description}</p>
               ) : null}
-              <h2 className="type-h2">{catalog.label} ↗</h2>
-            </a>
+            </div>
           </div>
           <button
             type="button"
@@ -7032,7 +7036,6 @@ export default function App() {
   const [roomMode, setRoomMode] = useState("taches");
   const [generalMode, setGeneralMode] = useState("accueil");
   const [lightbox, setLightbox] = useState(null);
-  const [show3D, setShow3D] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isChatExpanded, setIsChatExpanded] = useState(false);
   const [chatBubbleDismissed, setChatBubbleDismissed] = useState(false);
@@ -7127,19 +7130,6 @@ export default function App() {
     if (a === "bois") return baseColors.bois.name;
     return accents[a]?.name || globalPalette.accents[0].name;
   })();
-
-  const roomPhotosFor3D = [
-    ...(materialsByRoom[room] || []).map((m, i) => ({
-      url: materialUploads[`${room}-material-${i}`] || m.src,
-      label: m.label || `Matériau ${i + 1}`,
-    })),
-    ...(extraMaterialImages[room] || []).map((entry, i) => ({
-      url: typeof entry === "string" ? entry : entry.src,
-      label: `Extra ${i + 1}`,
-    })),
-    ...[0, 1, 2].map((i) => ({ url: uploadedImages[`${room}-${i}`], label: `Inspiration ${i + 1}` })),
-    ...(aiInspirations[room] || []).map((url, i) => ({ url, label: `IA ${i + 1}` })),
-  ].filter((p) => p.url && !deletedImages[p.url]);
 
   const roomImageMetadata = Object.entries(imageAnalysis)
     .filter(([key, metadata]) => key.startsWith(`${room}-`) && normalizeImageMetadata(metadata))
@@ -9696,7 +9686,7 @@ export default function App() {
                               }`}
                             >
                               <span className="block h-6 w-full rounded-md" style={{ backgroundColor: hex }} />
-                              <span className="text-[10px] leading-tight text-slate-500">{name.split(" ")[0]}</span>
+                              <span className="w-full truncate text-center text-[10px] leading-tight text-slate-500">{name}</span>
                             </button>
                           ))}
                           <button
@@ -9755,7 +9745,7 @@ export default function App() {
                               }`}
                             >
                               <span className="block h-6 w-full rounded-md" style={{ backgroundColor: accent.hex }} />
-                              <span className="text-[10px] leading-tight text-slate-500">{accent.name.split(" ")[0]}</span>
+                              <span className="w-full truncate text-center text-[10px] leading-tight text-slate-500">{accent.name}</span>
                             </button>
                           ))}
                           <button
@@ -9800,17 +9790,6 @@ export default function App() {
                   <Swatch title={getColorName(activeSecondaryColor)} subtitle="Secondaire" hex={secondaryHex} />
                   <Swatch title={accentName} subtitle="Accent" hex={accentHex} />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShow3D(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-black/15 bg-white py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 active:scale-[.98]"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                    <polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/>
-                  </svg>
-                  Voir en 3D
-                </button>
                 <label className="block text-sm">
                   Note de la pièce
                   <textarea
@@ -10044,16 +10023,6 @@ export default function App() {
         ) : null}
 
         {lightbox ? <Lightbox images={lightbox.images} index={lightbox.index} onClose={() => setLightbox(null)} /> : null}
-        {show3D ? (
-          <RoomViewer3D
-            dominant={dominantHex}
-            secondary={secondaryHex}
-            accent={accentHex}
-            roomLabel={preset.label}
-            availablePhotos={roomPhotosFor3D}
-            onClose={() => setShow3D(false)}
-          />
-        ) : null}
         </div>
         </div>
       </div>

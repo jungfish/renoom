@@ -118,6 +118,7 @@ export const FB = {
   redEarth: { number: "64", name: "Red Earth", hex: "#9C5A3C", family: "roses" },
   middletonPink: { number: "245", name: "Middleton Pink", hex: "#DCC3B8", family: "roses" },
   templetonPink: { number: "293", name: "Templeton Pink", hex: "#E3B9A8", family: "roses" },
+  peignoir: { number: "286", name: "Peignoir", hex: "#D6C8C3", family: "roses" },
 
   // ── Rouges ───────────────────────────────────────────────────────────────
   incarnadine: { number: "297", name: "Incarnadine", hex: "#7A2E2E", family: "rouges" },

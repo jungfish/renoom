@@ -11,7 +11,8 @@ import { useEntitlements } from "./hooks/useEntitlements";
 import { SUPPORT_EMAIL } from "./config";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { FB, fbLabel, describeColor, familyOfHex, FARROW_BALL_FAMILIES, FARROW_BALL_LIBRARY } from "./farrowBall.js";
+import { FB, fbLabel } from "./farrowBall.js";
+import { COLOR_CATALOGS, ALL_COLORS_LIBRARY, describeColor, catalogAndFamilyOfHex, formatColorCode } from "./colorCatalogs.js";
 import { STATUSES, effectiveStatus, deriveFlagsFromStatus, selectStyleForStatus } from "./lib/itemStatus.js";
 import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, PersonPicker } from "./lib/itemHelpers.jsx";
 import { ShoppingKanban } from "./ShoppingKanban.jsx";
@@ -4098,7 +4099,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
         } else if (call.name === "add_test_color" && setRoomColorTests) {
           const currentColors = isGeneral ? (availableRooms.find((r) => r.key === targetRoom)?.testColors || []) : (aiContext.roomTestColors || []);
           const matched = (call.args.names || [])
-            .map((n) => FARROW_BALL_LIBRARY.find((c) => c.name.toLowerCase() === String(n).trim().toLowerCase()))
+            .map((n) => ALL_COLORS_LIBRARY.find((c) => c.name.toLowerCase() === String(n).trim().toLowerCase()))
             .filter(Boolean)
             .filter((c) => !currentColors.some((existing) => existing.hex === c.hex));
           if (matched.length) {
@@ -6448,16 +6449,101 @@ function SetNewPasswordScreen({ onUpdatePassword }) {
   );
 }
 
-// ─── Catalogue Farrow & Ball ─────────────────────────────────────────────────
+// ─── Onglets catalogue + famille, réutilisés par tous les sélecteurs de teinte ──
 
-function FarrowBallCatalog({ existingHexes = [], onAdd, onClose }) {
-  const [family, setFamily] = useState(FARROW_BALL_FAMILIES[0].key);
+function CatalogTabs({ activeCatalogKey, onChange }) {
+  return (
+    <div className="flex gap-1.5">
+      {COLOR_CATALOGS.map((cat) => (
+        <button
+          key={cat.key}
+          type="button"
+          onClick={() => onChange(cat.key)}
+          className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-all ${
+            activeCatalogKey === cat.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
+          }`}
+        >
+          {cat.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ColorFamilyPicker({ currentHex, catalogKey, onCatalogChange, familyKey, onFamilyChange, onSelect, helperText }) {
+  const catalog = COLOR_CATALOGS.find((c) => c.key === catalogKey) || COLOR_CATALOGS[0];
+  const activeFamily = catalog.families.find((f) => f.key === familyKey) || catalog.families[0];
+  return (
+    <div className="space-y-3 rounded-xl border border-black/10 bg-slate-50 p-3">
+      {helperText ? <p className="text-[11px] text-slate-400">{helperText}</p> : null}
+      <CatalogTabs activeCatalogKey={catalogKey} onChange={(key) => onCatalogChange(key)} />
+      <div className="flex gap-1 overflow-x-auto pb-1">
+        {catalog.families.map((family) => (
+          <button
+            key={family.key}
+            type="button"
+            onClick={() => onFamilyChange(family.key)}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+              familyKey === family.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
+            }`}
+          >
+            {family.label}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
+        {activeFamily.colors.map((preset) => (
+          <button
+            key={preset.hex}
+            type="button"
+            onClick={() => onSelect(preset.hex, catalog.labelFor(preset))}
+            title={catalog.labelFor(preset)}
+            className={`flex flex-col overflow-hidden rounded-lg border-2 transition-all ${
+              currentHex === preset.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
+            }`}
+          >
+            <span className="block h-7 w-full" style={{ backgroundColor: preset.hex }} />
+            <span className="w-full truncate px-1 py-0.5 text-left text-[9px] leading-tight text-slate-600">{preset.name}</span>
+            <span className="w-full truncate px-1 pb-0.5 text-left text-[8px] leading-tight text-slate-400">
+              {formatColorCode(preset.number)}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="color"
+            value={currentHex}
+            onChange={(e) => onSelect(e.target.value, describeColor(e.target.value))}
+            className="h-7 w-7 cursor-pointer rounded border border-black/15"
+          />
+          <span className="text-xs text-slate-500">Couleur libre</span>
+        </label>
+        <span className="ml-auto text-[11px] text-slate-400">{describeColor(currentHex)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Catalogue de teintes (Farrow & Ball, Ressource…) ────────────────────────
+
+function ColorCatalogModal({ existingHexes = [], onAdd, onClose }) {
+  const [catalogKey, setCatalogKey] = useState(COLOR_CATALOGS[0].key);
+  const [family, setFamily] = useState(COLOR_CATALOGS[0].families[0].key);
   const [query, setQuery] = useState("");
-  const activeFamily = FARROW_BALL_FAMILIES.find((f) => f.key === family) || FARROW_BALL_FAMILIES[0];
+  const catalog = COLOR_CATALOGS.find((c) => c.key === catalogKey) || COLOR_CATALOGS[0];
+  const activeFamily = catalog.families.find((f) => f.key === family) || catalog.families[0];
   const q = query.trim().toLowerCase();
   const colors = q
-    ? FARROW_BALL_LIBRARY.filter((c) => c.name.toLowerCase().includes(q) || (c.number || "").includes(q))
+    ? catalog.library.filter((c) => c.name.toLowerCase().includes(q) || (c.number || "").toLowerCase().includes(q))
     : activeFamily.colors;
+
+  const changeCatalog = (key) => {
+    setCatalogKey(key);
+    const nextCatalog = COLOR_CATALOGS.find((c) => c.key === key);
+    setFamily(nextCatalog.families[0].key);
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
@@ -6465,7 +6551,7 @@ function FarrowBallCatalog({ existingHexes = [], onAdd, onClose }) {
         <div className="flex items-center justify-between gap-3 border-b border-black/10 px-4 py-3 sm:px-6">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Catalogue</p>
-            <h2 className="type-h2">Farrow &amp; Ball</h2>
+            <h2 className="type-h2">{catalog.label}</h2>
           </div>
           <button
             type="button"
@@ -6476,17 +6562,18 @@ function FarrowBallCatalog({ existingHexes = [], onAdd, onClose }) {
             ×
           </button>
         </div>
-        <div className="border-b border-black/10 px-4 py-3 sm:px-6">
+        <div className="space-y-2 border-b border-black/10 px-4 py-3 sm:px-6">
+          <CatalogTabs activeCatalogKey={catalogKey} onChange={changeCatalog} />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher par nom ou numéro…"
+            placeholder="Rechercher par nom ou référence…"
             className="w-full rounded-lg border border-black/15 bg-[#fafaf8] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20"
           />
           {!q ? (
-            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
-              {FARROW_BALL_FAMILIES.map((f) => (
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {catalog.families.map((f) => (
                 <button
                   key={f.key}
                   type="button"
@@ -6510,7 +6597,7 @@ function FarrowBallCatalog({ existingHexes = [], onAdd, onClose }) {
                   <span className="block h-16 w-full" style={{ backgroundColor: c.hex }} />
                   <div className="flex flex-1 flex-col gap-1 p-2">
                     <p className="text-xs font-medium leading-tight text-slate-700">{c.name}</p>
-                    <p className="text-[10px] text-slate-400">N°{c.number}</p>
+                    <p className="text-[10px] text-slate-400">{formatColorCode(c.number)}</p>
                     <button
                       type="button"
                       onClick={() => onAdd(c)}
@@ -6880,9 +6967,11 @@ export default function App() {
     ],
   });
   const [activePaletteSlot, setActivePaletteSlot] = useState(null);
-  const [activePaletteFamily, setActivePaletteFamily] = useState(FARROW_BALL_FAMILIES[0].key);
+  const [activePaletteCatalog, setActivePaletteCatalog] = useState(COLOR_CATALOGS[0].key);
+  const [activePaletteFamily, setActivePaletteFamily] = useState(COLOR_CATALOGS[0].families[0].key);
   const [customColorRole, setCustomColorRole] = useState(null);
-  const [customColorFamily, setCustomColorFamily] = useState(FARROW_BALL_FAMILIES[0].key);
+  const [customCatalog, setCustomCatalog] = useState(COLOR_CATALOGS[0].key);
+  const [customColorFamily, setCustomColorFamily] = useState(COLOR_CATALOGS[0].families[0].key);
   useEffect(() => { setCustomColorRole(null); }, [room]);
 
   const [logoPaletteChanged, setLogoPaletteChanged] = useState(false);
@@ -9291,13 +9380,16 @@ export default function App() {
                 const openSlot = (slotKey, hex) => {
                   const next = activePaletteSlot === slotKey ? null : slotKey;
                   setActivePaletteSlot(next);
-                  if (next) setActivePaletteFamily(familyOfHex(hex) || activePaletteFamily);
+                  if (next) {
+                    const match = catalogAndFamilyOfHex(hex);
+                    setActivePaletteCatalog(match?.catalogKey || activePaletteCatalog);
+                    setActivePaletteFamily(match?.familyKey || activePaletteFamily);
+                  }
                 };
-                const activeFamily = FARROW_BALL_FAMILIES.find(f => f.key === activePaletteFamily) || FARROW_BALL_FAMILIES[0];
                 return (
                   <div className="space-y-3 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
                     <div className="flex items-center justify-between">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Palette de l'appartement — teintes Farrow & Ball</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Palette de l'appartement</p>
                       <p className="text-[11px] text-slate-400">Cliquer une couleur pour la modifier</p>
                     </div>
                     <div className="flex gap-2">
@@ -9335,51 +9427,14 @@ export default function App() {
                       ))}
                     </div>
                     {activePaletteSlot !== null && currentHex && (
-                      <div className="space-y-3 rounded-xl border border-black/10 bg-slate-50 p-3">
-                        <div className="flex gap-1 overflow-x-auto pb-1">
-                          {FARROW_BALL_FAMILIES.map(family => (
-                            <button
-                              key={family.key}
-                              type="button"
-                              onClick={() => setActivePaletteFamily(family.key)}
-                              className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
-                                activePaletteFamily === family.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
-                              }`}
-                            >
-                              {family.label}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
-                          {activeFamily.colors.map(preset => (
-                            <button
-                              key={preset.hex}
-                              type="button"
-                              onClick={() => applyColor(activePaletteSlot, preset.hex, fbLabel(preset))}
-                              title={fbLabel(preset)}
-                              className={`flex flex-col overflow-hidden rounded-lg border-2 transition-all ${
-                                currentHex === preset.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
-                              }`}
-                            >
-                              <span className="block h-7 w-full" style={{ backgroundColor: preset.hex }} />
-                              <span className="w-full truncate px-1 py-0.5 text-left text-[9px] leading-tight text-slate-600">{preset.name}</span>
-                              <span className="w-full truncate px-1 pb-0.5 text-left text-[8px] leading-tight text-slate-400">N°{preset.number}</span>
-                            </button>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="flex cursor-pointer items-center gap-2">
-                            <input
-                              type="color"
-                              value={currentHex}
-                              onChange={e => applyColor(activePaletteSlot, e.target.value, describeColor(e.target.value))}
-                              className="h-7 w-7 cursor-pointer rounded border border-black/15"
-                            />
-                            <span className="text-xs text-slate-500">Couleur libre</span>
-                          </label>
-                          <span className="ml-auto text-[11px] text-slate-400">{describeColor(currentHex)}</span>
-                        </div>
-                      </div>
+                      <ColorFamilyPicker
+                        currentHex={currentHex}
+                        catalogKey={activePaletteCatalog}
+                        onCatalogChange={setActivePaletteCatalog}
+                        familyKey={activePaletteFamily}
+                        onFamilyChange={setActivePaletteFamily}
+                        onSelect={(hex, label) => applyColor(activePaletteSlot, hex, label)}
+                      />
                     )}
                     <button
                       type="button"
@@ -9568,14 +9623,17 @@ export default function App() {
                 const openSlot = (slotKey, hex) => {
                   const next = activePaletteSlot === slotKey ? null : slotKey;
                   setActivePaletteSlot(next);
-                  if (next) setActivePaletteFamily(familyOfHex(hex) || activePaletteFamily);
+                  if (next) {
+                    const match = catalogAndFamilyOfHex(hex);
+                    setActivePaletteCatalog(match?.catalogKey || activePaletteCatalog);
+                    setActivePaletteFamily(match?.familyKey || activePaletteFamily);
+                  }
                 };
-                const activeFamily = FARROW_BALL_FAMILIES.find(f => f.key === activePaletteFamily) || FARROW_BALL_FAMILIES[0];
                 return (
                   <div className="space-y-4 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
                     <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Palette globale</p>
                     <h2 className="type-h2">Palette de l'appartement</h2>
-                    <p className="text-sm text-slate-600">Teintes Farrow & Ball, la référence des peintres.</p>
+                    <p className="text-sm text-slate-600">Teintes Farrow &amp; Ball et Ressource, deux références des peintres.</p>
 
                     {/* Rangée 1 : dominante, secondaire, sol */}
                     <div className="grid grid-cols-3 gap-2">
@@ -9622,51 +9680,14 @@ export default function App() {
 
                     {/* Picker inline */}
                     {activePaletteSlot !== null && currentHex && (
-                      <div className="space-y-3 rounded-xl border border-black/10 bg-slate-50 p-3">
-                        <div className="flex gap-1 overflow-x-auto pb-1">
-                          {FARROW_BALL_FAMILIES.map(family => (
-                            <button
-                              key={family.key}
-                              type="button"
-                              onClick={() => setActivePaletteFamily(family.key)}
-                              className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
-                                activePaletteFamily === family.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
-                              }`}
-                            >
-                              {family.label}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
-                          {activeFamily.colors.map(preset => (
-                            <button
-                              key={preset.hex}
-                              type="button"
-                              onClick={() => applyColor(activePaletteSlot, preset.hex, fbLabel(preset))}
-                              title={fbLabel(preset)}
-                              className={`flex flex-col overflow-hidden rounded-lg border-2 transition-all ${
-                                currentHex === preset.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
-                              }`}
-                            >
-                              <span className="block h-7 w-full" style={{ backgroundColor: preset.hex }} />
-                              <span className="w-full truncate px-1 py-0.5 text-left text-[9px] leading-tight text-slate-600">{preset.name}</span>
-                              <span className="w-full truncate px-1 pb-0.5 text-left text-[8px] leading-tight text-slate-400">N°{preset.number}</span>
-                            </button>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="flex cursor-pointer items-center gap-2">
-                            <input
-                              type="color"
-                              value={currentHex}
-                              onChange={e => applyColor(activePaletteSlot, e.target.value, describeColor(e.target.value))}
-                              className="h-7 w-7 cursor-pointer rounded border border-black/15"
-                            />
-                            <span className="text-xs text-slate-500">Couleur libre</span>
-                          </label>
-                          <span className="ml-auto text-[11px] text-slate-400">{describeColor(currentHex)}</span>
-                        </div>
-                      </div>
+                      <ColorFamilyPicker
+                        currentHex={currentHex}
+                        catalogKey={activePaletteCatalog}
+                        onCatalogChange={setActivePaletteCatalog}
+                        familyKey={activePaletteFamily}
+                        onFamilyChange={setActivePaletteFamily}
+                        onSelect={(hex, label) => applyColor(activePaletteSlot, hex, label)}
+                      />
                     )}
                     <button
                       type="button"
@@ -9699,7 +9720,6 @@ export default function App() {
                       : (globalPalette[selectedColor]?.hex || globalPalette[fallbackSlot].hex);
                     const customHex = startHex;
                     const isPickerOpen = customColorRole === role;
-                    const customFamily = FARROW_BALL_FAMILIES.find(f => f.key === customColorFamily) || FARROW_BALL_FAMILIES[0];
                     return (
                       <div key={role}>
                         <p className="mb-1.5 text-sm font-medium text-slate-700">{label}</p>
@@ -9733,7 +9753,9 @@ export default function App() {
                                 // Préselectionne la teinte actuellement utilisée (slot de la palette générale) comme point de départ
                                 updateRoomNuance(role, startHex);
                               }
-                              setCustomColorFamily(familyOfHex(startHex) || FARROW_BALL_FAMILIES[0].key);
+                              const match = catalogAndFamilyOfHex(startHex);
+                              setCustomCatalog(match?.catalogKey || customCatalog);
+                              setCustomColorFamily(match?.familyKey || customColorFamily);
                               setCustomColorRole(role);
                             }}
                             title="Teinte personnalisée pour cette pièce"
@@ -9749,49 +9771,15 @@ export default function App() {
                           </button>
                         </div>
                         {isPickerOpen ? (
-                          <div className="mt-2 space-y-2 rounded-xl border border-black/10 bg-slate-50 p-3">
-                            <p className="text-[11px] text-slate-400">Teintes proches de la palette générale — change de famille si besoin.</p>
-                            <div className="flex gap-1 overflow-x-auto pb-1">
-                              {FARROW_BALL_FAMILIES.map(family => (
-                                <button
-                                  key={family.key}
-                                  type="button"
-                                  onClick={() => setCustomColorFamily(family.key)}
-                                  className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
-                                    customColorFamily === family.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
-                                  }`}
-                                >
-                                  {family.label}
-                                </button>
-                              ))}
-                            </div>
-                            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
-                              {customFamily.colors.map(c => (
-                                <button
-                                  key={c.hex}
-                                  type="button"
-                                  onClick={() => updateRoomNuance(role, c.hex)}
-                                  title={fbLabel(c)}
-                                  className={`flex flex-col overflow-hidden rounded-lg border-2 transition-all ${
-                                    customHex === c.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
-                                  }`}
-                                >
-                                  <span className="block h-7 w-full" style={{ backgroundColor: c.hex }} />
-                                  <span className="w-full truncate px-1 py-0.5 text-left text-[9px] leading-tight text-slate-600">{c.name}</span>
-                                </button>
-                              ))}
-                            </div>
-                            <label className="flex cursor-pointer items-center gap-2">
-                              <input
-                                type="color"
-                                value={customHex}
-                                onChange={e => updateRoomNuance(role, e.target.value)}
-                                className="h-7 w-7 cursor-pointer rounded border border-black/15"
-                              />
-                              <span className="text-xs text-slate-500">Couleur libre</span>
-                              <span className="ml-auto text-[11px] text-slate-400">{describeColor(customHex)}</span>
-                            </label>
-                          </div>
+                          <ColorFamilyPicker
+                            currentHex={customHex}
+                            catalogKey={customCatalog}
+                            onCatalogChange={setCustomCatalog}
+                            familyKey={customColorFamily}
+                            onFamilyChange={setCustomColorFamily}
+                            onSelect={(hex) => updateRoomNuance(role, hex)}
+                            helperText="Teintes proches de la palette générale — change de catalogue ou de famille si besoin."
+                          />
                         ) : null}
                       </div>
                     );
@@ -9801,7 +9789,6 @@ export default function App() {
                       && activeNuance.accent.startsWith("#")
                       && !globalPalette.accents.some(a => a.hex === activeNuance.accent);
                     const isAccentPickerOpen = customColorRole === "accent";
-                    const customAccentFamily = FARROW_BALL_FAMILIES.find(f => f.key === customColorFamily) || FARROW_BALL_FAMILIES[0];
                     return (
                       <div>
                         <p className="mb-1.5 text-sm font-medium text-slate-700">Accent pièce</p>
@@ -9831,7 +9818,9 @@ export default function App() {
                                 // Préselectionne l'accent actuellement utilisé comme point de départ
                                 updateRoomNuance("accent", accentHex);
                               }
-                              setCustomColorFamily(familyOfHex(accentHex) || FARROW_BALL_FAMILIES[0].key);
+                              const match = catalogAndFamilyOfHex(accentHex);
+                              setCustomCatalog(match?.catalogKey || customCatalog);
+                              setCustomColorFamily(match?.familyKey || customColorFamily);
                               setCustomColorRole("accent");
                             }}
                             title="Accent personnalisé pour cette pièce"
@@ -9847,49 +9836,15 @@ export default function App() {
                           </button>
                         </div>
                         {isAccentPickerOpen ? (
-                          <div className="mt-2 space-y-2 rounded-xl border border-black/10 bg-slate-50 p-3">
-                            <p className="text-[11px] text-slate-400">Teintes proches de la palette générale — change de famille si besoin.</p>
-                            <div className="flex gap-1 overflow-x-auto pb-1">
-                              {FARROW_BALL_FAMILIES.map(family => (
-                                <button
-                                  key={family.key}
-                                  type="button"
-                                  onClick={() => setCustomColorFamily(family.key)}
-                                  className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
-                                    customColorFamily === family.key ? "bg-slate-900 text-white" : "border border-black/10 bg-white text-slate-500 hover:border-black/30"
-                                  }`}
-                                >
-                                  {family.label}
-                                </button>
-                              ))}
-                            </div>
-                            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
-                              {customAccentFamily.colors.map(c => (
-                                <button
-                                  key={c.hex}
-                                  type="button"
-                                  onClick={() => updateRoomNuance("accent", c.hex)}
-                                  title={fbLabel(c)}
-                                  className={`flex flex-col overflow-hidden rounded-lg border-2 transition-all ${
-                                    accentHex === c.hex ? "border-slate-900" : "border-transparent hover:border-black/30"
-                                  }`}
-                                >
-                                  <span className="block h-7 w-full" style={{ backgroundColor: c.hex }} />
-                                  <span className="w-full truncate px-1 py-0.5 text-left text-[9px] leading-tight text-slate-600">{c.name}</span>
-                                </button>
-                              ))}
-                            </div>
-                            <label className="flex cursor-pointer items-center gap-2">
-                              <input
-                                type="color"
-                                value={accentHex}
-                                onChange={e => updateRoomNuance("accent", e.target.value)}
-                                className="h-7 w-7 cursor-pointer rounded border border-black/15"
-                              />
-                              <span className="text-xs text-slate-500">Couleur libre</span>
-                              <span className="ml-auto text-[11px] text-slate-400">{describeColor(accentHex)}</span>
-                            </label>
-                          </div>
+                          <ColorFamilyPicker
+                            currentHex={accentHex}
+                            catalogKey={customCatalog}
+                            onCatalogChange={setCustomCatalog}
+                            familyKey={customColorFamily}
+                            onFamilyChange={setCustomColorFamily}
+                            onSelect={(hex) => updateRoomNuance("accent", hex)}
+                            helperText="Teintes proches de la palette générale — change de catalogue ou de famille si besoin."
+                          />
                         ) : null}
                       </div>
                     );
@@ -9944,7 +9899,7 @@ export default function App() {
                   Parcourir le catalogue
                 </button>
               </div>
-              <p className="mt-1 text-sm text-slate-600">Ajoute des teintes Farrow &amp; Ball à tester (pots d'essai) dans cette pièce, puis marque celles retenues.</p>
+              <p className="mt-1 text-sm text-slate-600">Ajoute des teintes (Farrow &amp; Ball, Ressource…) à tester (pots d'essai) dans cette pièce, puis marque celles retenues.</p>
               {(roomColorTests[room] || []).length === 0 ? (
                 <p className="mt-3 rounded-lg bg-[#f9f6ef] p-3 text-sm text-slate-500">Aucune couleur test pour l'instant — ouvre le catalogue pour en ajouter.</p>
               ) : (
@@ -9957,7 +9912,7 @@ export default function App() {
                       <span className="h-9 w-9 shrink-0 rounded-md border border-black/10" style={{ backgroundColor: c.hex }} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-medium text-slate-700">{c.name}</p>
-                        <p className="text-[10px] text-slate-400">{c.number ? `N°${c.number}` : c.hex}</p>
+                        <p className="text-[10px] text-slate-400">{c.number ? formatColorCode(c.number) : c.hex}</p>
                       </div>
                       <button
                         type="button"
@@ -9984,7 +9939,7 @@ export default function App() {
               )}
             </div>
             {showColorCatalog ? (
-              <FarrowBallCatalog
+              <ColorCatalogModal
                 existingHexes={(roomColorTests[room] || []).map((c) => c.hex)}
                 onAdd={(color) => addColorTestToRoom(room, color)}
                 onClose={() => setShowColorCatalog(false)}

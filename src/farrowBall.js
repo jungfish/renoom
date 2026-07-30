@@ -148,7 +148,6 @@ export const FB = {
 };
 
 export const FARROW_BALL_LIBRARY = Object.values(FB);
-export const FARROW_BALL_BY_HEX = Object.fromEntries(FARROW_BALL_LIBRARY.map(entry => [entry.hex.toUpperCase(), entry]));
 
 export const FARROW_BALL_FAMILIES = Object.keys(FARROW_BALL_FAMILY_LABELS).map(key => ({
   key,
@@ -158,39 +157,4 @@ export const FARROW_BALL_FAMILIES = Object.keys(FARROW_BALL_FAMILY_LABELS).map(k
 
 export function fbLabel(entry) {
   return `${entry.name} N°${entry.number}`;
-}
-
-function hexToRgbTriplet(hex) {
-  const n = parseInt(hex.replace("#", ""), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-export function nearestFarrowBall(hex) {
-  const [r, g, b] = hexToRgbTriplet(hex);
-  let best = null;
-  let bestDist = Infinity;
-  for (const entry of FARROW_BALL_LIBRARY) {
-    const [er, eg, eb] = hexToRgbTriplet(entry.hex);
-    const dist = (r - er) ** 2 + (g - eg) ** 2 + (b - eb) ** 2;
-    if (dist < bestDist) { bestDist = dist; best = entry; }
-  }
-  return best;
-}
-
-// Décrit un hex avec sa référence Farrow & Ball (exacte si connue, sinon la plus proche) :
-// on n'affiche jamais un code hexadécimal brut à l'utilisateur.
-export function describeColor(hex) {
-  if (!hex) return "";
-  const exact = FARROW_BALL_BY_HEX[hex.toUpperCase()];
-  if (exact) return fbLabel(exact);
-  const near = nearestFarrowBall(hex);
-  return near ? `≈ ${fbLabel(near)}` : hex.toUpperCase();
-}
-
-export function familyOfHex(hex) {
-  if (!hex) return null;
-  const exact = FARROW_BALL_BY_HEX[hex.toUpperCase()];
-  if (exact) return exact.family;
-  const near = nearestFarrowBall(hex);
-  return near ? near.family : null;
 }

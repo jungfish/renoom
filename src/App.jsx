@@ -529,7 +529,7 @@ function Swatch({ title, hex, subtitle }) {
       <div className="h-16" style={{ backgroundColor: hex }} />
       <div className="space-y-1 p-3">
         <div className="text-xs text-slate-500">{subtitle}</div>
-        <div className="text-sm font-medium">{title}</div>
+        <div className="truncate text-sm font-medium" title={title}>{title}</div>
       </div>
     </div>
   );

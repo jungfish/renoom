@@ -59,6 +59,7 @@ export const FB = {
 
   // ── Bleus ────────────────────────────────────────────────────────────────
   borrowedLight: { number: "235", name: "Borrowed Light", hex: "#D9E1DE", family: "bleus" },
+  kakelugn: { number: "317", name: "Kakelugn", hex: "#C7D6D4", family: "bleus" },
   paleP: { number: "204", name: "Pale Powder", hex: "#C9D6D2", family: "bleus" },
   parmaGray: { number: "27", name: "Parma Gray", hex: "#B7C0C2", family: "bleus" },
   lulworthBlue: { number: "89", name: "Lulworth Blue", hex: "#9FB8C4", family: "bleus" },

@@ -86,10 +86,12 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-4">
-      <div>
-        <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue générale</p>
+    // Même largeur et même en-tête que les autres sections de la vue générale
+    <div className="space-y-4">
+      <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
+        <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
         <h2 className="type-h2">Budget</h2>
+        <p className="mt-1 text-sm text-slate-600">Dépensé, engagé et reste à dépenser, pièce par pièce.</p>
       </div>
 
       <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">

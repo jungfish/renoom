@@ -3,9 +3,17 @@ import { useEffect, useRef, useState } from "react";
 // Helpers UI partagés entre la liste (App.jsx) et le Kanban (ShoppingKanban.jsx)
 // — extraits dans un module neutre pour éviter tout import circulaire entre
 // les deux composants.
+// Certains articles stockent encore "Titre — https://..." (aperçu jamais résolu) :
+// l'URL est déjà affichée à part, on la retire du titre.
+export function stripTrailingUrl(text) {
+  if (!text) return text;
+  const cleaned = text.replace(/[\s\-–—:]*https?:\/\/\S+$/i, "").trim();
+  return cleaned || text;
+}
+
 export function linkItemTitle(item) {
   const domain = (() => { try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; } })();
-  return item.text && item.text !== item.url ? item.text : (item.previewTitle || domain);
+  return item.text && item.text !== item.url ? stripTrailingUrl(item.text) : (item.previewTitle || domain);
 }
 
 const PERSON_PALETTE = ["#e8937a","#7ab4e8","#82d9a7","#d97ab4","#a87ae8","#e8c87a","#7ae8d4","#e87a7a"];

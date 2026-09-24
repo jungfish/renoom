@@ -5962,7 +5962,10 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
   const isInvite = !!inviteCode;
   const [inviteProjectName, setInviteProjectName] = useState(null);
 
-  const [mode, setMode] = useState("signin"); // "signin" | "signup" | "forgot"
+  // Le site marketing envoie les nouveaux visiteurs sur /?signup=1 : on ouvre directement la création de compte.
+  const [mode, setMode] = useState(() =>
+    new URLSearchParams(window.location.search).get("signup") === "1" ? "signup" : "signin"
+  ); // "signin" | "signup" | "forgot"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");

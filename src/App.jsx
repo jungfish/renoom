@@ -6989,7 +6989,7 @@ export default function App() {
   const [showColorCatalog, setShowColorCatalog] = useState(false);
   const [roomNotes, setRoomNotes] = useState({});
   const [viewMode, setViewMode] = useState("general");
-  const [roomMode, setRoomMode] = useState("taches");
+  const [roomMode, setRoomMode] = useState("inspirations");
   const [generalMode, setGeneralMode] = useState("accueil");
   const [lightbox, setLightbox] = useState(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -9169,7 +9169,7 @@ export default function App() {
                     : 0;
                   return { pending, mentionBadge };
                 };
-                const primary = ["taches", "courses", "inspirations", "couleurs", "discussions"].map((key) => ({
+                const primary = ["inspirations", "couleurs", "courses", "taches", "discussions"].map((key) => ({
                   key, label: { taches: "Tâches", courses: "Achats", inspirations: "Inspirations", couleurs: "Teintes", discussions: "Discussions" }[key], ...badgesFor(key),
                 }));
                 const secondary = [
@@ -9219,7 +9219,11 @@ export default function App() {
             </button>
             <span className="mr-2 flex-shrink-0 text-sm font-semibold text-[#1C1A17] lg:hidden">Vue générale</span>
             <div className="mr-2 h-3.5 w-px flex-shrink-0 bg-black/10 lg:hidden" />
-            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            {/* Sur desktop, la barre latérale liste déjà ces sections : on n'affiche que le titre */}
+            <span className="hidden text-sm font-semibold text-[#1C1A17] lg:inline">
+              {{ accueil: "Accueil", todos: "Tâches", courses: "Achats", budget: "Budget", couleurs: "Teintes", discussions: "Discussions", ressources: "Documents", activite: "Activité" }[generalMode] || "Vue générale"}
+            </span>
+            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto lg:hidden" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {(() => {
                 const { tPending: totalPending, tUnread: totalUnread, tMention: totalMentionUnread, tActivity: totalActivity } = computeGeneralBadges({
                   orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
@@ -9583,126 +9587,27 @@ export default function App() {
           )
         ) : roomMode === "couleurs" ? (
           <>
-            <section className="grid gap-6 xl:grid-cols-2">
-              {(() => {
-                const applyColor = (slotKey, hex, name) => {
-                  setGlobalPalette(prev => {
-                    if (slotKey.startsWith("accent-")) {
-                      const idx = parseInt(slotKey.split("-")[1]);
-                      const newAccents = [...prev.accents];
-                      newAccents[idx] = { hex, name };
-                      return { ...prev, accents: newAccents };
-                    }
-                    return { ...prev, [slotKey]: { hex, name } };
-                  });
-                };
-                const applyToRooms = async (palette) => {
-                  const confirmed = await showConfirm(
-                    `Cela va écraser les couleurs dominante, secondaire et sol de chaque pièce avec celles de la palette globale. Les nuances (clair/moyen…) déjà choisies par pièce resteront inchangées.\n\nCette action n'est pas réversible automatiquement.`,
-                    { title: `Appliquer cette palette à ${orderedActiveRooms.length} pièce${orderedActiveRooms.length > 1 ? "s" : ""} ?`, confirmLabel: "Appliquer" }
-                  );
-                  if (!confirmed) return;
-                  setRoomNuances(prev => {
-                    const updated = { ...prev };
-                    orderedActiveRooms.forEach(k => {
-                      updated[k] = {
-                        ...(prev[k] || INITIAL_ROOM_NUANCES[k] || {}),
-                        dominantColor: palette.dominante.hex,
-                        secondaryColor: palette.secondaire.hex,
-                        solColor: palette.sol.hex,
-                      };
-                    });
-                    return updated;
-                  });
-                };
-                const mainSlots = [
-                  { key: "dominante", label: "Dominante", ...globalPalette.dominante },
-                  { key: "secondaire", label: "Secondaire", ...globalPalette.secondaire },
-                  { key: "sol", label: "Sol", ...globalPalette.sol },
-                ];
-                const currentHex = activePaletteSlot
-                  ? activePaletteSlot.startsWith("accent-")
-                    ? globalPalette.accents[parseInt(activePaletteSlot.split("-")[1])]?.hex
-                    : globalPalette[activePaletteSlot]?.hex
-                  : null;
-                const openSlot = (slotKey) => {
-                  setActivePaletteSlot(prev => (prev === slotKey ? null : slotKey));
-                };
-                return (
-                  <div className="space-y-4 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-                    <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Palette globale</p>
-                    <h2 className="type-h2">Palette du projet</h2>
-                    <p className="text-sm text-slate-600">Teintes Farrow &amp; Ball et Ressource, deux références des peintres.</p>
-
-                    {/* Rangée 1 : dominante, secondaire, sol */}
-                    <div className="grid grid-cols-3 gap-2">
-                      {mainSlots.map(slot => (
-                        <button
-                          key={slot.key}
-                          type="button"
-                          onClick={() => openSlot(slot.key)}
-                          className={`flex flex-col overflow-hidden rounded-xl border transition-all ${
-                            activePaletteSlot === slot.key ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
-                          }`}
-                        >
-                          <span className="block h-16 w-full" style={{ backgroundColor: slot.hex }} />
-                          <span className="px-1.5 py-1.5 text-center">
-                            <span className="block truncate text-[10px] font-medium leading-tight text-slate-700">{slot.name}</span>
-                            <span className="mt-0.5 block text-[9px] capitalize text-slate-400">{slot.label}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Rangée 2 : 3 accents */}
-                    <div>
-                      <p className="mb-1.5 text-xs font-medium text-slate-500">Accents</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {globalPalette.accents.map((accent, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => openSlot(`accent-${i}`)}
-                            className={`flex flex-col overflow-hidden rounded-xl border transition-all ${
-                              activePaletteSlot === `accent-${i}` ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
-                            }`}
-                          >
-                            <span className="block h-10 w-full" style={{ backgroundColor: accent.hex }} />
-                            <span className="px-1.5 py-1 text-center">
-                              <span className="block truncate text-[10px] font-medium leading-tight text-slate-700">{accent.name}</span>
-                              <span className="mt-0.5 block text-[9px] text-slate-400">Accent {i + 1}</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {activePaletteSlot !== null && currentHex && (
-                      <ColorCatalogModal
-                        mode="pick"
-                        currentHex={currentHex}
-                        onPick={(hex, label) => applyColor(activePaletteSlot, hex, label)}
-                        onClose={() => setActivePaletteSlot(null)}
-                      />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => applyToRooms(globalPalette)}
-                      className="w-full rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-slate-800"
-                    >
-                      Appliquer la palette à toutes les pièces
-                    </button>
-                    <p className="text-[11px] text-amber-600">
-                      ⚠ Écrase dominante, secondaire et sol de chaque pièce. Les nuances (clair/moyen…) restent inchangées.
-                    </p>
-                  </div>
-                );
-              })()}
-
+            {/* La palette du projet se modifie dans Vue générale > Teintes ; ici, uniquement les choix de la pièce */}
+            <section>
               <div className="space-y-4 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
                 <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Pièce active</p>
                 <h2 className="type-h2">{preset.label}</h2>
                 {preset.line ? <p className="text-sm text-slate-700">{preset.line}</p> : null}
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span className="flex">
+                    {[globalPalette.dominante, globalPalette.secondaire, globalPalette.sol, ...globalPalette.accents].map((c, i) => (
+                      <span key={i} title={c.name} className="h-3.5 w-3.5 rounded-full border border-white" style={{ backgroundColor: c.hex, marginLeft: i === 0 ? 0 : -3 }} />
+                    ))}
+                  </span>
+                  <span>Les couleurs proposées viennent de la palette du projet.</span>
+                  <button
+                    type="button"
+                    onClick={() => { setViewMode("general"); setGeneralMode("couleurs"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    className="font-medium text-slate-700 underline decoration-black/20 underline-offset-2 hover:decoration-black/60"
+                  >
+                    Modifier la palette du projet →
+                  </button>
+                </div>
                 <div className="space-y-4">
                   {[
                     { role: "dominantColor", label: "Couleur dominante" },

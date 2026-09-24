@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useEntitlements } from "./hooks/useEntitlements";
 import { SUPPORT_EMAIL } from "./config";
 
@@ -30,22 +29,18 @@ export function Dashboard({
   isOwner,
   authedFetch,
   apiBase,
-  projectId,
   startSteps = null,
   onHideStartSteps,
 }) {
-  const [aiUsage, setAiUsage] = useState(null);
-  const entitlements = useEntitlements({ authedFetch, apiBase, enabled: !!authedFetch });
-
-  useEffect(() => {
-    if (!isOwner || !projectId || !authedFetch) return;
-    authedFetch(`${apiBase}/load-room-items?projectId=${encodeURIComponent(projectId)}&type=ai-usage`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data) setAiUsage(data); })
-      .catch(() => {});
-  }, [isOwner, projectId, authedFetch, apiBase]);
-
-  const formatLimit = (n) => (n >= 100000 ? "∞" : n);
+  // Le détail du plan et de la conso IA est dans le menu utilisateur (PlanUsageModal) ;
+  // l'accueil n'affiche que l'alerte quand une limite est atteinte.
+  const { limits, usage } = useEntitlements({ authedFetch, apiBase, enabled: !!authedFetch && isOwner });
+  const limitReached = !!(limits && usage) && (
+    usage.activeProjects >= limits.max_active_projects ||
+    usage.aiMessages24h >= limits.ai_messages_per_day ||
+    usage.aiImages30d >= limits.ai_images_per_month ||
+    usage.pdfExports30d >= limits.pdf_exports_per_month
+  );
 
   const roomPending = (key) => {
     const list = roomLists[key] || {};
@@ -158,63 +153,13 @@ export function Dashboard({
         </div>
       </div>
 
-      {isOwner && entitlements.plan && entitlements.limits && entitlements.usage && (
-        <div className="rounded-xl border border-black/10 bg-white p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Mon abonnement</p>
-            <span className="rounded-full bg-[#FBF6EC] px-2 py-0.5 text-[11px] font-medium text-[#8A6D3B]">{entitlements.plan.name}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-5">
-            <div>
-              <p className="text-slate-400">Projets actifs</p>
-              <p className="font-semibold text-[#1C1A17]">{entitlements.usage.activeProjects} / {formatLimit(entitlements.limits.max_active_projects)}</p>
-            </div>
-            <div>
-              <p className="text-slate-400">Messages IA / jour</p>
-              <p className="font-semibold text-[#1C1A17]">{entitlements.usage.aiMessages24h} / {formatLimit(entitlements.limits.ai_messages_per_day)}</p>
-            </div>
-            <div>
-              <p className="text-slate-400">Images IA / mois</p>
-              <p className="font-semibold text-[#1C1A17]">{entitlements.usage.aiImages30d} / {formatLimit(entitlements.limits.ai_images_per_month)}</p>
-            </div>
-            <div>
-              <p className="text-slate-400">Exports PDF / mois</p>
-              <p className="font-semibold text-[#1C1A17]">{entitlements.usage.pdfExports30d} / {formatLimit(entitlements.limits.pdf_exports_per_month)}</p>
-            </div>
-            <div>
-              <p className="text-slate-400">Membres / projet</p>
-              <p className="font-semibold text-[#1C1A17]">Jusqu'à {formatLimit(entitlements.limits.max_members_per_project)}, propriétaire inclus</p>
-            </div>
-          </div>
-          {(entitlements.usage.activeProjects >= entitlements.limits.max_active_projects ||
-            entitlements.usage.aiMessages24h >= entitlements.limits.ai_messages_per_day ||
-            entitlements.usage.aiImages30d >= entitlements.limits.ai_images_per_month ||
-            entitlements.usage.pdfExports30d >= entitlements.limits.pdf_exports_per_month) && (
-            <a
-              href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Limite de plan atteinte sur Renoom")}`}
-              className="mt-3 inline-block rounded-md border border-[#CDAA73] bg-[#FBF6EC] px-3 py-1.5 text-xs font-medium text-[#8A6D3B] hover:bg-[#F5EBD6]"
-            >
-              Une limite de votre plan est atteinte — Contacter l'équipe
-            </a>
-          )}
-        </div>
-      )}
-
-      {isOwner && aiUsage && (
-        <div className="rounded-xl border border-black/10 bg-white p-4">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Conso IA (24h, visible par vous seul)</p>
-          <p className="text-sm text-slate-600">
-            Global : <span className="font-semibold text-[#1C1A17]">{aiUsage.global.count}</span> / {aiUsage.global.limit} messages
-          </p>
-          <div className="mt-2 space-y-1">
-            {aiUsage.perUser.map((u) => (
-              <div key={u.id} className="flex items-center justify-between text-xs text-slate-500">
-                <span className="truncate">{u.name}</span>
-                <span>{u.messages24h} / {aiUsage.perUserLimit} msg · {u.tokens24h.toLocaleString("fr-FR")} tokens{u.webSearch24h > 0 ? ` · ${u.webSearch24h} recherches web` : ""}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {isOwner && limitReached && (
+        <a
+          href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Limite de plan atteinte sur Renoom")}`}
+          className="block rounded-xl border border-[#CDAA73] bg-[#FBF6EC] px-4 py-3 text-sm font-medium text-[#8A6D3B] hover:bg-[#F5EBD6]"
+        >
+          Une limite de votre plan est atteinte — Contacter l'équipe
+        </a>
       )}
     </div>
   );

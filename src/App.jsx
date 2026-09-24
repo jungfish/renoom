@@ -17,6 +17,7 @@ import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials
 import { ShoppingKanban } from "./ShoppingKanban.jsx";
 import { BudgetView } from "./BudgetView.jsx";
 import { DevisImportReview } from "./components/DevisImportReview.jsx";
+import { PlanUsageModal } from "./components/PlanUsageModal.jsx";
 import { extractPdfText } from "./lib/pdfText.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -2873,53 +2874,6 @@ function MaterialsSection({
           onClose={() => setAddModalOpen(false)}
         />
       )}
-    </div>
-  );
-}
-
-function GeneralPaletteSection({ orderedActiveRooms, allRoomPresets, getRoomColors, onNavigateToRoom }) {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-        <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
-        <h2 className="type-h2">Palette du projet</h2>
-        <p className="mt-1 text-sm text-slate-600">Toutes les pièces et leurs couleurs. Cliquer pour accéder à une pièce.</p>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {orderedActiveRooms.map((key) => {
-          const p = allRoomPresets[key];
-          const colors = getRoomColors(key);
-          if (!colors || !p) return null;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onNavigateToRoom(key)}
-              className="group rounded-xl border border-black/10 bg-white p-4 text-left transition-all hover:border-slate-400/40 hover:shadow-md"
-            >
-              <div className="mb-3 h-2 w-full rounded-full" style={{ backgroundColor: colors.dominant?.hex || "#EEEAE0" }} />
-              <div className="mb-3 flex items-start justify-between gap-2">
-                <div className="font-medium text-slate-900">{p.label}</div>
-                <span className="shrink-0 text-slate-300 transition-colors group-hover:text-slate-500">→</span>
-              </div>
-              <div className="flex gap-2">
-                {[
-                  colors.dominant && { ...colors.dominant, sublabel: "Dom." },
-                  colors.secondary && { ...colors.secondary, sublabel: "Sec." },
-                  colors.accent && { ...colors.accent, sublabel: "Acc." },
-                ].filter(Boolean).map(({ hex, name, sublabel }) => (
-                  <div key={sublabel} className="min-w-0 flex-1">
-                    <div className="mb-1 h-7 rounded border border-black/10" style={{ backgroundColor: hex }} />
-                    <div className="truncate text-[10px] text-slate-400">{sublabel}</div>
-                    <div className="truncate text-[10px] text-slate-600">{name}</div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2 line-clamp-1 text-xs text-slate-400">{p.line}</p>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -6906,8 +6860,8 @@ export default function App() {
   const [inviteCode, setInviteCode] = useState(null);
   const [copyInviteSuccess, setCopyInviteSuccess] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showPlanUsage, setShowPlanUsage] = useState(false);
   const userMenuRef = useRef(null);
-  const mobileUserMenuRef = useRef(null);
   const projectPickerRef = useRef(null);
 
   // ── Projet ────────────────────────────────────────────────────────────────
@@ -8278,9 +8232,15 @@ export default function App() {
 
     const inviteParam = new URLSearchParams(window.location.search).get("invite");
     if (inviteParam) {
-      // Ne pas rejoindre automatiquement — l'écran d'invitation de l'onboarding
-      // demande confirmation avant d'appeler handleJoinProject.
-      setShowOnboarding(true);
+      // La personne a déjà confirmé en ouvrant le lien et en se connectant depuis
+      // l'écran d'invitation : on rejoint directement. En cas d'échec, l'écran
+      // d'invitation de l'onboarding permet de réessayer et affiche l'erreur.
+      handleJoinProject(inviteParam.trim().toLowerCase())
+        .then((result) => {
+          if (result?.ok && result.projectId) switchProject(result.projectId);
+          else setShowOnboarding(true);
+        })
+        .catch(() => setShowOnboarding(true));
       return;
     }
 
@@ -8433,10 +8393,7 @@ export default function App() {
   useEffect(() => {
     if (!showUserMenu) return;
     const handler = (e) => {
-      if (
-        userMenuRef.current && !userMenuRef.current.contains(e.target) &&
-        mobileUserMenuRef.current && !mobileUserMenuRef.current.contains(e.target)
-      ) setShowUserMenu(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setShowUserMenu(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -8625,6 +8582,15 @@ export default function App() {
         </div>
       )}
       <DialogHost />
+      {showPlanUsage && (
+        <PlanUsageModal
+          authedFetch={authedFetchRef.current}
+          apiBase={API_BASE}
+          projectId={projectId}
+          isOwner={isOwner}
+          onClose={() => setShowPlanUsage(false)}
+        />
+      )}
       {showSnapshotModal && (
         <SnapshotModal
           onConfirm={handleCreateSnapshot}
@@ -9009,6 +8975,18 @@ export default function App() {
                   </svg>
                   <span className="text-sm text-slate-700">{isSavingSnapshot ? "Sauvegarde…" : "Snapshot"}</span>
                 </button>
+                {isOwner && (
+                  <button
+                    onClick={() => { setShowPlanUsage(true); setShowUserMenu(false); }}
+                    className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50 flex items-center gap-2.5"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-400">
+                      <path d="M3 3v18h18" />
+                      <path d="M7 15l4-4 3 3 5-6" />
+                    </svg>
+                    <span className="text-sm text-slate-700">Abonnement et usage</span>
+                  </button>
+                )}
                 <button
                   onClick={signOut}
                   className="w-full border-t border-black/8 px-3 py-2 text-left text-sm text-red-500 transition-colors hover:bg-red-50"
@@ -9043,116 +9021,6 @@ export default function App() {
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden min-w-0">
-        <header className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-black/[0.07] bg-[#FAFAF8] px-5" style={{display:'none'}}>
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(true)}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-black/[0.1] text-slate-500 hover:bg-slate-50 lg:hidden"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M1 3h12M1 7h12M1 11h12" />
-            </svg>
-          </button>
-          <span className="flex-1 truncate text-sm font-semibold tracking-tight text-[#1C1A17]">
-            {viewMode === "room" ? allRoomPresets[room]?.label : "Vue générale"}
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSnapshotHistory(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-black/[0.1] bg-white px-3 py-1.5 text-sm text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6l4 2" />
-              </svg>
-              <span className="hidden sm:inline">Historique</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowSnapshotModal(true)}
-              disabled={isSavingSnapshot}
-              className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-700 disabled:opacity-60"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                <polyline points="17 21 17 13 7 13 7 21" />
-                <polyline points="7 3 7 8 15 8" />
-              </svg>
-              <span className="hidden sm:inline">{isSavingSnapshot ? "Sauvegarde…" : "Snapshot"}</span>
-            </button>
-            <div className="relative" ref={mobileUserMenuRef}>
-              <button
-                type="button"
-                onClick={() => setShowUserMenu((v) => !v)}
-                className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30"
-              >
-                {user?.user_metadata?.avatar_url ? (
-                  <img
-                    src={user.user_metadata.avatar_url}
-                    alt=""
-                    className="h-8 w-8 rounded-full border-2 border-white shadow-sm ring-1 ring-black/10"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                      e.currentTarget.nextSibling.style.display = "flex";
-                    }}
-                  />
-                ) : null}
-                <div
-                  style={{ display: user?.user_metadata?.avatar_url ? "none" : "flex" }}
-                  className="h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-slate-200 text-sm font-semibold text-slate-600"
-                >
-                  {(user?.email || "?")[0].toUpperCase()}
-                </div>
-              </button>
-              {showUserMenu && (
-                <div className="absolute right-0 top-full z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-black/10 bg-white shadow-xl">
-                  <div className="border-b border-black/8 px-3 py-2.5">
-                    <p className="truncate text-xs font-medium text-slate-800">
-                      {user?.user_metadata?.full_name || "Utilisateur"}
-                    </p>
-                    <p className="mt-0.5 truncate text-[11px] text-slate-400">{user?.email}</p>
-                  </div>
-                  {isOwner && (
-                    <button
-                      onClick={() => { setShowMembersModal(true); setShowUserMenu(false); }}
-                      className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
-                    >
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Membres</p>
-                      <p className="mt-0.5 text-sm text-slate-700">Gérer les membres →</p>
-                    </button>
-                  )}
-                  {isOwner && inviteCode && (
-                    <button
-                      onClick={() => {
-                        const inviteUrl = `${window.location.origin}/?invite=${inviteCode}`;
-                        navigator.clipboard.writeText(inviteUrl);
-                        setCopyInviteSuccess(true);
-                        setTimeout(() => setCopyInviteSuccess(false), 2000);
-                      }}
-                      className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
-                    >
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Lien d'invitation</p>
-                      <p className="mt-0.5 text-sm text-slate-700">{copyInviteSuccess ? "✓ Lien copié !" : "Copier le lien →"}</p>
-                    </button>
-                  )}
-                  <button
-                    onClick={signOut}
-                    className="w-full border-t border-black/8 px-3 py-2 text-left text-sm text-red-500 transition-colors hover:bg-red-50"
-                  >
-                    Se déconnecter
-                  </button>
-                </div>
-              )}
-            </div>
-            {lastSavedAt && (
-              <span className="hidden text-[11px] text-slate-400 md:inline">
-                Auto-sauvé {new Date(lastSavedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            )}
-          </div>
-        </header>
-
         {viewMode === "room" ? (
           <div className="flex h-14 flex-shrink-0 items-center border-b border-black/[0.08] bg-[#FAFAF8] px-4">
             <button type="button" onClick={() => setSidebarOpen(true)} className="mr-2 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-black/[0.05] lg:hidden">
@@ -9292,7 +9160,6 @@ export default function App() {
                 isOwner={isOwner}
                 authedFetch={authedFetchRef.current}
                 apiBase={API_BASE}
-                projectId={projectId}
                 startSteps={isOwner && !startChecklistHidden && !startStepsAllDone ? startSteps : null}
                 onHideStartSteps={hideStartChecklist}
               />

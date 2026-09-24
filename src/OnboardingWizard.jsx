@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
-import { FB } from "./farrowBall.js";
+import { FB, fbLabel } from "./farrowBall.js";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
@@ -12,13 +12,23 @@ const ROOM_LABELS = {
   vinyle:"Coin vinyle", cellier:"Cellier",
 };
 const DEFAULT_SELECTED = ["salon","cuisine","entree","parents","sdb"];
-const WIZARD_STORAGE_KEY = "renoom_onboarding_state";
+
+const fbColor = (entry) => ({ hex: entry.hex, name: fbLabel(entry) });
+
+// Palette de départ du projet (dominante / secondaire / sol / 3 accents) —
+// même forme que globalPalette dans App.jsx, appliquée à la création.
+const buildPalette = (dominante, secondaire, sol, accents) => ({
+  dominante: fbColor(dominante),
+  secondaire: fbColor(secondaire),
+  sol: fbColor(sol),
+  accents: accents.map(fbColor),
+});
 
 const DECO_STYLES = [
-  { key:"chaleureux", label:"Chaleureux & naturel", description:"Bois clair, lin, tons crème et terracotta.", swatches:[FB.newWhite.hex, FB.yellowGround.hex, FB.oldWhite.hex], globalAccent:"lin",    warmth:70 },
-  { key:"frais",      label:"Frais & lumineux",     description:"Bleu grisé, blanc cassé, matières épurées.", swatches:[FB.borrowedLight.hex, FB.newWhite.hex, FB.yeabridgeGreen.hex], globalAccent:"sky",    warmth:35 },
-  { key:"vegetal",    label:"Végétal & texturé",    description:"Vert sauge, fibres naturelles, accents olive.", swatches:[FB.vertDeTerre.hex, FB.newWhite.hex, FB.yeabridgeGreen.hex], globalAccent:"olive", warmth:55 },
-  { key:"retro",      label:"Rétro & graphique",    description:"Jaune beurre, noir, touches de motif.", swatches:[FB.farrowsCream.hex, FB.newWhite.hex, FB.yellowGround.hex], globalAccent:"butter", warmth:60 },
+  { key:"chaleureux", label:"Chaleureux & naturel", description:"Bois clair, lin, tons crème et terracotta.", palette:buildPalette(FB.oldWhite, FB.newWhite, FB.fawn, [FB.deadSalmon, FB.charlottesLocks, FB.yellowGround]), globalAccent:"lin",    warmth:70 },
+  { key:"frais",      label:"Frais & lumineux",     description:"Bleu grisé, blanc cassé, matières épurées.", palette:buildPalette(FB.borrowedLight, FB.wimborneWhite, FB.cornforthWhite, [FB.lulworthBlue, FB.yeabridgeGreen, FB.cooksBlue]), globalAccent:"sky",    warmth:35 },
+  { key:"vegetal",    label:"Végétal & texturé",    description:"Vert sauge, fibres naturelles, accents olive.", palette:buildPalette(FB.vertDeTerre, FB.newWhite, FB.cord, [FB.yeabridgeGreen, FB.ballGreen, FB.lichen]), globalAccent:"olive", warmth:55 },
+  { key:"retro",      label:"Rétro & graphique",    description:"Jaune beurre, noir, touches de motif.", palette:buildPalette(FB.farrowsCream, FB.newWhite, FB.fawn, [FB.yellowGround, FB.offBlack, FB.charlottesLocks]), globalAccent:"butter", warmth:60 },
 ];
 
 function fileToDataUrl(file) {
@@ -36,20 +46,50 @@ function extFromDataUrl(dataUrl) {
   return ext === "jpeg" ? "jpg" : ext;
 }
 
-function buildDefaultGeneralContext(projectName, selectedStyle, selectedRooms) {
-  return `${projectName || "Appartement"}, style ${selectedStyle?.label || "moderne"}, pièces : ${selectedRooms.map(r => ROOM_LABELS[r]).join(", ")}.`;
+// Résumé transmis à l'IA dans chaque conversation — reste modifiable dans Teintes
+function buildDefaultGeneralContext(projectName, selectedStyle, roomLabels) {
+  return `${projectName || "Projet"}, style ${selectedStyle?.label || "moderne"}, pièces : ${roomLabels.join(", ")}.`;
 }
 
-export function OnboardingWizard({ user, session, onComplete, onJoinProject, onSkip, signOut, initialStep = "welcome" }) {
+// Même format de clé que createUniqueRoomKey dans App.jsx
+function customRoomKey(label, existingKeys) {
+  const base = label
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "piece";
+  let key = `custom-${base}`;
+  let index = 2;
+  while (existingKeys.includes(key)) {
+    key = `custom-${base}-${index}`;
+    index += 1;
+  }
+  return key;
+}
+
+// "12 000", "12000 €", "12.000", "12 500,50" → nombre ; null si vide ou invalide
+function parseBudget(value) {
+  let cleaned = value.replace(/[\s €]/g, "");
+  // Point utilisé comme séparateur de milliers ("15.000", "1.250.000")
+  if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) cleaned = cleaned.replace(/\./g, "");
+  cleaned = cleaned.replace(",", ".");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function OnboardingWizard({ user, session, onComplete, onJoinProject, onSkip, signOut, initialStep = "path" }) {
   const [step, setStep] = useState(initialStep);
   const [direction, setDirection] = useState(1);
 
   // Create path state
   const [projectName, setProjectName] = useState("");
+  const [budget, setBudget] = useState("");
   const [selectedRooms, setSelectedRooms] = useState(DEFAULT_SELECTED);
+  const [customRooms, setCustomRooms] = useState([]);
   const [decoStyle, setDecoStyle] = useState(null);
-  const [generalContext, setGeneralContext] = useState("");
-  const contextTouchedRef = useRef(false);
   const [inspoFiles, setInspoFiles] = useState([]);
   const [inspoUrlInput, setInspoUrlInput] = useState("");
   const [inspoUrlAdded, setInspoUrlAdded] = useState([]);
@@ -65,14 +105,13 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
   const [inviteSent, setInviteSent] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   const fileInputRef = useRef(null);
   const joinCodeRef = useRef(joinCode);
   joinCodeRef.current = joinCode;
   const sessionRef = useRef(session);
   sessionRef.current = session;
-
-  const firstName = user?.user_metadata?.full_name?.split(" ")[0] || "vous";
 
   const goTo = (nextStep, dir = 1) => {
     setDirection(dir);
@@ -90,21 +129,18 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
   }, []);
 
   // Progress bar
-  const PROGRESS_STEPS = ["name","rooms","style","context","inspo"];
+  const PROGRESS_STEPS = ["name","rooms","style","inspo"];
   const progressIdx = PROGRESS_STEPS.indexOf(step);
   const progressPct = progressIdx >= 0 ? ((progressIdx + 1) / PROGRESS_STEPS.length) * 100 : 0;
 
-  // Keep the context textarea prefilled with a live default until the user edits it themselves
-  useEffect(() => {
-    if (contextTouchedRef.current) return;
-    const selectedStyle = DECO_STYLES.find(s => s.key === decoStyle);
-    setGeneralContext(buildDefaultGeneralContext(projectName, selectedStyle, selectedRooms));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectName, decoStyle, selectedRooms]);
+  const labelOf = (key) => ROOM_LABELS[key] || customRooms.find(r => r.key === key)?.label || key;
 
-  const handleGeneralContextChange = (value) => {
-    contextTouchedRef.current = true;
-    setGeneralContext(value);
+  const addCustomRoom = (label) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    const key = customRoomKey(trimmed, [...ALL_ROOMS, ...customRooms.map(r => r.key)]);
+    setCustomRooms(prev => [...prev, { key, label: trimmed }]);
+    setSelectedRooms(prev => [...prev, key]);
   };
 
   // ── File handling ────────────────────────────────────────────────────────
@@ -141,6 +177,7 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
   const handleCreate = async () => {
     goTo("loading");
     setIsSubmitting(true);
+    setCreateError("");
 
     try {
       const token = sessionRef.current?.access_token;
@@ -148,7 +185,12 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
       const selectedStyle = DECO_STYLES.find(s => s.key === decoStyle);
       const hiddenRooms = ALL_ROOMS.filter(r => !selectedRooms.includes(r));
       const activeRoom = selectedRooms[0] || "salon";
-      const finalGeneralContext = generalContext.trim() || buildDefaultGeneralContext(projectName, selectedStyle, selectedRooms);
+      const finalGeneralContext = buildDefaultGeneralContext(projectName, selectedStyle, selectedRooms.map(labelOf));
+      const budgetTarget = parseBudget(budget);
+      // Même forme que les pièces créées par addRoom dans App.jsx
+      const projectCustomRooms = customRooms
+        .filter(r => selectedRooms.includes(r.key))
+        .map(r => ({ key: r.key, label: r.label, dominant: "creme", secondary: "bois" }));
 
       // Upload local inspiration files, grouped by the room each photo was assigned to
       const aiInspirations = {};
@@ -189,7 +231,10 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
         room: activeRoom,
         globalAccent: selectedStyle?.globalAccent || "butter",
         warmth: selectedStyle?.warmth ?? 60,
-        customRooms: [],
+        // Sans style choisi, App.jsx garde sa palette par défaut
+        ...(selectedStyle ? { globalPalette: selectedStyle.palette } : {}),
+        ...(budgetTarget ? { budgetTarget } : {}),
+        customRooms: projectCustomRooms,
         hiddenRooms,
         roomOrder: null,
         generalContext: finalGeneralContext,
@@ -224,35 +269,15 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
 
       setLoadingMessage("Finalisation…");
 
-      const starterTodos = selectedRooms.flatMap((roomKey, ri) => [
-        {
-          id: `todo-inspo-${roomKey}-${Date.now()}-${ri}`,
-          project_id: id,
-          room_key: roomKey,
-          list_key: "todos",
-          text: "Ajouter une image d'inspiration",
-          done: false,
-          position: 0,
-        },
-        {
-          id: `todo-doc-${roomKey}-${Date.now()}-${ri}`,
-          project_id: id,
-          room_key: roomKey,
-          list_key: "todos",
-          text: "Ajouter un document (plan, devis…)",
-          done: false,
-          position: 1,
-        },
-      ]);
-
+      // Pas de tâches de démarrage : la checklist « Démarrage » de l'accueil
+      // guide les premières actions sans gonfler les compteurs de tâches.
       await Promise.allSettled([
-        supabase.from("room_items").insert(starterTodos),
         supabase.from("chat_messages").insert({
           id: `msg-welcome-${Date.now()}`,
           project_id: id,
           room_key: activeRoom,
           role: "assistant",
-          content: `Bienvenue dans votre ${ROOM_LABELS[activeRoom] || activeRoom} ! Je suis prêt à vous aider à créer l'ambiance ${selectedStyle?.label.toLowerCase() || "idéale"} que vous imaginez. Commencez par ajouter des inspirations ou posez-moi une question sur les couleurs et matières.`,
+          content: `Bienvenue dans votre ${labelOf(activeRoom)} ! Je suis prêt à vous aider à créer l'ambiance ${selectedStyle?.label.toLowerCase() || "idéale"} que vous imaginez. Commencez par ajouter des inspirations ou posez-moi une question sur les couleurs et matières.`,
           created_at: new Date().toISOString(),
         }),
         supabase.from("change_log").insert({
@@ -264,6 +289,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
             style: decoStyle,
             hasInspo: inspoFiles.length > 0 || inspoUrlAdded.length > 0,
             inspoCount: inspoFiles.length + inspoUrlAdded.length,
+            hasBudget: !!budgetTarget,
+            customRoomCount: projectCustomRooms.length,
             invited: false,
           },
         }),
@@ -282,7 +309,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
       goTo("invite");
     } catch {
       setIsSubmitting(false);
-      goTo("style", -1);
+      setCreateError("La création du projet a échoué. Vérifiez votre connexion puis réessayez.");
+      goTo("inspo", -1);
     }
   };
 
@@ -326,7 +354,9 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
 
   const handleWhatsApp = () => {
     const projectLabel = projectName ? ` "${projectName}"` : "";
-    const text = encodeURIComponent(`🏠 ${firstName} t'invite à rejoindre son projet déco${projectLabel} sur Renoom — inspirations, wishlist et décisions ensemble 👉 ${inviteLink}`);
+    const inviterName = user?.user_metadata?.full_name?.split(" ")[0];
+    const intro = inviterName ? `${inviterName} vous invite à rejoindre` : "Vous êtes invité(e) à rejoindre";
+    const text = encodeURIComponent(`🏠 ${intro} le projet${projectLabel} sur Renoom — inspirations, achats et décisions, pièce par pièce 👉 ${inviteLink}`);
     window.open(`https://wa.me/?text=${text}`, "_blank");
     setInviteSent(true);
     if (createdProjectId) {
@@ -356,20 +386,12 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
       <div key={step} className={`flex-1 flex flex-col items-center justify-center px-5 py-10 ${animClass}`}>
         <div className="w-full max-w-sm">
 
-          {step === "welcome" && (
-            <StepWelcome
-              firstName={firstName}
-              onStart={() => goTo("path")}
-              onHaveCode={() => goTo("join")}
-              signOut={signOut}
-            />
-          )}
-
           {step === "path" && (
             <StepPath
               onCreate={() => goTo("name")}
               onJoin={() => goTo("join")}
-              onBack={() => initialStep !== "welcome" && onSkip ? onSkip() : goTo("welcome", -1)}
+              onBack={onSkip}
+              signOut={onSkip ? null : signOut}
             />
           )}
 
@@ -377,6 +399,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
             <StepName
               value={projectName}
               onChange={setProjectName}
+              budget={budget}
+              onBudgetChange={setBudget}
               onNext={() => goTo("rooms")}
               onBack={() => goTo("path", -1)}
             />
@@ -386,6 +410,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
             <StepRooms
               selectedRooms={selectedRooms}
               setSelectedRooms={setSelectedRooms}
+              customRooms={customRooms}
+              onAddCustomRoom={addCustomRoom}
               onNext={() => goTo("style")}
               onBack={() => goTo("name", -1)}
             />
@@ -395,17 +421,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
             <StepStyle
               decoStyle={decoStyle}
               setDecoStyle={setDecoStyle}
-              onNext={() => goTo("context")}
-              onBack={() => goTo("rooms", -1)}
-            />
-          )}
-
-          {step === "context" && (
-            <StepContext
-              value={generalContext}
-              onChange={handleGeneralContextChange}
               onNext={() => goTo("inspo")}
-              onBack={() => goTo("style", -1)}
+              onBack={() => goTo("rooms", -1)}
             />
           )}
 
@@ -419,12 +436,13 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
               onRemoveFile={removeFile}
               onFileRoomChange={setFileRoom}
               selectedRooms={selectedRooms}
-              roomLabels={ROOM_LABELS}
+              roomLabels={Object.fromEntries(selectedRooms.map(k => [k, labelOf(k)]))}
               onAddUrl={addInspoUrl}
               onRemoveUrl={(i) => setInspoUrlAdded(prev => prev.filter((_, idx) => idx !== i))}
               fileInputRef={fileInputRef}
+              createError={createError}
               onNext={handleCreate}
-              onBack={() => goTo("context", -1)}
+              onBack={() => goTo("style", -1)}
             />
           )}
 
@@ -489,51 +507,17 @@ function PrimaryBtn({ onClick, disabled, children }) {
   );
 }
 
-function StepWelcome({ firstName, onStart, onHaveCode, signOut }) {
-  return (
-    <div className="flex flex-col items-center text-center gap-6">
-      <div className="flex items-center gap-2 mb-1">
-        <svg width="28" height="28" viewBox="0 0 34 34" fill="none">
-          <rect x="0" y="0" width="15" height="15" rx="3" fill="#b8c9d0"/>
-          <rect x="19" y="0" width="15" height="15" rx="3" fill="#A8B5A2"/>
-          <rect x="0" y="19" width="15" height="15" rx="3" fill="#D0AA6C"/>
-          <rect x="19" y="19" width="15" height="15" rx="3" fill="#FAF6F0" stroke="rgba(0,0,0,0.12)" strokeWidth="1"/>
-        </svg>
-        <span className="font-['Sora'] font-semibold text-base text-slate-800">Renoom</span>
-      </div>
-
-      <div>
-        <h1 className="font-['Sora'] text-2xl font-semibold text-slate-800 mb-2">
-          Bienvenue, {firstName}&nbsp;!
-        </h1>
-        <p className="text-sm text-slate-500">
-          Configurons votre premier projet déco en 2&nbsp;minutes.
-        </p>
-      </div>
-
-      <PrimaryBtn onClick={onStart}>Commencer</PrimaryBtn>
-
-      <button onClick={onHaveCode} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
-        J'ai un code d'invitation
-      </button>
-
-      <button onClick={signOut} className="text-xs text-slate-300 hover:text-slate-500 transition-colors mt-1">
-        Se déconnecter
-      </button>
-    </div>
-  );
-}
-
-function StepPath({ onCreate, onJoin, onBack }) {
+function StepPath({ onCreate, onJoin, onBack, signOut }) {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <BackLink onClick={onBack} />
+        {/* Retour seulement depuis l'app (nouveau projet) ; au premier lancement, rien avant cet écran */}
+        {onBack && <BackLink onClick={onBack} />}
         <h2 className="font-['Sora'] text-xl font-semibold text-slate-800">Que voulez-vous faire ?</h2>
       </div>
 
       {[
-        { emoji:"🏠", title:"Créer mon appartement", sub:"Je pars de zéro et configure mon projet.", onClick:onCreate },
+        { emoji:"🏠", title:"Créer un projet", sub:"Je configure un nouveau projet, pièce par pièce.", onClick:onCreate },
         { emoji:"🔗", title:"Rejoindre un projet existant", sub:"J'ai reçu un lien ou un code d'invitation.", onClick:onJoin },
       ].map(card => (
         <button
@@ -549,19 +533,25 @@ function StepPath({ onCreate, onJoin, onBack }) {
           <span className="text-slate-400 text-lg mt-0.5">›</span>
         </button>
       ))}
+
+      {signOut && (
+        <button onClick={signOut} className="text-xs text-slate-300 hover:text-slate-500 transition-colors">
+          Se déconnecter
+        </button>
+      )}
     </div>
   );
 }
 
-function StepName({ value, onChange, onNext, onBack }) {
+function StepName({ value, onChange, budget, onBudgetChange, onNext, onBack }) {
   return (
     <div className="flex flex-col gap-5">
       <div>
         <BackLink onClick={onBack} />
         <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
-          Comment s'appelle votre appartement ?
+          Comment s'appelle ce projet ?
         </h2>
-        <p className="text-xs text-slate-500">Vous pourrez toujours le renommer plus tard.</p>
+        <p className="text-xs text-slate-500">Le nom du client ou du lieu, par exemple. Vous pourrez le renommer plus tard.</p>
       </div>
 
       <input
@@ -570,14 +560,33 @@ function StepName({ value, onChange, onNext, onBack }) {
         value={value}
         onChange={e => onChange(e.target.value)}
         onKeyDown={e => e.key === "Enter" && onNext()}
-        placeholder="Mon appartement, Rue Lepic…"
+        placeholder="Appartement Martin, Maison rue Lepic…"
         maxLength={60}
         className="w-full rounded-xl border border-black/12 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300/60"
       />
 
+      <label className="-mt-1 block">
+        <span className="mb-1.5 block text-xs font-medium text-slate-600">
+          Budget du projet <span className="font-normal text-slate-400">(optionnel)</span>
+        </span>
+        <div className="relative">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={budget}
+            onChange={e => onBudgetChange(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && onNext()}
+            placeholder="15 000"
+            className="w-full rounded-xl border border-black/12 bg-white py-3 pl-4 pr-9 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300/60"
+          />
+          <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400">€</span>
+        </div>
+        <span className="mt-1 block text-[11px] text-slate-400">Suivi dans la vue Budget, modifiable à tout moment.</span>
+      </label>
+
       <PrimaryBtn onClick={onNext}>Suivant</PrimaryBtn>
 
-      {!value && (
+      {!value && !budget && (
         <button onClick={onNext} className="text-xs text-slate-400 hover:text-slate-600 text-center transition-colors">
           Passer cette étape
         </button>
@@ -586,36 +595,66 @@ function StepName({ value, onChange, onNext, onBack }) {
   );
 }
 
-function StepRooms({ selectedRooms, setSelectedRooms, onNext, onBack }) {
+function StepRooms({ selectedRooms, setSelectedRooms, customRooms, onAddCustomRoom, onNext, onBack }) {
+  const [customLabel, setCustomLabel] = useState("");
   const toggle = (key) => {
     setSelectedRooms(prev => prev.includes(key) ? prev.filter(r => r !== key) : [...prev, key]);
   };
+  const submitCustom = () => {
+    if (!customLabel.trim()) return;
+    onAddCustomRoom(customLabel);
+    setCustomLabel("");
+  };
+  const roomChoices = [
+    ...WIZARD_ROOMS.map(key => ({ key, label: ROOM_LABELS[key] })),
+    ...customRooms,
+  ];
 
   return (
     <div className="flex flex-col gap-5">
       <div>
         <BackLink onClick={onBack} />
         <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
-          Quelles pièces contient votre appartement ?
+          Quelles pièces sont concernées ?
         </h2>
-        <p className="text-xs text-slate-500">Sélectionnez les pièces que vous voulez décorer.</p>
+        <p className="text-xs text-slate-500">Sélectionnez les pièces du projet. Vous pourrez en ajouter ensuite.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {WIZARD_ROOMS.map(key => {
+        {roomChoices.map(({ key, label }) => {
           const sel = selectedRooms.includes(key);
           return (
             <button
               key={key}
               onClick={() => toggle(key)}
-              className={`rounded-xl border py-2.5 px-3 text-xs font-medium text-left transition-all ${
+              className={`truncate rounded-xl border py-2.5 px-3 text-xs font-medium text-left transition-all ${
                 sel ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-black/10 hover:border-slate-400"
               }`}
             >
-              {ROOM_LABELS[key]}
+              {label}
             </button>
           );
         })}
+      </div>
+
+      <div className="-mt-2 flex gap-2">
+        <input
+          type="text"
+          value={customLabel}
+          onChange={e => setCustomLabel(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && submitCustom()}
+          placeholder="Autre pièce : véranda, dressing…"
+          maxLength={40}
+          className="min-w-0 flex-1 rounded-xl border border-black/12 bg-white px-3 py-2.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-slate-400"
+        />
+        <button
+          type="button"
+          onClick={submitCustom}
+          disabled={!customLabel.trim()}
+          className="shrink-0 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-40"
+        >
+          + Ajouter
+        </button>
       </div>
 
       <PrimaryBtn onClick={onNext} disabled={selectedRooms.length === 0}>Suivant</PrimaryBtn>
@@ -631,7 +670,7 @@ function StepStyle({ decoStyle, setDecoStyle, onNext, onBack }) {
         <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
           Quelle ambiance vous correspond ?
         </h2>
-        <p className="text-xs text-slate-500">Nuancier Farrow & Ball — un point de départ, tout est ajustable ensuite.</p>
+        <p className="text-xs text-slate-500">Ces teintes Farrow & Ball deviennent la palette du projet — tout reste ajustable ensuite.</p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -648,8 +687,8 @@ function StepStyle({ decoStyle, setDecoStyle, onNext, onBack }) {
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-semibold text-slate-800">{s.label}</span>
                 <div className="flex gap-1">
-                  {s.swatches.map((c, i) => (
-                    <div key={i} className="h-4 w-4 rounded-full border border-black/10" style={{ background: c }} />
+                  {[s.palette.dominante, s.palette.secondaire, s.palette.sol, s.palette.accents[0]].map((c, i) => (
+                    <div key={i} title={c.name} className="h-4 w-4 rounded-full border border-black/10" style={{ background: c.hex }} />
                   ))}
                 </div>
               </div>
@@ -664,37 +703,10 @@ function StepStyle({ decoStyle, setDecoStyle, onNext, onBack }) {
   );
 }
 
-function StepContext({ value, onChange, onNext, onBack }) {
-  return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <BackLink onClick={onBack} />
-        <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
-          Un mot sur vos goûts ?
-        </h2>
-        <p className="text-xs text-slate-500">
-          On a préparé un résumé à partir de vos réponses — modifiez-le si besoin. Ce texte est transmis à l'IA dans chaque conversation pièce.
-        </p>
-      </div>
-
-      <textarea
-        className="min-h-36 w-full rounded-xl border border-black/12 bg-white p-3 text-sm text-slate-800 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300/60"
-        placeholder="Ex : Style rétro années 70, coloré mais doux. On aime le bois clair, les plantes, les textiles en lin. On évite le minimalisme froid…"
-        maxLength={400}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-      />
-      <p className="-mt-3 text-right text-[10px] text-slate-400">{value.length}/400</p>
-
-      <PrimaryBtn onClick={onNext}>Suivant</PrimaryBtn>
-    </div>
-  );
-}
-
 function StepInspo({
   inspoFiles, inspoUrlAdded, inspoUrlInput, setInspoUrlInput,
   onFileChange, onRemoveFile, onFileRoomChange, selectedRooms, roomLabels,
-  onAddUrl, onRemoveUrl, fileInputRef,
+  onAddUrl, onRemoveUrl, fileInputRef, createError,
   onNext, onBack,
 }) {
   const hasContent = inspoFiles.length > 0 || inspoUrlAdded.length > 0;
@@ -837,8 +849,12 @@ function StepInspo({
         )}
       </div>
 
+      {createError && (
+        <p className="-mb-2 text-center text-xs text-red-500">{createError}</p>
+      )}
+
       <PrimaryBtn onClick={onNext}>
-        {hasContent ? "Créer mon appartement →" : "Créer mon appartement"}
+        {hasContent ? "Créer le projet →" : "Créer le projet"}
       </PrimaryBtn>
 
       {!hasContent && (
@@ -868,7 +884,7 @@ function StepInvite({ inviteLink, inviteSent, copySuccess, onCopy, onWhatsApp, o
           {projectName ? `"${projectName}" est prêt !` : "Votre projet est prêt !"}
         </h2>
         <p className="text-sm text-slate-500 leading-relaxed">
-          Invitez votre partenaire ou architecte — ils verront les mêmes pièces et décisions en temps réel.
+          Invitez votre client ou vos collaborateurs — ils verront les mêmes pièces et décisions en temps réel.
         </p>
       </div>
 
@@ -898,11 +914,11 @@ function StepInvite({ inviteLink, inviteSent, copySuccess, onCopy, onWhatsApp, o
         </div>
       )}
 
-      <PrimaryBtn onClick={onEnter}>Entrer dans mon appartement →</PrimaryBtn>
+      <PrimaryBtn onClick={onEnter}>Ouvrir le projet →</PrimaryBtn>
 
       {!inviteSent && (
         <p className="text-center text-xs text-slate-400">
-          Vous pourrez inviter plus tard depuis les paramètres.
+          Vous pourrez inviter plus tard depuis « Membres », en bas du menu.
         </p>
       )}
     </div>
@@ -924,17 +940,17 @@ function StepInviteLanding({ onJoin, isSubmitting, joinError }) {
           <span className="text-xs font-medium text-emerald-700">Invitation valide</span>
         </div>
         <h2 className="font-['Sora'] text-2xl font-semibold text-slate-800">
-          Tu as été invité(e) !
+          Vous avez été invité(e) !
         </h2>
         <p className="text-sm text-slate-500 leading-relaxed">
-          Rejoins le projet déco pour voir les inspirations, ajouter les tiennes et décider ensemble.
+          Rejoignez le projet pour voir les inspirations, ajouter les vôtres et décider ensemble.
         </p>
       </div>
 
       <div className="flex flex-col gap-2">
         {[
           { emoji: "🎨", label: "Inspirations partagées" },
-          { emoji: "❤️", label: "Liste d'envies commune" },
+          { emoji: "🧾", label: "Achats et budget suivis ensemble" },
           { emoji: "💬", label: "Discussions en temps réel" },
         ].map(({ emoji, label }) => (
           <div key={label} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white border border-black/8">
@@ -957,7 +973,7 @@ function StepInviteLanding({ onJoin, isSubmitting, joinError }) {
         {joinError && <p className="text-xs text-red-500">{joinError}</p>}
       </div>
 
-      <p className="text-xs text-slate-400">Renoom · Déco en collaboration</p>
+      <p className="text-xs text-slate-400">Renoom · Projets déco en collaboration</p>
     </div>
   );
 }

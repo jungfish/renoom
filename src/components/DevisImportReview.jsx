@@ -17,7 +17,7 @@ export function DevisImportReview({ documentUrl, documentName, initialText, proj
   const [importing, setImporting] = useState(false);
 
   const roomOptions = ["general", ...(orderedActiveRooms || [])];
-  const roomLabel = (key) => (key === "general" ? "Appartement" : allRoomPresets?.[key]?.label || key);
+  const roomLabel = (key) => (key === "general" ? "Général" : allRoomPresets?.[key]?.label || key);
 
   useEffect(() => {
     let cancelled = false;

@@ -17,6 +17,7 @@ import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials
 import { ShoppingKanban } from "./ShoppingKanban.jsx";
 import { BudgetView } from "./BudgetView.jsx";
 import { DevisImportReview } from "./components/DevisImportReview.jsx";
+import { PlanUsageModal } from "./components/PlanUsageModal.jsx";
 import { extractPdfText } from "./lib/pdfText.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -54,77 +55,19 @@ const rooms = [
   "cellier",
 ];
 
+// Pas de description (`line`) par défaut : ces pièces sont partagées par tous
+// les projets, la description d'une pièce vient de sa note (roomNotes).
 const roomPresets = {
-  bureau: {
-    label: "Bureau",
-    dominant: "dominante",
-    secondary: "sol",
-    line: "Bureau calme et concentré : base claire, touches de bleu doux et bois chaleureux.",
-    notes: ["Accent olive ou beurre en petite touche pour la personnalité."],
-  },
-  sdb: {
-    label: "Salle de bain",
-    dominant: "secondaire",
-    secondary: "dominante",
-    line: "Salle de bain douce et lumineuse : base claire, détails rétro et matières naturelles.",
-    notes: ["Le chêne clair apporte une touche vintage chaleureuse."],
-  },
-  salon: {
-    label: "Salon",
-    dominant: "dominante",
-    secondary: "secondaire",
-    line: "Salon nord : base claire, bibliothèque colorée, ambiance rétro lumineuse.",
-    notes: ["La couleur dominante fonctionne mieux sur la bibliothèque que sur tous les murs."],
-  },
-  cuisine: {
-    label: "Cuisine",
-    dominant: "dominante",
-    secondary: "sol",
-    line: "Cuisine rétro colorée : couleur principale, sol chaleureux, accents vintage.",
-    notes: ["Un accent beurre ou olive est parfait en petite touche sur assise ou luminaire."],
-  },
-  entree: {
-    label: "Entrée",
-    dominant: "dominante",
-    secondary: "secondaire",
-    line: "Entrée signature : plus enveloppante, architecturée, avec menuiserie et niche fortes.",
-    notes: ["La couleur dominante donne du caractère sans durcir l'entrée."],
-  },
-  parents: {
-    label: "Chambre parents",
-    dominant: "dominante",
-    secondary: "secondaire",
-    line: "Chambre parent : calme, douce, colorée par touches structurées.",
-    notes: ["Le reste des murs gagne à rester dans la couleur secondaire."],
-  },
-  enfant: {
-    label: "Chambre enfant",
-    dominant: "dominante",
-    secondary: "secondaire",
-    line: "Chambre enfant : plus joueuse, rétro et graphique, mais toujours lisible.",
-    notes: ["La secondaire calme le jeu si vous ajoutez du motif ou des rayures."],
-  },
-  vinyle: {
-    label: "Coin vinyle",
-    dominant: "secondaire",
-    secondary: "sol",
-    line: "Coin vinyle : plus simple, chaleureux, avec les objets et pochettes comme décor.",
-    notes: ["Le ton sol donne tout de suite le côté vintage."],
-  },
-  cellier: {
-    label: "Cellier",
-    dominant: "dominante",
-    secondary: "secondaire",
-    line: "Cellier : pièce parfaite pour un décor plus éditorial et des motifs discrets.",
-    notes: ["Un accent clair est très juste pour donner une lumière vintage."],
-  },
-  sanitaires: {
-    label: "Sanitaires",
-    dominant: "secondaire",
-    secondary: "dominante",
-    line: "Sanitaires : fonctionnel et soigné, avec des matières qui résistent bien à l'humidité.",
-    notes: ["Le carrelage de métro blanc reste la valeur sûre."],
-  },
+  bureau: { label: "Bureau", dominant: "dominante", secondary: "sol" },
+  sdb: { label: "Salle de bain", dominant: "secondaire", secondary: "dominante" },
+  salon: { label: "Salon", dominant: "dominante", secondary: "secondaire" },
+  cuisine: { label: "Cuisine", dominant: "dominante", secondary: "sol" },
+  entree: { label: "Entrée", dominant: "dominante", secondary: "secondaire" },
+  parents: { label: "Chambre parents", dominant: "dominante", secondary: "secondaire" },
+  enfant: { label: "Chambre enfant", dominant: "dominante", secondary: "secondaire" },
+  vinyle: { label: "Coin vinyle", dominant: "secondaire", secondary: "sol" },
+  cellier: { label: "Cellier", dominant: "dominante", secondary: "secondaire" },
+  sanitaires: { label: "Sanitaires", dominant: "secondaire", secondary: "dominante" },
 };
 
 const INITIAL_ROOM_NUANCES = {
@@ -139,6 +82,20 @@ const INITIAL_ROOM_NUANCES = {
   cellier:    { dominantColor: "dominante", secondaryColor: "secondaire" },
   sanitaires: { dominantColor: "secondaire", secondaryColor: "dominante" },
 };
+
+const DEFAULT_GLOBAL_PALETTE = {
+  dominante: { hex: FB.parmaGray.hex, name: fbLabel(FB.parmaGray) },
+  secondaire: { hex: FB.string.hex, name: fbLabel(FB.string) },
+  sol: { hex: FB.elephantsBreath.hex, name: fbLabel(FB.elephantsBreath) },
+  accents: [
+    { hex: FB.yellowGround.hex, name: fbLabel(FB.yellowGround) },
+    { hex: FB.farrowsCream.hex, name: fbLabel(FB.farrowsCream) },
+    { hex: FB.yeabridgeGreen.hex, name: fbLabel(FB.yeabridgeGreen) },
+  ],
+};
+
+const paletteHexes = (palette) =>
+  [palette.dominante, palette.secondaire, palette.sol, ...(palette.accents || [])].map((c) => c?.hex).join(",");
 
 const roomInspirationImages = {
   salon: ["/images/salon/01.jpg", "/images/salon/02.jpg", "/images/salon/03.jpg"],
@@ -1238,7 +1195,7 @@ function AddShoppingItemModal({ onAdd, onClose, allPersons, onCreatePerson }) {
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div className="mx-4 w-full max-w-sm rounded-xl border border-black/10 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">Ajouter aux courses</h2>
+          <h2 className="text-base font-semibold text-slate-900">Ajouter un achat</h2>
           <button type="button" onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700 leading-none">×</button>
         </div>
         <div className="space-y-4">
@@ -1831,7 +1788,7 @@ function PlanPreview({
     const data = await readFileAsDataUrl(file);
     if (typeof data === "string") {
       const url = await uploadToBlob(data, `${currentKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
+      if (!url) { await showAlert("Échec de l'upload. Réessayez."); return; }
       setPlanUploads((prev) => ({ ...prev, [currentKey]: url }));
       if (saveMediaKey) saveMediaKey("planUploads", currentKey, url);
       if (!isPdfUrl(url)) {
@@ -1854,7 +1811,7 @@ function PlanPreview({
       const nextIndex = (extraPlanImages[room] || []).length;
       const nextKey = `${room}-plan-extra-${nextIndex}`;
       const url = await uploadToBlob(data, `${nextKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
+      if (!url) { await showAlert("Échec de l'upload. Réessayez."); return; }
       setExtraPlanImages((prev) => {
         const newList = [...(prev[room] || []), url];
         if (saveMediaKey) saveMediaKey("extraPlanImages", room, newList);
@@ -1968,7 +1925,7 @@ function PlanPreview({
               </svg>
               <div>
                 <p className="text-sm font-semibold text-slate-600">Pas encore de plan</p>
-                <p className="mt-0.5 text-xs text-slate-400">Clique pour ajouter un plan, une photo ou un PDF.</p>
+                <p className="mt-0.5 text-xs text-slate-400">Cliquez pour ajouter un plan, une photo ou un PDF.</p>
               </div>
             </div>
           </div>
@@ -2121,7 +2078,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
     const data = await readFileAsDataUrl(file);
     if (typeof data === "string") {
       const url = await uploadToBlob(data, `${cardKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
+      if (!url) { await showAlert("Échec de l'upload. Réessayez."); return; }
       setUploadedImages((prev) => ({ ...prev, [cardKey]: url }));
       if (saveMediaKey) saveMediaKey("uploadedImages", cardKey, url);
       const analysis = await analyzeImageForContext({
@@ -2142,7 +2099,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
       const nextIndex = (aiInspirations[room] || []).length;
       const nextKey = `${room}-ai-${nextIndex}`;
       const url = await uploadToBlob(data, `${nextKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
+      if (!url) { await showAlert("Échec de l'upload. Réessayez."); return; }
       addAiInspiration(room, url);  // addAiInspiration calls saveMediaKey internally
       if (onLogActivity) onLogActivity("inspiration_added", room, {});
       const analysis = await analyzeImageForContext({
@@ -2387,7 +2344,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
                 </svg>
                 <div>
                   <p className="text-sm font-semibold text-slate-600">Pas encore d'inspirations</p>
-                  <p className="mt-0.5 text-xs text-slate-400">Clique pour ajouter tes premières inspirations.</p>
+                  <p className="mt-0.5 text-xs text-slate-400">Cliquez pour ajouter vos premières inspirations.</p>
                 </div>
               </div>
             </div>
@@ -2662,7 +2619,7 @@ function MaterialsSection({
     const data = await readFileAsDataUrl(file);
     if (typeof data === "string") {
       const url = await uploadToBlob(data, `${cardKey}-${Date.now()}.${extFromDataUrl(data)}`);
-      if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
+      if (!url) { await showAlert("Échec de l'upload. Réessayez."); return; }
       setMaterialUploads((prev) => ({ ...prev, [cardKey]: url }));
       if (saveMediaKey) saveMediaKey("materialUploads", cardKey, url);
       const analysis = await analyzeImageForContext({
@@ -2747,7 +2704,7 @@ function MaterialsSection({
             </svg>
             <div>
               <p className="text-sm font-semibold text-slate-600">Pas encore de matériaux</p>
-              <p className="mt-0.5 text-xs text-slate-400">Clique pour ajouter des matériaux, revêtements ou références produit.</p>
+              <p className="mt-0.5 text-xs text-slate-400">Cliquez pour ajouter des matériaux, revêtements ou références produit.</p>
             </div>
           </div>
         </div>
@@ -2921,57 +2878,10 @@ function MaterialsSection({
   );
 }
 
-function GeneralPaletteSection({ orderedActiveRooms, allRoomPresets, getRoomColors, onNavigateToRoom }) {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-        <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
-        <h2 className="type-h2">Palette de l'appartement</h2>
-        <p className="mt-1 text-sm text-slate-600">Toutes les pièces et leurs couleurs. Cliquer pour accéder à une pièce.</p>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {orderedActiveRooms.map((key) => {
-          const p = allRoomPresets[key];
-          const colors = getRoomColors(key);
-          if (!colors || !p) return null;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onNavigateToRoom(key)}
-              className="group rounded-xl border border-black/10 bg-white p-4 text-left transition-all hover:border-slate-400/40 hover:shadow-md"
-            >
-              <div className="mb-3 h-2 w-full rounded-full" style={{ backgroundColor: colors.dominant?.hex || "#EEEAE0" }} />
-              <div className="mb-3 flex items-start justify-between gap-2">
-                <div className="font-medium text-slate-900">{p.label}</div>
-                <span className="shrink-0 text-slate-300 transition-colors group-hover:text-slate-500">→</span>
-              </div>
-              <div className="flex gap-2">
-                {[
-                  colors.dominant && { ...colors.dominant, sublabel: "Dom." },
-                  colors.secondary && { ...colors.secondary, sublabel: "Sec." },
-                  colors.accent && { ...colors.accent, sublabel: "Acc." },
-                ].filter(Boolean).map(({ hex, name, sublabel }) => (
-                  <div key={sublabel} className="min-w-0 flex-1">
-                    <div className="mb-1 h-7 rounded border border-black/10" style={{ backgroundColor: hex }} />
-                    <div className="truncate text-[10px] text-slate-400">{sublabel}</div>
-                    <div className="truncate text-[10px] text-slate-600">{name}</div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2 line-clamp-1 text-xs text-slate-400">{p.line}</p>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function GeneralContextSection({ generalContext, setGeneralContext }) {
   return (
     <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-      <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Appartement</p>
+      <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Projet</p>
       <h2 className="type-h2">Contexte & goûts de design</h2>
       <p className="mt-1 mb-3 text-sm text-slate-600">
         Style général, contraintes, coups de cœur, choses à éviter…
@@ -3015,10 +2925,10 @@ function GeneralResourcesSection({ generalResources, setGeneralResources }) {
 
   return (
     <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-      <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Appartement</p>
+      <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Projet</p>
       <h2 className="type-h2">Documents</h2>
       <p className="mt-1 mb-3 text-sm text-slate-600">
-        Pinterest, boutiques, blogs design — références valables pour tout l'appartement.
+        Pinterest, boutiques, blogs design — références valables pour tout le projet.
       </p>
       <form onSubmit={handleAdd} className="mb-4 flex gap-2">
         <input
@@ -3115,7 +3025,7 @@ function DocumentsGlobalView({ orderedActiveRooms, allRoomPresets, roomDocuments
           <span className="grid h-12 w-12 place-items-center rounded-full bg-[#fdf9f4] text-2xl shadow-sm">🗂️</span>
           <p className="text-sm font-medium text-slate-600">Aucun document uploadé pour l'instant</p>
           <p className="max-w-sm text-xs text-slate-400">
-            Ouvre une pièce et ajoute des fichiers dans la section « Devis & documents » pour les retrouver ici.
+            Ouvrez une pièce et ajoutez des fichiers dans la section « Devis & documents » pour les retrouver ici.
           </p>
         </div>
       ) : (
@@ -3227,7 +3137,7 @@ function DiscussionsGlobalView({ orderedActiveRooms, allRoomPresets, discussions
         return (
           <div key={roomKey} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
             <h3 className="mb-3 font-medium text-slate-900">
-              {roomKey === "general" ? "Appartement" : allRoomPresets[roomKey]?.label}
+              {roomKey === "general" ? "Général" : allRoomPresets[roomKey]?.label}
             </h3>
             <div className="space-y-2">
               {discussions.map((d) => (
@@ -3826,7 +3736,7 @@ function DiscussionsPanel({ room, projectId, user, isOwner, discussions, onDiscu
                 <p className="text-sm font-semibold text-slate-600">
                   {filter === 'all' ? "Pas encore de discussions" : 'Aucun fil dans cette catégorie.'}
                 </p>
-                {filter === 'all' && <p className="mt-0.5 text-xs text-slate-400">Clique pour créer le premier fil d'échange.</p>}
+                {filter === 'all' && <p className="mt-0.5 text-xs text-slate-400">Cliquez pour créer le premier fil d'échange.</p>}
               </div>
             </div>
           </div>
@@ -4264,7 +4174,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
             </svg>
-            {isGeneral ? "Appartement" : aiContext.roomLabel}
+            {isGeneral ? "Tout le projet" : aiContext.roomLabel}
           </span>
           {messages.length > 0 ? (
             <button
@@ -4323,11 +4233,11 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
                   <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
                 </svg>
               </div>
-              <p className="text-sm text-slate-500 leading-snug max-w-[200px]">{isGeneral ? "Que puis-je faire pour votre" : "Que puis-je faire pour"} <span className="font-medium text-slate-700">{isGeneral ? "appartement" : aiContext.roomLabel}</span> ?</p>
+              <p className="text-sm text-slate-500 leading-snug max-w-[200px]">{isGeneral ? "Que puis-je faire pour votre" : "Que puis-je faire pour"} <span className="font-medium text-slate-700">{isGeneral ? "projet" : aiContext.roomLabel}</span> ?</p>
             </div>
             <div className="flex flex-wrap justify-center gap-1.5">
               {[
-                { label: "Liste de courses", icon: "🛒" },
+                { label: "Liste d'achats", icon: "🛒" },
                 { label: "Tâches à faire", icon: "✓" },
                 { label: "Couleurs pour les murs ?", icon: null },
                 { label: "Ambiance lumineuse ?", icon: null },
@@ -4580,7 +4490,7 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
                 sendMessage();
               }
             }}
-            placeholder="Pose une question sur cette pièce…"
+            placeholder="Posez une question sur cette pièce…"
             rows={1}
             className="w-full resize-none bg-transparent px-3 pt-3 pb-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none overflow-hidden"
           />
@@ -4775,7 +4685,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
           )}
           {showRoom && (
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
-              {roomKey === "general" ? "Appartement" : allRoomPresets[roomKey]?.label}
+              {roomKey === "general" ? "Général" : allRoomPresets[roomKey]?.label}
             </span>
           )}
           {listKey === "shopping" && (
@@ -4905,7 +4815,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
       {/* Header */}
       <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
         <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
-        <h2 className="type-h2">{isCourses ? "Toutes les courses" : "Toutes les tâches"}</h2>
+        <h2 className="type-h2">{isCourses ? "Tous les achats" : "Toutes les tâches"}</h2>
         <p className="mt-1 text-sm text-slate-600">
           {totalPending > 0 ? `${totalPending} élément${totalPending > 1 ? "s" : ""} en attente.` : "Tout est fait — rien en attente."}
         </p>
@@ -4950,7 +4860,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
 
       {/* Vue par pièce (+ section "Appartement" pour les éléments non liés à une pièce) */}
       {groupBy === "room" && ["general", ...orderedActiveRooms].map((key) => {
-        const preset = key === "general" ? { label: "Appartement" } : allRoomPresets[key];
+        const preset = key === "general" ? { label: "Général" } : allRoomPresets[key];
         const list = roomLists[key] || {};
         const allItems = isCourses
           ? (list.shopping || [])
@@ -4986,7 +4896,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
                   value={inputVal}
                   onChange={(e) => setRoomInputs((prev) => ({ ...prev, [key]: e.target.value }))}
                   onKeyDown={(e) => { if (e.key === "Escape") { setRoomInputOpen((prev) => ({ ...prev, [key]: false })); setRoomInputs((prev) => ({ ...prev, [key]: "" })); } }}
-                  placeholder={addListKey === "shopping" ? "Ajouter aux courses…" : "Ajouter une tâche…"}
+                  placeholder={addListKey === "shopping" ? "Ajouter un achat…" : "Ajouter une tâche…"}
                   className="min-w-0 flex-1 rounded-md border border-black/15 bg-slate-50 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none" />
                 <button type="submit"
                   className="shrink-0 rounded-md border border-black/15 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white">
@@ -5217,7 +5127,7 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, sa
         const ext = extFromDataUrl(dataUrl);
         const filename = `doc-${room}-${Date.now()}.${ext}`;
         const url = await uploadToBlob(dataUrl, filename);
-        if (!url) { await showAlert("Échec de l'upload. Réessaie."); continue; }
+        if (!url) { await showAlert("Échec de l'upload. Réessayez."); continue; }
         const doc = {
           id: `doc-${room}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           name: file.name,
@@ -5310,7 +5220,7 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, sa
           <span className="grid h-12 w-12 place-items-center rounded-full bg-white text-2xl shadow-sm">📄</span>
           <p className="text-sm font-medium text-slate-600">Aucun document pour l'instant</p>
           <p className="max-w-xs text-xs text-slate-400">
-            Glisse-dépose un fichier ici ou clique sur « + Document » pour ajouter un devis, un plan ou une facture.
+            Glissez-déposez un fichier ici ou cliquez sur « + Document » pour ajouter un devis, un plan ou une facture.
           </p>
         </div>
       ) : (
@@ -5600,7 +5510,7 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
             </button>
           )}
           {listKey === "shopping" && (
-            <button type="button" title="Ajouter aux courses" aria-label="Ajouter aux courses"
+            <button type="button" title="Ajouter un achat" aria-label="Ajouter un achat"
               onClick={() => setAddShoppingModalOpen(true)}
               className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-black/15 bg-white text-lg leading-none shadow-sm hover:bg-[#fcf8d5]">
               +
@@ -5770,7 +5680,7 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
                 <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
                 <h3 className="type-h3">Mes achats</h3>
               </div>
-              <button type="button" title="Ajouter aux courses" aria-label="Ajouter aux courses"
+              <button type="button" title="Ajouter un achat" aria-label="Ajouter un achat"
                 onClick={() => setAddShoppingModalOpen(true)}
                 className="grid h-11 w-11 place-items-center rounded-full border border-black/15 bg-white text-lg leading-none shadow-sm hover:bg-[#fcf8d5]">
                 +
@@ -6007,8 +5917,8 @@ function translateAuthError(error) {
   if (/user already registered|already registered/i.test(msg)) return "Un compte existe déjà avec cet email.";
   if (/password should be at least/i.test(msg)) return "Le mot de passe doit contenir au moins 6 caractères.";
   if (/unable to validate email address|invalid email/i.test(msg)) return "Adresse email invalide.";
-  if (/rate limit/i.test(msg)) return "Trop de tentatives. Réessaie dans quelques instants.";
-  return "Une erreur est survenue. Réessaie.";
+  if (/rate limit/i.test(msg)) return "Trop de tentatives. Réessayez dans quelques instants.";
+  return "Une erreur est survenue. Réessayez.";
 }
 
 function PasswordInput({ value, onChange, placeholder, autoComplete, className }) {
@@ -6069,7 +5979,7 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
     setFormError("");
 
     if (mode === "forgot") {
-      if (!email.trim()) { setFormError("Merci de renseigner ton email."); return; }
+      if (!email.trim()) { setFormError("Merci de renseigner votre email."); return; }
       setFormLoading(true);
       const { error } = await onResetPassword(email.trim());
       setFormLoading(false);
@@ -6088,7 +5998,7 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
       const { error, needsConfirmation, alreadyRegistered } = await onSignUpWithEmail(email.trim(), password, fullName.trim());
       setFormLoading(false);
       if (error) { setFormError(translateAuthError(error)); return; }
-      if (alreadyRegistered) { setFormError("Un compte existe déjà avec cet email. Connecte-toi, ou utilise «Mot de passe oublié»."); return; }
+      if (alreadyRegistered) { setFormError("Un compte existe déjà avec cet email. Connectez-vous, ou utilisez « Mot de passe oublié »."); return; }
       if (needsConfirmation) setSignupNeedsConfirmation(true);
     } else {
       const { error } = await onSignInWithEmail(email.trim(), password);
@@ -6148,22 +6058,22 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
                 </div>
                 <h1 className="text-[26px] font-semibold leading-snug text-slate-900">
                   {inviteProjectName
-                    ? <>Tu as été invité(e) à rejoindre<br /><span className="text-amber-700">"{inviteProjectName}"</span> 🏡</>
-                    : "Tu as été invité(e) à rejoindre un projet déco 🏡"
+                    ? <>Vous avez été invité(e) à rejoindre<br /><span className="text-amber-700">"{inviteProjectName}"</span> 🏡</>
+                    : "Vous avez été invité(e) à rejoindre un projet déco 🏡"
                   }
                 </h1>
                 <p className="mt-3 text-sm leading-relaxed text-slate-500">
-                  Connecte-toi pour voir les inspirations, ajouter les tiennes et décider ensemble.
+                  Connectez-vous pour voir les inspirations, ajouter les vôtres et décider ensemble.
                 </p>
               </>
             ) : (
               <>
-                <p className="mb-6 text-sm text-slate-400">Co-créez votre intérieur.</p>
+                <p className="mb-6 text-sm text-slate-400">L'espace client des décorateurs d'intérieur.</p>
                 <h1 className="text-[26px] font-semibold leading-snug text-slate-900">
-                  Votre projet déco,<br />organisé pièce par pièce.
+                  Vos projets clients,<br />organisés pièce par pièce.
                 </h1>
                 <p className="mt-3 text-sm leading-relaxed text-slate-500">
-                  Palette de couleurs, inspirations, matériaux et plans — tout au même endroit.
+                  Inspirations, teintes, achats, budget et validations client — au même endroit.
                 </p>
               </>
             )}
@@ -6173,7 +6083,7 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
             <div className="mb-8 space-y-2.5">
               {[
                 { emoji: "🎨", label: "Inspirations partagées" },
-                { emoji: "❤️", label: "Liste d'envies commune" },
+                { emoji: "🧾", label: "Achats et budget suivis ensemble" },
                 { emoji: "💬", label: "Discussions en temps réel" },
               ].map(({ emoji, label }) => (
                 <div key={label} className="flex items-center gap-3 rounded-xl border border-black/8 bg-white px-4 py-3">
@@ -6197,7 +6107,7 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
                       <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
                     </svg>
                   ),
-                  text: "Palette de couleurs par pièce",
+                  text: "Inspirations, teintes et matériaux par pièce",
                 },
                 {
                   svg: (
@@ -6205,7 +6115,7 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
                       <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
                     </svg>
                   ),
-                  text: "Propositions IA sur vos photos",
+                  text: "Achats, devis et budget suivis avec le client",
                 },
                 {
                   svg: (
@@ -6216,7 +6126,7 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
                       <rect x="14" y="14" width="7" height="7" rx="1"/>
                     </svg>
                   ),
-                  text: "Inspirations, matériaux & plans",
+                  text: "Fiche PDF prête à partager au client",
                 },
               ].map(({ svg, text }) => (
                 <div key={text} className="flex items-center gap-3 text-sm text-slate-600">
@@ -6253,7 +6163,7 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
             </div>
           ) : mode === "signup" && signupNeedsConfirmation ? (
             <div className="rounded-xl border border-emerald-200/60 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-700">
-              Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse avant de te connecter.
+              Compte créé ! Vérifiez votre boîte mail pour confirmer votre adresse avant de vous connecter.
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3">
@@ -6327,7 +6237,7 @@ function LoginScreen({ onSignIn, onSignInWithEmail, onSignUpWithEmail, onResetPa
           </div>
 
           <p className="mt-4 text-center text-xs text-slate-400">
-            {isInvite ? "Gratuit · Aucune carte requise." : "Accès réservé aux membres du projet."}
+            {isInvite ? "Gratuit · Aucune carte requise." : "Aucune carte bancaire requise pour démarrer."}
           </p>
         </div>
       </div>
@@ -6417,7 +6327,7 @@ function SetNewPasswordScreen({ onUpdatePassword }) {
     <div className="flex min-h-screen items-center justify-center bg-[#FAF6F0] p-8">
       <div className="w-full max-w-[340px]">
         <h1 className="mb-1 text-[22px] font-semibold text-slate-900">Nouveau mot de passe</h1>
-        <p className="mb-6 text-sm text-slate-500">Choisis un nouveau mot de passe pour ton compte.</p>
+        <p className="mb-6 text-sm text-slate-500">Choisissez un nouveau mot de passe pour votre compte.</p>
 
         {done ? (
           <div className="rounded-xl border border-emerald-200/60 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-700">
@@ -6737,7 +6647,7 @@ function ActivityFeedView({ activityFeed, allRoomPresets, onNavigate }) {
   const actionLabel = (type) => {
     switch (type) {
       case "todo_added": return "a ajouté une tâche";
-      case "shopping_added": return "a ajouté un article courses";
+      case "shopping_added": return "a ajouté un achat";
       case "inspiration_added": return "a ajouté une inspiration";
       case "inspiration_link_added": return "a ajouté un lien d'inspiration";
       case "discussion_added": return "a créé une discussion";
@@ -6953,8 +6863,8 @@ export default function App() {
   const [inviteCode, setInviteCode] = useState(null);
   const [copyInviteSuccess, setCopyInviteSuccess] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showPlanUsage, setShowPlanUsage] = useState(false);
   const userMenuRef = useRef(null);
-  const mobileUserMenuRef = useRef(null);
   const projectPickerRef = useRef(null);
 
   // ── Projet ────────────────────────────────────────────────────────────────
@@ -6962,16 +6872,7 @@ export default function App() {
   const [globalAccent, setGlobalAccent] = useState("butter");
   const [globalShade, setGlobalShade] = useState("moyen");
   const [globalDominantColor, setGlobalDominantColor] = useState("bleu");
-  const [globalPalette, setGlobalPalette] = useState({
-    dominante: { hex: FB.parmaGray.hex, name: fbLabel(FB.parmaGray) },
-    secondaire: { hex: FB.string.hex, name: fbLabel(FB.string) },
-    sol: { hex: FB.elephantsBreath.hex, name: fbLabel(FB.elephantsBreath) },
-    accents: [
-      { hex: FB.yellowGround.hex, name: fbLabel(FB.yellowGround) },
-      { hex: FB.farrowsCream.hex, name: fbLabel(FB.farrowsCream) },
-      { hex: FB.yeabridgeGreen.hex, name: fbLabel(FB.yeabridgeGreen) },
-    ],
-  });
+  const [globalPalette, setGlobalPalette] = useState(DEFAULT_GLOBAL_PALETTE);
   const [activePaletteSlot, setActivePaletteSlot] = useState(null);
   const [customColorRole, setCustomColorRole] = useState(null);
   useEffect(() => { setCustomColorRole(null); }, [room]);
@@ -7045,7 +6946,7 @@ export default function App() {
   const [showColorCatalog, setShowColorCatalog] = useState(false);
   const [roomNotes, setRoomNotes] = useState({});
   const [viewMode, setViewMode] = useState("general");
-  const [roomMode, setRoomMode] = useState("taches");
+  const [roomMode, setRoomMode] = useState("inspirations");
   const [generalMode, setGeneralMode] = useState("accueil");
   const [lightbox, setLightbox] = useState(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -7093,6 +6994,8 @@ export default function App() {
     setActivityLastViewed(now);
     localStorage.setItem("activityLastViewed", now);
   };
+  // Checklist « Démarrage » de l'accueil — masquée par projet, pour ce navigateur
+  const [startChecklistHidden, setStartChecklistHidden] = useState(false);
 
   const customRoomPresets = Object.fromEntries(
     customRooms.map((customRoom) => [
@@ -7101,8 +7004,8 @@ export default function App() {
         label: customRoom.label,
         dominant: customRoom.dominant || "creme",
         secondary: customRoom.secondary || "bois",
-        line: customRoom.line || `${customRoom.label} : base douce, nuances à ajuster selon les inspirations ajoutées.`,
-        notes: customRoom.notes || ["Ajoute des images pour construire la direction de cette pièce."],
+        // Ignore l'ancien texte générique enregistré à la création des pièces personnalisées
+        line: customRoom.line && !customRoom.line.endsWith("base douce, nuances à ajuster selon les inspirations ajoutées.") ? customRoom.line : "",
       },
     ]),
   );
@@ -7165,6 +7068,14 @@ export default function App() {
     return p ? `${p.label}: ${dHex}` : null;
   }).filter(Boolean).join(" | ");
 
+  // Matériaux du catalogue par défaut : seulement ceux réellement ajoutés au
+  // projet (même règle que MaterialsSection), sinon l'IA reçoit des matières
+  // que l'utilisateur n'a jamais choisies.
+  const uploadedCatalogMaterials = (key) => (materialsByRoom[key] || []).filter((_, i) => {
+    const cardKey = `${key}-material-${i}`;
+    return materialUploads[cardKey] && !deletedImages[cardKey];
+  });
+
   const availableRooms = viewMode === "general" ? orderedActiveRooms.map((key) => {
     const p = allRoomPresets[key];
     if (!p) return null;
@@ -7185,7 +7096,7 @@ export default function App() {
           if (i.priceCurrency) result.priceCurrency = i.priceCurrency;
           return result;
         }),
-      materialSummary: (materialsByRoom[key] || []).map((m) => `${m.label}: ${m.value}`).slice(0, 3),
+      materialSummary: uploadedCatalogMaterials(key).map((m) => `${m.label}: ${m.value}`).slice(0, 3),
       testColors: (roomColorTests[key] || []).map((c) => ({ id: c.id, name: c.name, number: c.number, hex: c.hex, chosen: c.chosen })),
     };
   }).filter(Boolean) : [];
@@ -7229,7 +7140,7 @@ export default function App() {
     .filter((i) => !i.done).slice(0, 8).map((i) => ({ id: i.id, text: i.text }));
 
   const aiMaterialSummary = [
-    ...(materialsByRoom[room] || []).map((m) => `${m.label}: ${m.value}`),
+    ...uploadedCatalogMaterials(room).map((m) => `${m.label}: ${m.value}`),
     ...(extraMaterialImages[room] || []).map((_, i) => {
       const cardKey = `${room}-material-extra-${i}`;
       const meta = extraMaterialMeta[cardKey] || {};
@@ -7398,20 +7309,11 @@ export default function App() {
       label: label.trim(),
       dominant: "creme",
       secondary: "bois",
-      line: `${label.trim()} : base douce, nuances à ajuster selon les inspirations ajoutées.`,
-      notes: ["Ajoute des images pour construire la direction de cette pièce."],
     };
 
     setCustomRooms((prev) => [...prev, newRoom]);
     setRoomNuances((prev) => ({ ...prev, [key]: { dominant: "moyen", secondary: "moyen", accent: globalAccent } }));
     setRoomNotes((prev) => ({ ...prev, [key]: "" }));
-
-    const defaultTodos = [
-      { id: `todos-${Date.now()}-1`, text: "Ajouter une image d'inspiration", done: false },
-      { id: `todos-${Date.now()}-2`, text: "Ajouter un document (plan, devis…)", done: false },
-    ];
-    setRoomLists((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), todos: defaultTodos } }));
-    if (projectId) saveRoomItemsToServer(projectId, key, "todos", defaultTodos);
 
     setRoom(key);
     setViewMode("room");
@@ -7467,7 +7369,7 @@ export default function App() {
         const data = await readFileAsDataUrl(file);
         if (typeof data !== "string") return;
         const url = await uploadToBlob(data, `inspo-${room}-${Date.now()}-${Math.random().toString(36).slice(2)}.${extFromDataUrl(data)}`);
-        if (!url) { await showAlert("Échec de l'upload. Réessaie."); return; }
+        if (!url) { await showAlert("Échec de l'upload. Réessayez."); return; }
         addAiInspiration(room, url);
         logActivity("inspiration_added", room, {});
         const analysis = await analyzeImageForContext({ image: url, context: `Inspiration ${preset.label}`, section: "inspiration", authedFetch, projectId });
@@ -7948,10 +7850,11 @@ export default function App() {
     setLoadingFromUrl(true);
     authedFetch(`${API_BASE}/load-project?id=${encodeURIComponent(idToLoad)}&t=${Date.now()}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then(({ projectConfig, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
+      .then(({ projectConfig, name, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
         if (projectConfig) {
           hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized });
           setProjectId(idToLoad);
+          rememberProjectName(idToLoad, name, owner);
         }
         if (typeof owner === "boolean") setIsOwner(owner);
         if (code) setInviteCode(code);
@@ -8000,6 +7903,15 @@ export default function App() {
     }
   };
 
+  // Nom du projet ouvert, connu dès load-project — sans attendre la liste des
+  // projets (projet tout juste créé ou rejoint).
+  const rememberProjectName = (id, name, owner) => {
+    if (!id || !name) return;
+    setUserProjects((prev) => (prev.some((p) => p.id === id)
+      ? prev.map((p) => (p.id === id ? { ...p, name } : p))
+      : [...prev, { id, name, role: owner ? "owner" : "editor" }]));
+  };
+
   const switchProject = (id) => {
     hydratedRef.current = false;
     setUploadedImages({});
@@ -8024,16 +7936,7 @@ export default function App() {
     setGlobalAccent("butter");
     setGlobalShade("moyen");
     setGlobalDominantColor("bleu");
-    setGlobalPalette({
-      dominante: { hex: FB.parmaGray.hex, name: fbLabel(FB.parmaGray) },
-      secondaire: { hex: FB.string.hex, name: fbLabel(FB.string) },
-      sol: { hex: FB.elephantsBreath.hex, name: fbLabel(FB.elephantsBreath) },
-      accents: [
-        { hex: FB.yellowGround.hex, name: fbLabel(FB.yellowGround) },
-        { hex: FB.farrowsCream.hex, name: fbLabel(FB.farrowsCream) },
-        { hex: FB.yeabridgeGreen.hex, name: fbLabel(FB.yeabridgeGreen) },
-      ],
-    });
+    setGlobalPalette(DEFAULT_GLOBAL_PALETTE);
     setRoomOrder(null);
     setChatHistory({});
     setProjectId(id);
@@ -8042,10 +7945,11 @@ export default function App() {
     setLoadingFromUrl(true);
     authedFetch(`${API_BASE}/load-project?id=${encodeURIComponent(id)}&t=${Date.now()}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then(({ projectConfig, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
+      .then(({ projectConfig, name, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
         if (projectConfig) hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized });
         if (typeof owner === "boolean") setIsOwner(owner);
         if (code) setInviteCode(code);
+        rememberProjectName(id, name, owner);
       })
       .catch(() => {})
       .finally(() => {
@@ -8245,11 +8149,11 @@ export default function App() {
     if (!user?.id || !import.meta.env.VITE_SUPABASE_URL) return;
     supabase.from("project_members").select("project_id", { count: "exact", head: true }).eq("user_id", user.id)
       .then(({ count }) => {
-        if (count !== null) {
-          setUserProjectCount(count);
-          if (count > 1) loadUserProjects();
-        }
+        if (count !== null) setUserProjectCount(count);
       });
+    // Toujours charger les noms : même avec un seul projet, l'accueil, la barre
+    // latérale et le titre du PDF client en ont besoin.
+    loadUserProjects();
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadUserProjects = async () => {
@@ -8268,7 +8172,7 @@ export default function App() {
   };
 
   const handleDeleteProject = async (p) => {
-    if (!(await showConfirm(`Toutes ses données (pièces, discussions, médias, documents...) seront perdues. Cette action est irréversible.`, { title: `Supprimer "${p.name || "cet appartement"}" ?`, danger: true, confirmLabel: "Supprimer définitivement" }))) return;
+    if (!(await showConfirm(`Toutes ses données (pièces, discussions, médias, documents...) seront perdues. Cette action est irréversible.`, { title: `Supprimer "${p.name || "ce projet"}" ?`, danger: true, confirmLabel: "Supprimer définitivement" }))) return;
     try {
       const res = await authedFetch(`${API_BASE}/delete-project`, {
         method: "POST",
@@ -8298,7 +8202,7 @@ export default function App() {
   };
 
   const handleArchiveProject = async (p) => {
-    if (!(await showConfirm("Cette action archive le projet — les données sont conservées, tu pourras demander sa réactivation.", { title: `Archiver "${p.name || "ce projet"}" ?`, confirmLabel: "Archiver" }))) return;
+    if (!(await showConfirm("Cette action archive le projet — les données sont conservées, vous pourrez demander sa réactivation.", { title: `Archiver "${p.name || "ce projet"}" ?`, confirmLabel: "Archiver" }))) return;
     try {
       const res = await authedFetch(`${API_BASE}/archive-project`, {
         method: "POST",
@@ -8333,9 +8237,18 @@ export default function App() {
 
     const inviteParam = new URLSearchParams(window.location.search).get("invite");
     if (inviteParam) {
-      // Ne pas rejoindre automatiquement — l'écran d'invitation de l'onboarding
-      // demande confirmation avant d'appeler handleJoinProject.
-      setShowOnboarding(true);
+      // La personne a déjà confirmé en ouvrant le lien et en se connectant depuis
+      // l'écran d'invitation : on rejoint directement. En cas d'échec, l'écran
+      // d'invitation de l'onboarding permet de réessayer et affiche l'erreur.
+      handleJoinProject(inviteParam.trim().toLowerCase())
+        .then((result) => {
+          if (result?.ok && result.projectId) {
+            switchProject(result.projectId);
+            // La liste chargée au démarrage peut précéder l'adhésion : on la recharge
+            loadUserProjects();
+          } else setShowOnboarding(true);
+        })
+        .catch(() => setShowOnboarding(true));
       return;
     }
 
@@ -8488,10 +8401,7 @@ export default function App() {
   useEffect(() => {
     if (!showUserMenu) return;
     const handler = (e) => {
-      if (
-        userMenuRef.current && !userMenuRef.current.contains(e.target) &&
-        mobileUserMenuRef.current && !mobileUserMenuRef.current.contains(e.target)
-      ) setShowUserMenu(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setShowUserMenu(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -8526,6 +8436,82 @@ export default function App() {
   const roomTodoCount = (key) => (roomLists[key]?.todos || []).filter((item) => !item.done).length;
   const roomCourseCount = (key) => (roomLists[key]?.shopping || []).filter((item) => !item.done).length;
   const roomPendingCount = (key) => roomTodoCount(key) + roomCourseCount(key);
+
+  // ── Checklist « Démarrage » (accueil, propriétaire uniquement) ─────────────
+  // Chaque étape est cochée d'après les vraies données du projet, sans action manuelle.
+  const firstRoom = orderedActiveRooms[0];
+  const goToRoomTab = (tab) => {
+    if (!firstRoom) return;
+    setRoom(firstRoom);
+    setViewMode("room");
+    setRoomMode(tab);
+  };
+  const hasAny = (byKey) => Object.values(byKey || {}).some((v) => (Array.isArray(v) ? v.length > 0 : !!v));
+  const startSteps = [
+    {
+      key: "inspiration",
+      label: "Ajouter une première inspiration",
+      done: hasAny(aiInspirations) || hasAny(uploadedImages) || hasAny(instagramItems) || hasAny(inspirationLinks),
+      onClick: () => goToRoomTab("inspirations"),
+    },
+    {
+      key: "palette",
+      label: "Choisir la palette du projet",
+      done: paletteHexes(globalPalette) !== paletteHexes(DEFAULT_GLOBAL_PALETTE),
+      onClick: () => { setViewMode("general"); setGeneralMode("couleurs"); },
+    },
+    {
+      key: "budget",
+      label: "Fixer le budget du projet",
+      done: typeof budgetTarget === "number",
+      onClick: () => { setViewMode("general"); setGeneralMode("budget"); },
+    },
+    {
+      key: "achat",
+      label: "Ajouter un premier achat ou importer un devis",
+      done: Object.values(roomLists).some((list) => (list?.shopping || []).length > 0),
+      onClick: () => { setViewMode("general"); setGeneralMode("courses"); },
+    },
+    {
+      key: "invite",
+      label: copyInviteSuccess ? "Lien copié — envoyez-le à votre client" : "Inviter votre client",
+      hint: inviteCode ? "Copier le lien d'invitation" : null,
+      done: projectMembers.length > 1,
+      onClick: () => {
+        if (!inviteCode) { setShowMembersModal(true); return; }
+        navigator.clipboard.writeText(`${window.location.origin}/?invite=${inviteCode}`);
+        setCopyInviteSuccess(true);
+        setTimeout(() => setCopyInviteSuccess(false), 2000);
+      },
+    },
+    {
+      key: "pdf",
+      label: "Exporter la fiche PDF d'une pièce",
+      hint: "Menu « Plus » d'une pièce",
+      done: (entitlements.usage?.pdfExports30d || 0) > 0,
+      onClick: () => goToRoomTab("inspirations"),
+    },
+  ];
+  const startStepsAllDone = startSteps.every((s) => s.done);
+
+  useEffect(() => {
+    if (!projectId) return;
+    try {
+      setStartChecklistHidden(localStorage.getItem(`startChecklistHidden:${projectId}`) === "true");
+    } catch {
+      setStartChecklistHidden(false);
+    }
+  }, [projectId]);
+
+  const hideStartChecklist = () => {
+    setStartChecklistHidden(true);
+    try { localStorage.setItem(`startChecklistHidden:${projectId}`, "true"); } catch {}
+  };
+
+  // Une fois tout coché, la checklist ne revient plus (l'export PDF n'est compté que sur 30 jours)
+  useEffect(() => {
+    if (startStepsAllDone && projectId && !startChecklistHidden) hideStartChecklist();
+  }, [startStepsAllDone, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Guards auth ──────────────────────────────────────────────────────────
   if (authLoading) return <div className="min-h-screen bg-[#FAF6F0]" />;
@@ -8563,7 +8549,7 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => { setShowMembersModal(false); setConfirmRemoveMember(null); }}>
           <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-black/8">
-              <h2 className="text-sm font-semibold text-slate-800">Membres de l'espace</h2>
+              <h2 className="text-sm font-semibold text-slate-800">Membres du projet</h2>
               <button onClick={() => { setShowMembersModal(false); setConfirmRemoveMember(null); }} className="text-slate-400 hover:text-slate-700 text-lg leading-none">×</button>
             </div>
             <ul className="divide-y divide-black/6 max-h-80 overflow-y-auto">
@@ -8604,6 +8590,15 @@ export default function App() {
         </div>
       )}
       <DialogHost />
+      {showPlanUsage && (
+        <PlanUsageModal
+          authedFetch={authedFetchRef.current}
+          apiBase={API_BASE}
+          projectId={projectId}
+          isOwner={isOwner}
+          onClose={() => setShowPlanUsage(false)}
+        />
+      )}
       {showSnapshotModal && (
         <SnapshotModal
           onConfirm={handleCreateSnapshot}
@@ -8667,7 +8662,7 @@ export default function App() {
               const primary = [
                 { key: "accueil", label: "Accueil", badge: 0, mention: 0 },
                 { key: "todos", label: "Tâches", badge: tPending, mention: 0 },
-                { key: "courses", label: "Courses", badge: 0, mention: 0 },
+                { key: "courses", label: "Achats", badge: 0, mention: 0 },
                 { key: "budget", label: "Budget", badge: 0, mention: 0 },
                 { key: "couleurs", label: "Teintes", badge: 0, mention: 0 },
                 { key: "discussions", label: "Discussions", badge: tUnread, mention: tMention },
@@ -8787,7 +8782,7 @@ export default function App() {
                 className="h-[18px] w-[18px] flex-shrink-0 rounded-[4px]"
                 style={{ background: "linear-gradient(135deg,#CDAA73 10%,#A8B5A2 90%)" }}
               />
-              <span className="flex-1 truncate text-[12.5px] font-semibold text-[#1C1A17]">{userProjects.find(p => p.id === projectId)?.name || "Appartement"}</span>
+              <span className="flex-1 truncate text-[12.5px] font-semibold text-[#1C1A17]">{userProjects.find(p => p.id === projectId)?.name || "Projet"}</span>
               <svg className="h-3.5 w-3.5 flex-shrink-0 text-[#8A8680]" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 5.5L7 2.5L10 5.5M4 8.5L7 11.5L10 8.5" />
               </svg>
@@ -8862,7 +8857,7 @@ export default function App() {
                     {renamingProjectId !== p.id && isGod && (
                       <button
                         type="button"
-                        title="Supprimer l'appartement"
+                        title="Supprimer le projet"
                         onClick={e => { e.stopPropagation(); handleDeleteProject(p); }}
                         className="flex-shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50"
                       >
@@ -8882,7 +8877,7 @@ export default function App() {
                   {entitlements.limits && entitlements.usage && entitlements.usage.activeProjects >= entitlements.limits.max_active_projects ? (
                     <a
                       href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Limite de projets atteinte")}`}
-                      title={`Limite de ${entitlements.limits.max_active_projects} projets actifs atteinte pour ton plan ${entitlements.plan?.name || ""}. Archive un projet existant ou contacte l'équipe.`}
+                      title={`Limite de ${entitlements.limits.max_active_projects} projets actifs atteinte pour votre plan ${entitlements.plan?.name || ""}. Archivez un projet existant ou contactez l'équipe.`}
                       className="block w-full rounded-md px-1 py-1 text-left text-[11px] text-[#ADA89E] transition-colors hover:text-[#8A8680]"
                     >
                       Limite de projets atteinte · Contacter l'équipe
@@ -8893,7 +8888,7 @@ export default function App() {
                       onClick={() => { setShowProjectPicker(false); setShowNewProjectWizard(true); }}
                       className="w-full rounded-md px-1 py-1 text-left text-[11px] text-[#ADA89E] transition-colors hover:text-[#8A8680]"
                     >
-                      Créer un tout nouvel appartement
+                      Créer un nouveau projet
                     </button>
                   )}
                 </div>
@@ -8988,6 +8983,18 @@ export default function App() {
                   </svg>
                   <span className="text-sm text-slate-700">{isSavingSnapshot ? "Sauvegarde…" : "Snapshot"}</span>
                 </button>
+                {isOwner && (
+                  <button
+                    onClick={() => { setShowPlanUsage(true); setShowUserMenu(false); }}
+                    className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50 flex items-center gap-2.5"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-400">
+                      <path d="M3 3v18h18" />
+                      <path d="M7 15l4-4 3 3 5-6" />
+                    </svg>
+                    <span className="text-sm text-slate-700">Abonnement et usage</span>
+                  </button>
+                )}
                 <button
                   onClick={signOut}
                   className="w-full border-t border-black/8 px-3 py-2 text-left text-sm text-red-500 transition-colors hover:bg-red-50"
@@ -9022,116 +9029,6 @@ export default function App() {
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden min-w-0">
-        <header className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-black/[0.07] bg-[#FAFAF8] px-5" style={{display:'none'}}>
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(true)}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-black/[0.1] text-slate-500 hover:bg-slate-50 lg:hidden"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M1 3h12M1 7h12M1 11h12" />
-            </svg>
-          </button>
-          <span className="flex-1 truncate text-sm font-semibold tracking-tight text-[#1C1A17]">
-            {viewMode === "room" ? allRoomPresets[room]?.label : "Vue générale"}
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSnapshotHistory(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-black/[0.1] bg-white px-3 py-1.5 text-sm text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6l4 2" />
-              </svg>
-              <span className="hidden sm:inline">Historique</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowSnapshotModal(true)}
-              disabled={isSavingSnapshot}
-              className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-700 disabled:opacity-60"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                <polyline points="17 21 17 13 7 13 7 21" />
-                <polyline points="7 3 7 8 15 8" />
-              </svg>
-              <span className="hidden sm:inline">{isSavingSnapshot ? "Sauvegarde…" : "Snapshot"}</span>
-            </button>
-            <div className="relative" ref={mobileUserMenuRef}>
-              <button
-                type="button"
-                onClick={() => setShowUserMenu((v) => !v)}
-                className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30"
-              >
-                {user?.user_metadata?.avatar_url ? (
-                  <img
-                    src={user.user_metadata.avatar_url}
-                    alt=""
-                    className="h-8 w-8 rounded-full border-2 border-white shadow-sm ring-1 ring-black/10"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                      e.currentTarget.nextSibling.style.display = "flex";
-                    }}
-                  />
-                ) : null}
-                <div
-                  style={{ display: user?.user_metadata?.avatar_url ? "none" : "flex" }}
-                  className="h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-slate-200 text-sm font-semibold text-slate-600"
-                >
-                  {(user?.email || "?")[0].toUpperCase()}
-                </div>
-              </button>
-              {showUserMenu && (
-                <div className="absolute right-0 top-full z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-black/10 bg-white shadow-xl">
-                  <div className="border-b border-black/8 px-3 py-2.5">
-                    <p className="truncate text-xs font-medium text-slate-800">
-                      {user?.user_metadata?.full_name || "Utilisateur"}
-                    </p>
-                    <p className="mt-0.5 truncate text-[11px] text-slate-400">{user?.email}</p>
-                  </div>
-                  {isOwner && (
-                    <button
-                      onClick={() => { setShowMembersModal(true); setShowUserMenu(false); }}
-                      className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
-                    >
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Membres</p>
-                      <p className="mt-0.5 text-sm text-slate-700">Gérer les membres →</p>
-                    </button>
-                  )}
-                  {isOwner && inviteCode && (
-                    <button
-                      onClick={() => {
-                        const inviteUrl = `${window.location.origin}/?invite=${inviteCode}`;
-                        navigator.clipboard.writeText(inviteUrl);
-                        setCopyInviteSuccess(true);
-                        setTimeout(() => setCopyInviteSuccess(false), 2000);
-                      }}
-                      className="w-full px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
-                    >
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Lien d'invitation</p>
-                      <p className="mt-0.5 text-sm text-slate-700">{copyInviteSuccess ? "✓ Lien copié !" : "Copier le lien →"}</p>
-                    </button>
-                  )}
-                  <button
-                    onClick={signOut}
-                    className="w-full border-t border-black/8 px-3 py-2 text-left text-sm text-red-500 transition-colors hover:bg-red-50"
-                  >
-                    Se déconnecter
-                  </button>
-                </div>
-              )}
-            </div>
-            {lastSavedAt && (
-              <span className="hidden text-[11px] text-slate-400 md:inline">
-                Auto-sauvé {new Date(lastSavedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            )}
-          </div>
-        </header>
-
         {viewMode === "room" ? (
           <div className="flex h-14 flex-shrink-0 items-center border-b border-black/[0.08] bg-[#FAFAF8] px-4">
             <button type="button" onClick={() => setSidebarOpen(true)} className="mr-2 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-black/[0.05] lg:hidden">
@@ -9148,8 +9045,8 @@ export default function App() {
                     : 0;
                   return { pending, mentionBadge };
                 };
-                const primary = ["taches", "courses", "inspirations", "couleurs", "discussions"].map((key) => ({
-                  key, label: { taches: "Tâches", courses: "Courses", inspirations: "Inspirations", couleurs: "Teintes", discussions: "Discussions" }[key], ...badgesFor(key),
+                const primary = ["inspirations", "couleurs", "courses", "taches", "discussions"].map((key) => ({
+                  key, label: { taches: "Tâches", courses: "Achats", inspirations: "Inspirations", couleurs: "Teintes", discussions: "Discussions" }[key], ...badgesFor(key),
                 }));
                 const secondary = [
                   ...["documents"].map((key) => {
@@ -9198,7 +9095,11 @@ export default function App() {
             </button>
             <span className="mr-2 flex-shrink-0 text-sm font-semibold text-[#1C1A17] lg:hidden">Vue générale</span>
             <div className="mr-2 h-3.5 w-px flex-shrink-0 bg-black/10 lg:hidden" />
-            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            {/* Sur desktop, la barre latérale liste déjà ces sections : on n'affiche que le titre */}
+            <span className="hidden text-sm font-semibold text-[#1C1A17] lg:inline">
+              {{ accueil: "Accueil", todos: "Tâches", courses: "Achats", budget: "Budget", couleurs: "Teintes", discussions: "Discussions", ressources: "Documents", activite: "Activité" }[generalMode] || "Vue générale"}
+            </span>
+            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto lg:hidden" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {(() => {
                 const { tPending: totalPending, tUnread: totalUnread, tMention: totalMentionUnread, tActivity: totalActivity } = computeGeneralBadges({
                   orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user,
@@ -9207,7 +9108,7 @@ export default function App() {
                 const primary = [
                   { key: "accueil", label: "Accueil", badge: 0 },
                   { key: "todos", label: "Tâches", badge: totalPending },
-                  { key: "courses", label: "Courses", badge: 0 },
+                  { key: "courses", label: "Achats", badge: 0 },
                   { key: "budget", label: "Budget", badge: 0 },
                   { key: "couleurs", label: "Teintes", badge: 0 },
                   { key: "discussions", label: "Discussions", badge: totalUnread, mentionBadge: totalMentionUnread },
@@ -9252,7 +9153,7 @@ export default function App() {
             });
             return (
               <Dashboard
-                projectName={userProjects.find(p => p.id === projectId)?.name || "Appartement"}
+                projectName={userProjects.find(p => p.id === projectId)?.name || "Projet"}
                 lastSavedAt={lastSavedAt}
                 orderedActiveRooms={orderedActiveRooms}
                 allRoomPresets={allRoomPresets}
@@ -9267,7 +9168,8 @@ export default function App() {
                 isOwner={isOwner}
                 authedFetch={authedFetchRef.current}
                 apiBase={API_BASE}
-                projectId={projectId}
+                startSteps={isOwner && !startChecklistHidden && !startStepsAllDone ? startSteps : null}
+                onHideStartSteps={hideStartChecklist}
               />
             );
           })() : generalMode === "todos" ? (
@@ -9372,7 +9274,7 @@ export default function App() {
                 return (
                   <div className="space-y-3 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
                     <div className="flex items-center justify-between">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Palette de l'appartement</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Palette du projet</p>
                       <p className="text-[11px] text-slate-400">Cliquer une couleur pour la modifier</p>
                     </div>
                     <div className="flex gap-2">
@@ -9470,7 +9372,9 @@ export default function App() {
                           </div>
                         ))}
                       </div>
-                      <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">{p.line}</p>
+                      {(roomNotes[key] || p.line) ? (
+                        <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">{roomNotes[key] || p.line}</p>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -9520,9 +9424,9 @@ export default function App() {
           ) : generalMode === "ressources" ? (
             <div className="space-y-5">
               <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-                <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Appartement</p>
+                <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Projet</p>
                 <h2 className="type-h2">Documents généraux</h2>
-                <p className="mt-1 text-sm text-slate-600">Devis ou plans qui concernent tout l'appartement, sans lien avec une pièce précise.</p>
+                <p className="mt-1 text-sm text-slate-600">Devis ou plans qui concernent tout le projet, sans lien avec une pièce précise.</p>
               </div>
               <DocumentsSection
                 room="general"
@@ -9558,126 +9462,27 @@ export default function App() {
           )
         ) : roomMode === "couleurs" ? (
           <>
-            <section className="grid gap-6 xl:grid-cols-2">
-              {(() => {
-                const applyColor = (slotKey, hex, name) => {
-                  setGlobalPalette(prev => {
-                    if (slotKey.startsWith("accent-")) {
-                      const idx = parseInt(slotKey.split("-")[1]);
-                      const newAccents = [...prev.accents];
-                      newAccents[idx] = { hex, name };
-                      return { ...prev, accents: newAccents };
-                    }
-                    return { ...prev, [slotKey]: { hex, name } };
-                  });
-                };
-                const applyToRooms = async (palette) => {
-                  const confirmed = await showConfirm(
-                    `Cela va écraser les couleurs dominante, secondaire et sol de chaque pièce avec celles de la palette globale. Les nuances (clair/moyen…) déjà choisies par pièce resteront inchangées.\n\nCette action n'est pas réversible automatiquement.`,
-                    { title: `Appliquer cette palette à ${orderedActiveRooms.length} pièce${orderedActiveRooms.length > 1 ? "s" : ""} ?`, confirmLabel: "Appliquer" }
-                  );
-                  if (!confirmed) return;
-                  setRoomNuances(prev => {
-                    const updated = { ...prev };
-                    orderedActiveRooms.forEach(k => {
-                      updated[k] = {
-                        ...(prev[k] || INITIAL_ROOM_NUANCES[k] || {}),
-                        dominantColor: palette.dominante.hex,
-                        secondaryColor: palette.secondaire.hex,
-                        solColor: palette.sol.hex,
-                      };
-                    });
-                    return updated;
-                  });
-                };
-                const mainSlots = [
-                  { key: "dominante", label: "Dominante", ...globalPalette.dominante },
-                  { key: "secondaire", label: "Secondaire", ...globalPalette.secondaire },
-                  { key: "sol", label: "Sol", ...globalPalette.sol },
-                ];
-                const currentHex = activePaletteSlot
-                  ? activePaletteSlot.startsWith("accent-")
-                    ? globalPalette.accents[parseInt(activePaletteSlot.split("-")[1])]?.hex
-                    : globalPalette[activePaletteSlot]?.hex
-                  : null;
-                const openSlot = (slotKey) => {
-                  setActivePaletteSlot(prev => (prev === slotKey ? null : slotKey));
-                };
-                return (
-                  <div className="space-y-4 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-                    <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Palette globale</p>
-                    <h2 className="type-h2">Palette de l'appartement</h2>
-                    <p className="text-sm text-slate-600">Teintes Farrow &amp; Ball et Ressource, deux références des peintres.</p>
-
-                    {/* Rangée 1 : dominante, secondaire, sol */}
-                    <div className="grid grid-cols-3 gap-2">
-                      {mainSlots.map(slot => (
-                        <button
-                          key={slot.key}
-                          type="button"
-                          onClick={() => openSlot(slot.key)}
-                          className={`flex flex-col overflow-hidden rounded-xl border transition-all ${
-                            activePaletteSlot === slot.key ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
-                          }`}
-                        >
-                          <span className="block h-16 w-full" style={{ backgroundColor: slot.hex }} />
-                          <span className="px-1.5 py-1.5 text-center">
-                            <span className="block truncate text-[10px] font-medium leading-tight text-slate-700">{slot.name}</span>
-                            <span className="mt-0.5 block text-[9px] capitalize text-slate-400">{slot.label}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Rangée 2 : 3 accents */}
-                    <div>
-                      <p className="mb-1.5 text-xs font-medium text-slate-500">Accents</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {globalPalette.accents.map((accent, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => openSlot(`accent-${i}`)}
-                            className={`flex flex-col overflow-hidden rounded-xl border transition-all ${
-                              activePaletteSlot === `accent-${i}` ? "border-slate-900 shadow-md" : "border-black/10 hover:border-black/30"
-                            }`}
-                          >
-                            <span className="block h-10 w-full" style={{ backgroundColor: accent.hex }} />
-                            <span className="px-1.5 py-1 text-center">
-                              <span className="block truncate text-[10px] font-medium leading-tight text-slate-700">{accent.name}</span>
-                              <span className="mt-0.5 block text-[9px] text-slate-400">Accent {i + 1}</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {activePaletteSlot !== null && currentHex && (
-                      <ColorCatalogModal
-                        mode="pick"
-                        currentHex={currentHex}
-                        onPick={(hex, label) => applyColor(activePaletteSlot, hex, label)}
-                        onClose={() => setActivePaletteSlot(null)}
-                      />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => applyToRooms(globalPalette)}
-                      className="w-full rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-slate-800"
-                    >
-                      Appliquer la palette à toutes les pièces
-                    </button>
-                    <p className="text-[11px] text-amber-600">
-                      ⚠ Écrase dominante, secondaire et sol de chaque pièce. Les nuances (clair/moyen…) restent inchangées.
-                    </p>
-                  </div>
-                );
-              })()}
-
+            {/* La palette du projet se modifie dans Vue générale > Teintes ; ici, uniquement les choix de la pièce */}
+            <section>
               <div className="space-y-4 rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
                 <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Pièce active</p>
                 <h2 className="type-h2">{preset.label}</h2>
-                <p className="text-sm text-slate-700">{preset.line}</p>
+                {preset.line ? <p className="text-sm text-slate-700">{preset.line}</p> : null}
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span className="flex">
+                    {[globalPalette.dominante, globalPalette.secondaire, globalPalette.sol, ...globalPalette.accents].map((c, i) => (
+                      <span key={i} title={c.name} className="h-3.5 w-3.5 rounded-full border border-white" style={{ backgroundColor: c.hex, marginLeft: i === 0 ? 0 : -3 }} />
+                    ))}
+                  </span>
+                  <span>Les couleurs proposées viennent de la palette du projet.</span>
+                  <button
+                    type="button"
+                    onClick={() => { setViewMode("general"); setGeneralMode("couleurs"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    className="font-medium text-slate-700 underline decoration-black/20 underline-offset-2 hover:decoration-black/60"
+                  >
+                    Modifier la palette du projet →
+                  </button>
+                </div>
                 <div className="space-y-4">
                   {[
                     { role: "dominantColor", label: "Couleur dominante" },
@@ -9874,9 +9679,9 @@ export default function App() {
                   Parcourir le catalogue
                 </button>
               </div>
-              <p className="mt-1 text-sm text-slate-600">Ajoute des teintes (Farrow &amp; Ball, Ressource…) à tester (pots d'essai) dans cette pièce, puis marque celles retenues.</p>
+              <p className="mt-1 text-sm text-slate-600">Ajoutez des teintes (Farrow &amp; Ball, Ressource…) à tester (pots d'essai) dans cette pièce, puis marquez celles retenues.</p>
               {(roomColorTests[room] || []).length === 0 ? (
-                <p className="mt-3 rounded-lg bg-[#f9f6ef] p-3 text-sm text-slate-500">Aucune couleur test pour l'instant — ouvre le catalogue pour en ajouter.</p>
+                <p className="mt-3 rounded-lg bg-[#f9f6ef] p-3 text-sm text-slate-500">Aucune couleur test pour l'instant — ouvrez le catalogue pour en ajouter.</p>
               ) : (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {(roomColorTests[room] || []).map((c) => (
@@ -10093,7 +9898,7 @@ export default function App() {
                   aria-label="Fermer"
                 >✕</button>
                 <p className="text-xs font-semibold text-white">Assistant IA ✦</p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-300">Posez une question, créez des todos ou une liste de courses…</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-300">Posez une question, ajoutez des tâches ou des achats…</p>
                 <div className="absolute -bottom-2 right-5 h-4 w-4 rotate-45 bg-slate-900" />
               </div>
             )}

@@ -241,7 +241,7 @@ function buildSystemPrompt(ctx: Record<string, unknown>): string {
     SYSTEM_BASE,
     "",
     ctx.generalContext ? `Goûts & contraintes: ${ctx.generalContext}` : null,
-    `Pièce: ${ctx.label} — ${ctx.line}`,
+    `Pièce: ${ctx.label}${ctx.line ? ` — ${ctx.line}` : ""}`,
     `Palette: ${ctx.dominantName} (${ctx.dominantHex}) / ${ctx.secondaryName} (${ctx.secondaryHex}) / accent ${ctx.accentName} (${ctx.accentHex})`,
     ctx.roomNote ? `Notes: ${ctx.roomNote}` : null,
     ctx.imageMetadataSummary ? `Visuels: ${ctx.imageMetadataSummary}` : null,

@@ -19,7 +19,7 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
   const [showAllLines, setShowAllLines] = useState(false);
 
   const allKeys = ["general", ...orderedActiveRooms];
-  const roomLabel = (key) => (key === "general" ? "Appartement" : allRoomPresets?.[key]?.label || key);
+  const roomLabel = (key) => (key === "general" ? "Général" : allRoomPresets?.[key]?.label || key);
 
   const withPrice = (items) => items.filter((i) => typeof i.price === "number");
   const bucket = (items, statuses) => withPrice(items).filter((i) => statuses.includes(effectiveStatus(i)));

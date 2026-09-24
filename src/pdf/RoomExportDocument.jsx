@@ -79,7 +79,7 @@ export function RoomExportDocument({
 
         {apartmentPalette ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Palette de l'appartement</Text>
+            <Text style={styles.sectionTitle}>Palette du projet</Text>
             <Text style={styles.caption}>Ambiance générale appliquée par défaut à toutes les pièces.</Text>
             <View style={styles.swatchRow}>
               <Swatch small label="Dominante" name={apartmentPalette?.dominant?.name} hex={apartmentPalette?.dominant?.hex} />
@@ -94,7 +94,7 @@ export function RoomExportDocument({
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Palette de la pièce — {roomLabel}</Text>
-          <Text style={styles.caption}>Nuances propres à cette pièce (peuvent différer de l'appartement).</Text>
+          <Text style={styles.caption}>Nuances propres à cette pièce (peuvent différer de la palette du projet).</Text>
           <View style={styles.swatchRow}>
             {palette?.dominant ? <Swatch label="Dominante" name={palette.dominant.name} hex={palette.dominant.hex} /> : null}
             {palette?.secondary ? <Swatch label="Secondaire" name={palette.secondary.name} hex={palette.secondary.hex} /> : null}
@@ -144,7 +144,7 @@ export function RoomExportDocument({
 
         {shoppingItems.length > 0 && (
           <View style={styles.section} break>
-            <Text style={styles.sectionTitle}>Liste de courses</Text>
+            <Text style={styles.sectionTitle}>Achats</Text>
 
             {selectedItems.length > 0 && (
               <View wrap={false}>

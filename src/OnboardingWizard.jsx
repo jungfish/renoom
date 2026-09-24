@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
-import { FB } from "./farrowBall.js";
+import { FB, fbLabel } from "./farrowBall.js";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
@@ -14,11 +14,22 @@ const ROOM_LABELS = {
 const DEFAULT_SELECTED = ["salon","cuisine","entree","parents","sdb"];
 const WIZARD_STORAGE_KEY = "renoom_onboarding_state";
 
+const fbColor = (entry) => ({ hex: entry.hex, name: fbLabel(entry) });
+
+// Palette de départ du projet (dominante / secondaire / sol / 3 accents) —
+// même forme que globalPalette dans App.jsx, appliquée à la création.
+const buildPalette = (dominante, secondaire, sol, accents) => ({
+  dominante: fbColor(dominante),
+  secondaire: fbColor(secondaire),
+  sol: fbColor(sol),
+  accents: accents.map(fbColor),
+});
+
 const DECO_STYLES = [
-  { key:"chaleureux", label:"Chaleureux & naturel", description:"Bois clair, lin, tons crème et terracotta.", swatches:[FB.newWhite.hex, FB.yellowGround.hex, FB.oldWhite.hex], globalAccent:"lin",    warmth:70 },
-  { key:"frais",      label:"Frais & lumineux",     description:"Bleu grisé, blanc cassé, matières épurées.", swatches:[FB.borrowedLight.hex, FB.newWhite.hex, FB.yeabridgeGreen.hex], globalAccent:"sky",    warmth:35 },
-  { key:"vegetal",    label:"Végétal & texturé",    description:"Vert sauge, fibres naturelles, accents olive.", swatches:[FB.vertDeTerre.hex, FB.newWhite.hex, FB.yeabridgeGreen.hex], globalAccent:"olive", warmth:55 },
-  { key:"retro",      label:"Rétro & graphique",    description:"Jaune beurre, noir, touches de motif.", swatches:[FB.farrowsCream.hex, FB.newWhite.hex, FB.yellowGround.hex], globalAccent:"butter", warmth:60 },
+  { key:"chaleureux", label:"Chaleureux & naturel", description:"Bois clair, lin, tons crème et terracotta.", palette:buildPalette(FB.oldWhite, FB.newWhite, FB.fawn, [FB.deadSalmon, FB.charlottesLocks, FB.yellowGround]), globalAccent:"lin",    warmth:70 },
+  { key:"frais",      label:"Frais & lumineux",     description:"Bleu grisé, blanc cassé, matières épurées.", palette:buildPalette(FB.borrowedLight, FB.wimborneWhite, FB.cornforthWhite, [FB.lulworthBlue, FB.yeabridgeGreen, FB.cooksBlue]), globalAccent:"sky",    warmth:35 },
+  { key:"vegetal",    label:"Végétal & texturé",    description:"Vert sauge, fibres naturelles, accents olive.", palette:buildPalette(FB.vertDeTerre, FB.newWhite, FB.cord, [FB.yeabridgeGreen, FB.ballGreen, FB.lichen]), globalAccent:"olive", warmth:55 },
+  { key:"retro",      label:"Rétro & graphique",    description:"Jaune beurre, noir, touches de motif.", palette:buildPalette(FB.farrowsCream, FB.newWhite, FB.fawn, [FB.yellowGround, FB.offBlack, FB.charlottesLocks]), globalAccent:"butter", warmth:60 },
 ];
 
 function fileToDataUrl(file) {
@@ -37,7 +48,7 @@ function extFromDataUrl(dataUrl) {
 }
 
 function buildDefaultGeneralContext(projectName, selectedStyle, selectedRooms) {
-  return `${projectName || "Appartement"}, style ${selectedStyle?.label || "moderne"}, pièces : ${selectedRooms.map(r => ROOM_LABELS[r]).join(", ")}.`;
+  return `${projectName || "Projet"}, style ${selectedStyle?.label || "moderne"}, pièces : ${selectedRooms.map(r => ROOM_LABELS[r]).join(", ")}.`;
 }
 
 export function OnboardingWizard({ user, session, onComplete, onJoinProject, onSkip, signOut, initialStep = "welcome" }) {
@@ -65,6 +76,7 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
   const [inviteSent, setInviteSent] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   const fileInputRef = useRef(null);
   const joinCodeRef = useRef(joinCode);
@@ -141,6 +153,7 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
   const handleCreate = async () => {
     goTo("loading");
     setIsSubmitting(true);
+    setCreateError("");
 
     try {
       const token = sessionRef.current?.access_token;
@@ -189,6 +202,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
         room: activeRoom,
         globalAccent: selectedStyle?.globalAccent || "butter",
         warmth: selectedStyle?.warmth ?? 60,
+        // Sans style choisi, App.jsx garde sa palette par défaut
+        ...(selectedStyle ? { globalPalette: selectedStyle.palette } : {}),
         customRooms: [],
         hiddenRooms,
         roomOrder: null,
@@ -224,29 +239,9 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
 
       setLoadingMessage("Finalisation…");
 
-      const starterTodos = selectedRooms.flatMap((roomKey, ri) => [
-        {
-          id: `todo-inspo-${roomKey}-${Date.now()}-${ri}`,
-          project_id: id,
-          room_key: roomKey,
-          list_key: "todos",
-          text: "Ajouter une image d'inspiration",
-          done: false,
-          position: 0,
-        },
-        {
-          id: `todo-doc-${roomKey}-${Date.now()}-${ri}`,
-          project_id: id,
-          room_key: roomKey,
-          list_key: "todos",
-          text: "Ajouter un document (plan, devis…)",
-          done: false,
-          position: 1,
-        },
-      ]);
-
+      // Pas de tâches de démarrage : la checklist « Démarrage » de l'accueil
+      // guide les premières actions sans gonfler les compteurs de tâches.
       await Promise.allSettled([
-        supabase.from("room_items").insert(starterTodos),
         supabase.from("chat_messages").insert({
           id: `msg-welcome-${Date.now()}`,
           project_id: id,
@@ -282,7 +277,8 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
       goTo("invite");
     } catch {
       setIsSubmitting(false);
-      goTo("style", -1);
+      setCreateError("La création du projet a échoué. Vérifiez votre connexion puis réessayez.");
+      goTo("inspo", -1);
     }
   };
 
@@ -326,7 +322,9 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
 
   const handleWhatsApp = () => {
     const projectLabel = projectName ? ` "${projectName}"` : "";
-    const text = encodeURIComponent(`🏠 ${firstName} t'invite à rejoindre son projet déco${projectLabel} sur Renoom — inspirations, wishlist et décisions ensemble 👉 ${inviteLink}`);
+    const inviterName = user?.user_metadata?.full_name?.split(" ")[0];
+    const intro = inviterName ? `${inviterName} vous invite à rejoindre` : "Vous êtes invité(e) à rejoindre";
+    const text = encodeURIComponent(`🏠 ${intro} le projet${projectLabel} sur Renoom — inspirations, achats et décisions, pièce par pièce 👉 ${inviteLink}`);
     window.open(`https://wa.me/?text=${text}`, "_blank");
     setInviteSent(true);
     if (createdProjectId) {
@@ -423,6 +421,7 @@ export function OnboardingWizard({ user, session, onComplete, onJoinProject, onS
               onAddUrl={addInspoUrl}
               onRemoveUrl={(i) => setInspoUrlAdded(prev => prev.filter((_, idx) => idx !== i))}
               fileInputRef={fileInputRef}
+              createError={createError}
               onNext={handleCreate}
               onBack={() => goTo("context", -1)}
             />
@@ -533,7 +532,7 @@ function StepPath({ onCreate, onJoin, onBack }) {
       </div>
 
       {[
-        { emoji:"🏠", title:"Créer mon appartement", sub:"Je pars de zéro et configure mon projet.", onClick:onCreate },
+        { emoji:"🏠", title:"Créer un projet", sub:"Je configure un nouveau projet, pièce par pièce.", onClick:onCreate },
         { emoji:"🔗", title:"Rejoindre un projet existant", sub:"J'ai reçu un lien ou un code d'invitation.", onClick:onJoin },
       ].map(card => (
         <button
@@ -559,9 +558,9 @@ function StepName({ value, onChange, onNext, onBack }) {
       <div>
         <BackLink onClick={onBack} />
         <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
-          Comment s'appelle votre appartement ?
+          Comment s'appelle ce projet ?
         </h2>
-        <p className="text-xs text-slate-500">Vous pourrez toujours le renommer plus tard.</p>
+        <p className="text-xs text-slate-500">Le nom du client ou du lieu, par exemple. Vous pourrez le renommer plus tard.</p>
       </div>
 
       <input
@@ -570,7 +569,7 @@ function StepName({ value, onChange, onNext, onBack }) {
         value={value}
         onChange={e => onChange(e.target.value)}
         onKeyDown={e => e.key === "Enter" && onNext()}
-        placeholder="Mon appartement, Rue Lepic…"
+        placeholder="Appartement Martin, Maison rue Lepic…"
         maxLength={60}
         className="w-full rounded-xl border border-black/12 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300/60"
       />
@@ -596,9 +595,9 @@ function StepRooms({ selectedRooms, setSelectedRooms, onNext, onBack }) {
       <div>
         <BackLink onClick={onBack} />
         <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
-          Quelles pièces contient votre appartement ?
+          Quelles pièces sont concernées ?
         </h2>
-        <p className="text-xs text-slate-500">Sélectionnez les pièces que vous voulez décorer.</p>
+        <p className="text-xs text-slate-500">Sélectionnez les pièces du projet. Vous pourrez en ajouter ensuite.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -631,7 +630,7 @@ function StepStyle({ decoStyle, setDecoStyle, onNext, onBack }) {
         <h2 className="font-['Sora'] text-xl font-semibold text-slate-800 mb-1">
           Quelle ambiance vous correspond ?
         </h2>
-        <p className="text-xs text-slate-500">Nuancier Farrow & Ball — un point de départ, tout est ajustable ensuite.</p>
+        <p className="text-xs text-slate-500">Ces teintes Farrow & Ball deviennent la palette du projet — tout reste ajustable ensuite.</p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -648,8 +647,8 @@ function StepStyle({ decoStyle, setDecoStyle, onNext, onBack }) {
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-semibold text-slate-800">{s.label}</span>
                 <div className="flex gap-1">
-                  {s.swatches.map((c, i) => (
-                    <div key={i} className="h-4 w-4 rounded-full border border-black/10" style={{ background: c }} />
+                  {[s.palette.dominante, s.palette.secondaire, s.palette.sol, s.palette.accents[0]].map((c, i) => (
+                    <div key={i} title={c.name} className="h-4 w-4 rounded-full border border-black/10" style={{ background: c.hex }} />
                   ))}
                 </div>
               </div>
@@ -694,7 +693,7 @@ function StepContext({ value, onChange, onNext, onBack }) {
 function StepInspo({
   inspoFiles, inspoUrlAdded, inspoUrlInput, setInspoUrlInput,
   onFileChange, onRemoveFile, onFileRoomChange, selectedRooms, roomLabels,
-  onAddUrl, onRemoveUrl, fileInputRef,
+  onAddUrl, onRemoveUrl, fileInputRef, createError,
   onNext, onBack,
 }) {
   const hasContent = inspoFiles.length > 0 || inspoUrlAdded.length > 0;
@@ -837,8 +836,12 @@ function StepInspo({
         )}
       </div>
 
+      {createError && (
+        <p className="-mb-2 text-center text-xs text-red-500">{createError}</p>
+      )}
+
       <PrimaryBtn onClick={onNext}>
-        {hasContent ? "Créer mon appartement →" : "Créer mon appartement"}
+        {hasContent ? "Créer le projet →" : "Créer le projet"}
       </PrimaryBtn>
 
       {!hasContent && (
@@ -868,7 +871,7 @@ function StepInvite({ inviteLink, inviteSent, copySuccess, onCopy, onWhatsApp, o
           {projectName ? `"${projectName}" est prêt !` : "Votre projet est prêt !"}
         </h2>
         <p className="text-sm text-slate-500 leading-relaxed">
-          Invitez votre partenaire ou architecte — ils verront les mêmes pièces et décisions en temps réel.
+          Invitez votre client ou vos collaborateurs — ils verront les mêmes pièces et décisions en temps réel.
         </p>
       </div>
 
@@ -898,11 +901,11 @@ function StepInvite({ inviteLink, inviteSent, copySuccess, onCopy, onWhatsApp, o
         </div>
       )}
 
-      <PrimaryBtn onClick={onEnter}>Entrer dans mon appartement →</PrimaryBtn>
+      <PrimaryBtn onClick={onEnter}>Ouvrir le projet →</PrimaryBtn>
 
       {!inviteSent && (
         <p className="text-center text-xs text-slate-400">
-          Vous pourrez inviter plus tard depuis les paramètres.
+          Vous pourrez inviter plus tard depuis « Membres », en bas du menu.
         </p>
       )}
     </div>
@@ -924,17 +927,17 @@ function StepInviteLanding({ onJoin, isSubmitting, joinError }) {
           <span className="text-xs font-medium text-emerald-700">Invitation valide</span>
         </div>
         <h2 className="font-['Sora'] text-2xl font-semibold text-slate-800">
-          Tu as été invité(e) !
+          Vous avez été invité(e) !
         </h2>
         <p className="text-sm text-slate-500 leading-relaxed">
-          Rejoins le projet déco pour voir les inspirations, ajouter les tiennes et décider ensemble.
+          Rejoignez le projet pour voir les inspirations, ajouter les vôtres et décider ensemble.
         </p>
       </div>
 
       <div className="flex flex-col gap-2">
         {[
           { emoji: "🎨", label: "Inspirations partagées" },
-          { emoji: "❤️", label: "Liste d'envies commune" },
+          { emoji: "🧾", label: "Achats et budget suivis ensemble" },
           { emoji: "💬", label: "Discussions en temps réel" },
         ].map(({ emoji, label }) => (
           <div key={label} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white border border-black/8">
@@ -957,7 +960,7 @@ function StepInviteLanding({ onJoin, isSubmitting, joinError }) {
         {joinError && <p className="text-xs text-red-500">{joinError}</p>}
       </div>
 
-      <p className="text-xs text-slate-400">Renoom · Déco en collaboration</p>
+      <p className="text-xs text-slate-400">Renoom · Projets déco en collaboration</p>
     </div>
   );
 }

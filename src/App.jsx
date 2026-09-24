@@ -7850,10 +7850,11 @@ export default function App() {
     setLoadingFromUrl(true);
     authedFetch(`${API_BASE}/load-project?id=${encodeURIComponent(idToLoad)}&t=${Date.now()}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then(({ projectConfig, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
+      .then(({ projectConfig, name, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
         if (projectConfig) {
           hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized });
           setProjectId(idToLoad);
+          rememberProjectName(idToLoad, name, owner);
         }
         if (typeof owner === "boolean") setIsOwner(owner);
         if (code) setInviteCode(code);
@@ -7902,6 +7903,15 @@ export default function App() {
     }
   };
 
+  // Nom du projet ouvert, connu dès load-project — sans attendre la liste des
+  // projets (projet tout juste créé ou rejoint).
+  const rememberProjectName = (id, name, owner) => {
+    if (!id || !name) return;
+    setUserProjects((prev) => (prev.some((p) => p.id === id)
+      ? prev.map((p) => (p.id === id ? { ...p, name } : p))
+      : [...prev, { id, name, role: owner ? "owner" : "editor" }]));
+  };
+
   const switchProject = (id) => {
     hydratedRef.current = false;
     setUploadedImages({});
@@ -7926,16 +7936,7 @@ export default function App() {
     setGlobalAccent("butter");
     setGlobalShade("moyen");
     setGlobalDominantColor("bleu");
-    setGlobalPalette({
-      dominante: { hex: FB.parmaGray.hex, name: fbLabel(FB.parmaGray) },
-      secondaire: { hex: FB.string.hex, name: fbLabel(FB.string) },
-      sol: { hex: FB.elephantsBreath.hex, name: fbLabel(FB.elephantsBreath) },
-      accents: [
-        { hex: FB.yellowGround.hex, name: fbLabel(FB.yellowGround) },
-        { hex: FB.farrowsCream.hex, name: fbLabel(FB.farrowsCream) },
-        { hex: FB.yeabridgeGreen.hex, name: fbLabel(FB.yeabridgeGreen) },
-      ],
-    });
+    setGlobalPalette(DEFAULT_GLOBAL_PALETTE);
     setRoomOrder(null);
     setChatHistory({});
     setProjectId(id);
@@ -7944,10 +7945,11 @@ export default function App() {
     setLoadingFromUrl(true);
     authedFetch(`${API_BASE}/load-project?id=${encodeURIComponent(id)}&t=${Date.now()}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then(({ projectConfig, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
+      .then(({ projectConfig, name, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
         if (projectConfig) hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized });
         if (typeof owner === "boolean") setIsOwner(owner);
         if (code) setInviteCode(code);
+        rememberProjectName(id, name, owner);
       })
       .catch(() => {})
       .finally(() => {
@@ -8147,11 +8149,11 @@ export default function App() {
     if (!user?.id || !import.meta.env.VITE_SUPABASE_URL) return;
     supabase.from("project_members").select("project_id", { count: "exact", head: true }).eq("user_id", user.id)
       .then(({ count }) => {
-        if (count !== null) {
-          setUserProjectCount(count);
-          if (count > 1) loadUserProjects();
-        }
+        if (count !== null) setUserProjectCount(count);
       });
+    // Toujours charger les noms : même avec un seul projet, l'accueil, la barre
+    // latérale et le titre du PDF client en ont besoin.
+    loadUserProjects();
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadUserProjects = async () => {
@@ -8240,8 +8242,11 @@ export default function App() {
       // d'invitation de l'onboarding permet de réessayer et affiche l'erreur.
       handleJoinProject(inviteParam.trim().toLowerCase())
         .then((result) => {
-          if (result?.ok && result.projectId) switchProject(result.projectId);
-          else setShowOnboarding(true);
+          if (result?.ok && result.projectId) {
+            switchProject(result.projectId);
+            // La liste chargée au démarrage peut précéder l'adhésion : on la recharge
+            loadUserProjects();
+          } else setShowOnboarding(true);
         })
         .catch(() => setShowOnboarding(true));
       return;

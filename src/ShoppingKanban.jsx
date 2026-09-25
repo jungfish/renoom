@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ItemRowActions } from "./ItemRowActions.jsx";
 import {
-  formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, PersonPicker,
+  formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, siteDomain, SiteFavicon, PersonPicker,
 } from "./lib/itemHelpers.jsx";
 import { STATUSES, effectiveStatus, selectStyleForStatus } from "./lib/itemStatus.js";
 
@@ -13,6 +13,9 @@ import { STATUSES, effectiveStatus, selectStyleForStatus } from "./lib/itemStatu
 export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSetDueDate, onSetAssignee, onSetTitle, onSetPrice, allPersons, onCreatePerson }) {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
+  // Images produit qui ne chargent pas : la carte affiche alors le logo du site
+  const [brokenImageIds, setBrokenImageIds] = useState(() => new Set());
+  const hasImage = (item) => !!item.image && !brokenImageIds.has(item.id);
   const [editingDateId, setEditingDateId] = useState(null);
   const [openPickerId, setOpenPickerId] = useState(null);
   const [editingTitleId, setEditingTitleId] = useState(null);
@@ -100,8 +103,9 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                     className={`group flex cursor-grab flex-col rounded-lg border border-black/10 bg-white shadow-sm transition-all active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-md ${
                       draggedId === item.id ? "rotate-1 scale-[1.02] opacity-50 shadow-lg" : ""
                     }`}>
-                    {item.image && (
-                      <img src={item.image} alt="" draggable={false} className="h-24 w-full rounded-t-lg object-cover" />
+                    {hasImage(item) && (
+                      <img src={item.image} alt="" draggable={false} className="h-24 w-full rounded-t-lg object-cover"
+                        onError={() => setBrokenImageIds((prev) => new Set(prev).add(item.id))} />
                     )}
                     <div className="flex flex-col gap-1.5 p-2">
                       <div className="flex items-start gap-1.5">
@@ -113,6 +117,10 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                             className="min-w-0 flex-1 rounded border border-amber-300 bg-amber-50 px-1 text-sm leading-snug text-[#1C1A17] outline-none" />
                         ) : (
                           <p className="line-clamp-2 flex-1 text-sm leading-snug text-[#1C1A17]">
+                            {/* Carte sans image : petit logo du site devant le titre */}
+                            {item.url && !hasImage(item) && (
+                              <span className="mr-1.5 inline-block align-[-3px]"><SiteFavicon domain={siteDomain(item.url)} size={16} /></span>
+                            )}
                             {item.url ? (
                               <a href={item.url} target="_blank" rel="noopener noreferrer" draggable={false}
                                 className="hover:underline">

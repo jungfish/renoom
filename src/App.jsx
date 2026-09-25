@@ -13,7 +13,7 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { FB, fbLabel } from "./farrowBall.js";
 import { COLOR_CATALOGS, ALL_COLORS_LIBRARY, describeColor, catalogAndFamilyOfHex, formatColorCode } from "./colorCatalogs.js";
 import { STATUSES, BUDGETED_STATUSES, effectiveStatus, deriveFlagsFromStatus, selectStyleForStatus } from "./lib/itemStatus.js";
-import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, PersonPicker } from "./lib/itemHelpers.jsx";
+import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, siteDomain, SiteFavicon, PersonPicker } from "./lib/itemHelpers.jsx";
 import { ShoppingKanban } from "./ShoppingKanban.jsx";
 import { BudgetView } from "./BudgetView.jsx";
 import { DevisImportReview } from "./components/DevisImportReview.jsx";
@@ -4839,9 +4839,6 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   const weekGroups = groupBy === "week" ? buildWeekGroups(visibleItems) : null;
 
   // ── Site grouping helpers (Courses uniquement) ──────────────────────────
-  const siteDomain = (url) => {
-    try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return null; }
-  };
   const buildSiteGroups = (items) => {
     const groups = {};
     const noSite = [];
@@ -5051,7 +5048,10 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
             {sites.map(({ domain, items, total, currency }) => (
               <div key={domain} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-medium text-slate-900">{domain}</h3>
+                  <h3 className="flex min-w-0 items-center gap-2 font-medium text-slate-900">
+                    <SiteFavicon domain={domain} />
+                    <span className="truncate">{domain}</span>
+                  </h3>
                   <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">{formatPrice(total, currency)}</span>
                 </div>
                 <ul className="space-y-1.5">
@@ -5105,10 +5105,11 @@ function renderItemText(text, url) {
 
 function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, onSaveEditTitle, onCancelEditTitle,
   editingPrice, editingPriceValue, onChangePriceValue, onSaveEditPrice, onCancelEditPrice, onStartEditPrice }) {
-  const domain = (() => {
-    try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; }
-  })();
+  const domain = siteDomain(item.url);
   const cardTitle = linkItemTitle(item);
+  // Image produit cassée (lien expiré…) : on retombe sur le logo du site
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => { setImageFailed(false); }, [item.image]);
 
   const priceRow = editingPrice ? (
     <input
@@ -5134,8 +5135,13 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
     </button>
   ) : null;
 
-  const imageEl = item.image ? (
-    <img src={item.image} alt={cardTitle} className="h-20 w-24 shrink-0 object-cover" />
+  const imageEl = item.image && !imageFailed ? (
+    <img src={item.image} alt={cardTitle} onError={() => setImageFailed(true)} className="h-20 w-24 shrink-0 object-cover" />
+  ) : domain ? (
+    // Pas d'image produit : logo du site sur fond neutre
+    <div className="grid h-20 w-16 shrink-0 place-items-center border-r border-black/5 bg-white">
+      <SiteFavicon domain={domain} size={28} />
+    </div>
   ) : (
     <div className="grid h-20 w-16 shrink-0 place-items-center bg-slate-200 text-slate-400">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

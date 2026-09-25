@@ -11,9 +11,43 @@ export function stripTrailingUrl(text) {
   return cleaned || text;
 }
 
+export function siteDomain(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
+}
+
 export function linkItemTitle(item) {
-  const domain = (() => { try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; } })();
-  return item.text && item.text !== item.url ? stripTrailingUrl(item.text) : (item.previewTitle || domain);
+  return item.text && item.text !== item.url ? stripTrailingUrl(item.text) : (item.previewTitle || siteDomain(item.url));
+}
+
+// Logo du site marchand (service public de favicons de Google, sans clé) ;
+// initiale du domaine si l'image ne charge pas.
+export function SiteFavicon({ domain, size = 20 }) {
+  const [failed, setFailed] = useState(false);
+  if (!domain) return null;
+  if (failed) {
+    return (
+      <span
+        className="grid shrink-0 place-items-center rounded bg-slate-200 font-semibold uppercase text-slate-500"
+        style={{ width: size, height: size, fontSize: Math.round(size * 0.5) }}
+      >
+        {domain.charAt(0)}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      draggable={false}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="shrink-0 rounded bg-white object-contain"
+      style={{ width: size, height: size }}
+    />
+  );
 }
 
 const PERSON_PALETTE = ["#e8937a","#7ab4e8","#82d9a7","#d97ab4","#a87ae8","#e8c87a","#7ae8d4","#e87a7a"];

@@ -4837,6 +4837,61 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   }, [isCourses, groupBy]);
 
   const weekGroups = groupBy === "week" ? buildWeekGroups(visibleItems) : null;
+  const weekSections = weekGroups ? [
+    ...(weekGroups.overdue.length ? [{ label: "En retard", items: weekGroups.overdue, accent: "text-red-600", bg: "bg-red-50 border-red-100" }] : []),
+    ...weekGroups.weeks.map((w) => ({ label: weekLabel(w.monday), items: w.items, accent: "text-slate-900", bg: "bg-white border-black/10" })),
+    ...(weekGroups.noDate.length ? [{ label: "Sans échéance", items: weekGroups.noDate, accent: "text-slate-500", bg: "bg-white border-black/10" }] : []),
+  ] : [];
+
+  // ── Groupes repliables (achats) ──────────────────────────────────────────
+  // Deux contextes : sans filtre, groupes repliés par défaut et choix de
+  // l'utilisateur conservés ; avec filtre ou recherche, groupes dépliés pour
+  // montrer les résultats, et chaque changement de filtre repart de là.
+  const groupCtx = filtersActive ? "filtered" : "all";
+  const [groupOpen, setGroupOpen] = useState({ all: {}, filtered: {} }); // choix explicites par groupe
+  const [bulkOpen, setBulkOpen] = useState({ all: null, filtered: null }); // « Tout déplier / Tout replier »
+  const isGroupOpen = (id) => !isCourses || (groupOpen[groupCtx][id] ?? bulkOpen[groupCtx] ?? filtersActive);
+  const toggleGroup = (id) => setGroupOpen((prev) => ({ ...prev, [groupCtx]: { ...prev[groupCtx], [id]: !isGroupOpen(id) } }));
+  const openGroup = (id) => setGroupOpen((prev) => ({ ...prev, [groupCtx]: { ...prev[groupCtx], [id]: true } }));
+  const setAllGroups = (open) => {
+    setGroupOpen((prev) => ({ ...prev, [groupCtx]: {} }));
+    setBulkOpen((prev) => ({ ...prev, [groupCtx]: open }));
+  };
+  useEffect(() => {
+    setGroupOpen((prev) => ({ ...prev, filtered: {} }));
+    setBulkOpen((prev) => ({ ...prev, filtered: null }));
+  }, [statusFilter, roomFilter, missingPriceOnly, searchQuery]);
+  const priceSum = (items) => items.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
+
+  // En-tête de groupe : cliquable (chevron + nombre d'achats) pour les achats, simple titre pour les tâches
+  const groupHeader = (id, { title, count, right = null }) => {
+    const open = isGroupOpen(id);
+    if (!isCourses) {
+      return (
+        <div className="mb-3 flex items-center justify-between">
+          {title}
+          {right}
+        </div>
+      );
+    }
+    return (
+      <div className={`flex items-center justify-between gap-2 ${open ? "mb-3" : ""}`}>
+        <button type="button" onClick={() => toggleGroup(id)} aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`}>
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+          {title}
+          <span className="shrink-0 text-xs font-normal text-slate-400">{count} achat{count > 1 ? "s" : ""}</span>
+        </button>
+        {right}
+      </div>
+    );
+  };
+  const totalPill = (total, currency) => (total > 0
+    ? <span className="shrink-0 rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">{formatPrice(total, currency)}</span>
+    : null);
 
   // ── Site grouping helpers (Courses uniquement) ──────────────────────────
   const buildSiteGroups = (items) => {
@@ -4856,6 +4911,14 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   const siteGroups = groupBy === "site"
     ? buildSiteGroups(visibleItems.filter((i) => i.listKey === "shopping"))
     : null;
+
+  const roomGroupKeys = allRoomKeys.filter((key) => !isCourses || roomFilter === "all" || key === roomFilter);
+  const currentGroupIds = groupBy === "room"
+    ? roomGroupKeys.map((key) => `room:${key}`)
+    : groupBy === "site" && siteGroups
+      ? [...siteGroups.sites.map((s) => `site:${s.domain}`), ...(siteGroups.noSite.items.length ? ["site:__nosite"] : [])]
+      : weekSections.map((s) => `week:${s.label}`);
+  const allGroupsOpen = currentGroupIds.length > 0 && currentGroupIds.every(isGroupOpen);
 
   return (
     <div className="space-y-4">
@@ -4941,6 +5004,12 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
                 </button>
               )}
             </div>
+            {isCourses && currentGroupIds.length > 1 && (
+              <button type="button" onClick={() => setAllGroups(!allGroupsOpen)}
+                className="rounded-lg border border-black/15 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                {allGroupsOpen ? "Tout replier" : "Tout déplier"}
+              </button>
+            )}
             {/* Achats : les reçus se voient via le filtre « Acheté / Reçu » */}
             {!isCourses && (
               <button type="button" onClick={() => setHideDone((v) => !v)}
@@ -4960,29 +5029,40 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
       )}
 
       {/* Vue par pièce (+ section "Appartement" pour les éléments non liés à une pièce) */}
-      {groupBy === "room" && allRoomKeys.filter((key) => !isCourses || roomFilter === "all" || key === roomFilter).map((key) => {
+      {groupBy === "room" && roomGroupKeys.map((key) => {
         const preset = key === "general" ? { label: "Général" } : allRoomPresets[key];
         const visible = visibleItems.filter((i) => i.roomKey === key);
         const sorted = [...visible.filter((i) => !i.done), ...visible.filter((i) => i.done)];
         const isOpen = roomInputOpen[key] || false;
         const inputVal = roomInputs[key] || "";
         const addListKey = isCourses ? "shopping" : "todos";
+        const groupId = `room:${key}`;
         // Avec des filtres actifs, on masque les pièces sans résultat
         if (isCourses && filtersActive && sorted.length === 0 && !isOpen) return null;
+        const groupIsOpen = isGroupOpen(groupId) || isOpen;
         return (
           <div key={key} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-medium text-slate-900">{preset?.label}</h3>
-              {!isOpen && (
-                <button type="button"
-                  onClick={() => setRoomInputOpen((prev) => ({ ...prev, [key]: true }))}
-                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  Ajouter
-                </button>
-              )}
-            </div>
-            {sorted.length > 0 && (
+            {groupHeader(groupId, {
+              title: <h3 className="truncate font-medium text-slate-900">{preset?.label}</h3>,
+              count: sorted.length,
+              right: (
+                <div className="flex shrink-0 items-center gap-2">
+                  {isCourses && totalPill(priceSum(sorted), sorted.find((i) => i.priceCurrency)?.priceCurrency)}
+                  {!isOpen && (
+                    <button type="button"
+                      onClick={() => {
+                        openGroup(groupId);
+                        setRoomInputOpen((prev) => ({ ...prev, [key]: true }));
+                      }}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      Ajouter
+                    </button>
+                  )}
+                </div>
+              ),
+            })}
+            {groupIsOpen && sorted.length > 0 && (
               <ul className="mb-2 space-y-1.5">{sorted.map((item) => renderItemRow(item, false))}</ul>
             )}
             {isOpen ? (
@@ -5005,7 +5085,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
                   Annuler
                 </button>
               </form>
-            ) : sorted.length === 0 ? (
+            ) : groupIsOpen && sorted.length === 0 ? (
               <p className="text-sm text-slate-400 italic">Aucun élément — cliquez sur Ajouter pour commencer.</p>
             ) : null}
           </div>
@@ -5014,21 +5094,24 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
 
       {/* Vue par semaine */}
       {groupBy === "week" && weekGroups && (() => {
-        const { overdue, weeks, noDate } = weekGroups;
-        const sections = [
-          ...(overdue.length ? [{ label: "En retard", items: overdue, accent: "text-red-600", bg: "bg-red-50 border-red-100" }] : []),
-          ...weeks.map((w) => ({ label: weekLabel(w.monday), items: w.items, accent: "text-slate-900", bg: "bg-white border-black/10" })),
-          ...(noDate.length ? [{ label: "Sans échéance", items: noDate, accent: "text-slate-500", bg: "bg-white border-black/10" }] : []),
-        ];
-        if (sections.length === 0) return isCourses && filtersActive ? null : <div className="py-12 text-center text-sm text-slate-400">Aucun élément à afficher.</div>;
-        return sections.map(({ label, items, accent, bg }) => (
-          <div key={label} className={`rounded-xl border p-4 ${bg}`}>
-            <h3 className={`mb-3 text-sm font-semibold uppercase tracking-wide ${accent}`}>{label}</h3>
-            <ul className="space-y-1.5">
-              {[...items.filter((i) => !i.done), ...items.filter((i) => i.done)].map((item) => renderItemRow(item, true))}
-            </ul>
-          </div>
-        ));
+        if (weekSections.length === 0) return isCourses && filtersActive ? null : <div className="py-12 text-center text-sm text-slate-400">Aucun élément à afficher.</div>;
+        return weekSections.map(({ label, items, accent, bg }) => {
+          const groupId = `week:${label}`;
+          return (
+            <div key={label} className={`rounded-xl border p-4 ${bg}`}>
+              {groupHeader(groupId, {
+                title: <h3 className={`truncate text-sm font-semibold uppercase tracking-wide ${accent}`}>{label}</h3>,
+                count: items.length,
+                right: isCourses ? totalPill(priceSum(items), items.find((i) => i.priceCurrency)?.priceCurrency) : null,
+              })}
+              {isGroupOpen(groupId) && (
+                <ul className="space-y-1.5">
+                  {[...items.filter((i) => !i.done), ...items.filter((i) => i.done)].map((item) => renderItemRow(item, true))}
+                </ul>
+              )}
+            </div>
+          );
+        });
       })()}
 
       {/* Vue par site d'achat */}
@@ -5045,31 +5128,28 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
         // Le total des achats affichés est dans l'en-tête (il suit les filtres)
         return (
           <>
-            {sites.map(({ domain, items, total, currency }) => (
-              <div key={domain} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="flex min-w-0 items-center gap-2 font-medium text-slate-900">
-                    <SiteFavicon domain={domain} />
-                    <span className="truncate">{domain}</span>
-                  </h3>
-                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">{formatPrice(total, currency)}</span>
-                </div>
-                <ul className="space-y-1.5">
-                  {[...items.filter((i) => !i.done), ...items.filter((i) => i.done)].map((item) => renderItemRow(item, true))}
-                </ul>
+            {[
+              ...sites.map((s) => ({ ...s, id: `site:${s.domain}` })),
+              ...(noSite.items.length > 0 ? [{ ...noSite, domain: null, id: "site:__nosite" }] : []),
+            ].map(({ id, domain, items, total, currency }) => (
+              <div key={id} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
+                {groupHeader(id, {
+                  title: (
+                    <h3 className="flex min-w-0 items-center gap-2 font-medium text-slate-900">
+                      {domain && <SiteFavicon domain={domain} />}
+                      <span className="truncate">{domain || "Sans site"}</span>
+                    </h3>
+                  ),
+                  count: items.length,
+                  right: totalPill(total, currency),
+                })}
+                {isGroupOpen(id) && (
+                  <ul className="space-y-1.5">
+                    {[...items.filter((i) => !i.done), ...items.filter((i) => i.done)].map((item) => renderItemRow(item, true))}
+                  </ul>
+                )}
               </div>
             ))}
-            {noSite.items.length > 0 && (
-              <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-medium text-slate-900">Sans site</h3>
-                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">{formatPrice(noSite.total, noSite.currency)}</span>
-                </div>
-                <ul className="space-y-1.5">
-                  {[...noSite.items.filter((i) => !i.done), ...noSite.items.filter((i) => i.done)].map((item) => renderItemRow(item, true))}
-                </ul>
-              </div>
-            )}
           </>
         );
       })()}

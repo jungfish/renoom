@@ -17,6 +17,8 @@ const STATUS_BY_KEY = Object.fromEntries(STATUSES.map((s) => [s.key, s]));
 
 export const SPENT_STATUSES = ["commande", "achete"];
 export const PENDING_STATUSES = ["devis_fait", "echantillon_commande", "selectionne"];
+// Statuts comptés dans le budget : sans prix à ces étapes, un achat fausse les totaux
+export const BUDGETED_STATUSES = [...PENDING_STATUSES, ...SPENT_STATUSES];
 
 // `done`/`selected_for_purchase` restent en base pour ne pas casser le code
 // existant (export PDF, "Budget global", outil IA du chat) qui les lit

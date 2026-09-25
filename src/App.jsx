@@ -12,7 +12,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { FB, fbLabel } from "./farrowBall.js";
 import { COLOR_CATALOGS, ALL_COLORS_LIBRARY, describeColor, catalogAndFamilyOfHex, formatColorCode } from "./colorCatalogs.js";
-import { STATUSES, effectiveStatus, deriveFlagsFromStatus, selectStyleForStatus } from "./lib/itemStatus.js";
+import { STATUSES, BUDGETED_STATUSES, effectiveStatus, deriveFlagsFromStatus, selectStyleForStatus } from "./lib/itemStatus.js";
 import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, PersonPicker } from "./lib/itemHelpers.jsx";
 import { ShoppingKanban } from "./ShoppingKanban.jsx";
 import { BudgetView } from "./BudgetView.jsx";
@@ -4540,10 +4540,18 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
   );
 }
 
-function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null }) {
+function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null, preset = null, onPresetConsumed = null }) {
   const isCourses = scope === "courses";
-  const [filter, setFilter] = useState("all"); // courses uniquement : "all" | "selected"
-  const [hideDone, setHideDone] = useState(true);
+  // Filtres des achats — statuts vides = « En cours » (tout sauf Acheté / Reçu).
+  // `preset` : filtres imposés à l'ouverture (liens depuis la vue Budget).
+  const [statusFilter, setStatusFilter] = useState(() => preset?.statuses || []);
+  const [roomFilter, setRoomFilter] = useState(() => preset?.room || "all");
+  const [missingPriceOnly, setMissingPriceOnly] = useState(() => !!preset?.missingPrice);
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    if (preset) onPresetConsumed?.();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [hideDone, setHideDone] = useState(true); // tâches uniquement
   const [groupBy, setGroupBy] = useState("room"); // "room" | "week"
   const [roomInputs, setRoomInputs] = useState({}); // { [roomKey]: string }
   const [roomInputOpen, setRoomInputOpen] = useState({}); // { [roomKey]: bool }
@@ -4608,20 +4616,43 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
     setRoomInputOpen((prev) => ({ ...prev, [roomKey]: false }));
   };
 
-  const isSelectedForPurchase = (item) => !!item.selectedForPurchase;
-
-  // Collect all items across all rooms + the room-agnostic "Appartement" bucket
-  const allItemsFlat = ["general", ...orderedActiveRooms].flatMap((roomKey) => {
+  // Collect all items across all rooms + the room-agnostic "Général" bucket
+  const allRoomKeys = ["general", ...orderedActiveRooms];
+  const allItemsFlat = allRoomKeys.flatMap((roomKey) => {
     const list = roomLists[roomKey] || {};
-    if (isCourses) {
-      return (list.shopping || [])
-        .filter((i) => filter !== "selected" || isSelectedForPurchase(i))
-        .map((i) => ({ ...i, listKey: "shopping", roomKey }));
-    }
-    return (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey }));
+    return isCourses
+      ? (list.shopping || []).map((i) => ({ ...i, listKey: "shopping", roomKey }))
+      : (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey }));
   });
 
-  const visibleItems = hideDone ? allItemsFlat.filter((i) => !i.done) : allItemsFlat;
+  // ── Filtres des achats : statut (plusieurs possibles), pièce, recherche ──
+  const searchQuery = search.trim().toLowerCase();
+  const matchesRoomAndSearch = (i) =>
+    (roomFilter === "all" || i.roomKey === roomFilter) &&
+    // « Sans prix » = achats comptés dans le budget (devis fait → reçu) mais sans prix, comme l'alerte du Budget
+    (!missingPriceOnly || (typeof i.price !== "number" && BUDGETED_STATUSES.includes(effectiveStatus(i)))) &&
+    (!searchQuery || `${i.url ? linkItemTitle(i) : i.text || ""} ${i.url || ""}`.toLowerCase().includes(searchQuery));
+  const matchesStatus = (i) => {
+    const status = effectiveStatus(i);
+    if (statusFilter.length) return statusFilter.includes(status);
+    // Filtre « Sans prix » : inclut aussi les achats reçus, comptés dans l'alerte du Budget
+    return missingPriceOnly || status !== "achete";
+  };
+  const toggleStatusFilter = (key) =>
+    setStatusFilter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  const filtersActive = statusFilter.length > 0 || roomFilter !== "all" || missingPriceOnly || !!searchQuery;
+  const resetFilters = () => { setStatusFilter([]); setRoomFilter("all"); setMissingPriceOnly(false); setSearch(""); };
+
+  // Les compteurs de statut tiennent compte de la pièce et de la recherche
+  const courseBase = isCourses ? allItemsFlat.filter(matchesRoomAndSearch) : [];
+  const statusCounts = Object.fromEntries(STATUSES.map((s) => [s.key, courseBase.filter((i) => effectiveStatus(i) === s.key).length]));
+  const inProgressCount = courseBase.filter((i) => effectiveStatus(i) !== "achete").length;
+
+  const visibleItems = isCourses
+    ? courseBase.filter(matchesStatus)
+    : (hideDone ? allItemsFlat.filter((i) => !i.done) : allItemsFlat);
+  const visibleTotal = visibleItems.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
+  const visibleCurrency = visibleItems.find((i) => i.priceCurrency)?.priceCurrency;
 
   const totalPending = allItemsFlat.filter((i) => !i.done).length;
 
@@ -4662,6 +4693,20 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
     return { overdue, weeks: sortedWeeks.map(([, v]) => v), noDate };
   };
 
+  // ── Prix (achats avec ou sans lien) ──────────────────────────────────────
+  const startEditPrice = (item) => {
+    setEditingPriceId(item.id);
+    setEditingPriceValue(item.price != null ? String(item.price) : "");
+  };
+  const savePrice = (item) => {
+    const parsed = parseFloat(editingPriceValue.replace(/\s/g, "").replace(",", "."));
+    updateItemMeta(item.roomKey, item.listKey, item.id, isNaN(parsed)
+      ? { price: undefined, priceCurrency: undefined }
+      : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
+    setEditingPriceId(null);
+    setEditingPriceValue("");
+  };
+
   // ── Shared item row ──────────────────────────────────────────────────────
   const renderItemRow = (item, showRoom = false) => {
     const { roomKey, listKey, id } = item;
@@ -4674,30 +4719,45 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
           item.done ? "border-black/5 bg-white opacity-50" : "border-black/10 bg-white"
         }`}>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => toggleItem(roomKey, listKey, id)}
-            className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
-            {item.done ? "✓" : ""}
-          </button>
+          {listKey === "shopping" ? (
+            // Même sélecteur que dans la pièce : le statut porte aussi done / selectedForPurchase
+            <select value={effectiveStatus(item)} title="Statut de l'achat"
+              onChange={(e) => updateItemMeta(roomKey, listKey, id, { status: e.target.value, ...deriveFlagsFromStatus(e.target.value) })}
+              className={`shrink-0 rounded-md border-0 px-1.5 py-1 text-[11px] font-medium ${selectStyleForStatus(effectiveStatus(item))}`}>
+              {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.title}</option>)}
+            </select>
+          ) : (
+            <button type="button" onClick={() => toggleItem(roomKey, listKey, id)}
+              className={`grid h-5 w-5 shrink-0 place-items-center rounded border text-xs ${item.done ? "border-slate-300 bg-slate-100 text-slate-500" : "border-black/20 bg-white hover:bg-slate-50"}`}>
+              {item.done ? "✓" : ""}
+            </button>
+          )}
           {item.url ? (
             <span className="min-w-0 flex-1" />
           ) : (
-            <span className={`min-w-0 flex-1 break-words text-sm ${item.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.text}</span>
+            <span className={`min-w-0 flex-1 break-words text-sm ${item.done && listKey !== "shopping" ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.text}</span>
+          )}
+          {/* Prix des achats sans lien (ceux avec lien l'éditent dans leur aperçu) */}
+          {listKey === "shopping" && !item.url && (
+            editingPriceId === id ? (
+              <input type="text" inputMode="decimal" autoFocus value={editingPriceValue} placeholder="Prix"
+                onChange={(e) => setEditingPriceValue(e.target.value)}
+                onBlur={() => savePrice(item)}
+                onKeyDown={(e) => { if (e.key === "Enter") savePrice(item); if (e.key === "Escape") { setEditingPriceId(null); setEditingPriceValue(""); } }}
+                className="w-20 shrink-0 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-xs outline-none" />
+            ) : (
+              <button type="button" onClick={() => startEditPrice(item)} title="Modifier le prix"
+                className={typeof item.price === "number"
+                  ? "shrink-0 text-xs font-semibold text-slate-600 hover:underline"
+                  : "shrink-0 rounded-full border border-dashed border-black/20 px-2 py-0.5 text-[10px] text-slate-400 hover:border-black/40 hover:text-slate-600"}>
+                {typeof item.price === "number" ? formatPrice(item.price, item.priceCurrency) : "+ Prix"}
+              </button>
+            )
           )}
           {showRoom && (
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
               {roomKey === "general" ? "Général" : allRoomPresets[roomKey]?.label}
             </span>
-          )}
-          {listKey === "shopping" && (
-            isSelectedForPurchase(item) ? (
-              <span className="shrink-0 rounded-full bg-[#e3e8d5] px-2 py-0.5 text-[10px] font-medium text-[#4f5d3a]" title="Sélectionné pour l'achat">
-                🛒 Sélectionné
-              </span>
-            ) : (
-              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-400" title="Pas encore sélectionné pour l'achat">
-                Envie
-              </span>
-            )
           )}
           {/* Due date */}
           {editingDate === dateKey ? (
@@ -4735,7 +4795,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
             onAddDueDate={() => setEditingDate(dateKey)}
             onAddAssignee={() => setOpenPicker(pickerKey)}
             onEditTitle={item.url ? () => { setEditingTitleId(id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
-            onEditPrice={item.url ? () => { setEditingPriceId(id); setEditingPriceValue(item.price != null ? String(item.price) : ""); } : undefined}
+            onEditPrice={listKey === "shopping" ? () => startEditPrice(item) : undefined}
             onDelete={() => deleteItem(roomKey, listKey, id)}
           />
         </div>
@@ -4755,11 +4815,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
               editingPriceValue={editingPriceValue}
               onChangePriceValue={setEditingPriceValue}
               onStartEditPrice={(currentPrice) => { setEditingPriceId(id); setEditingPriceValue(currentPrice === "" ? "" : String(currentPrice)); }}
-              onSaveEditPrice={() => {
-                const parsed = parseFloat(editingPriceValue.replace(",", "."));
-                updateItemMeta(roomKey, listKey, id, isNaN(parsed) ? { price: undefined, priceCurrency: undefined } : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
-                setEditingPriceId(null); setEditingPriceValue("");
-              }}
+              onSaveEditPrice={() => savePrice(item)}
               onCancelEditPrice={() => { setEditingPriceId(null); setEditingPriceValue(""); }}
             />
           </div>
@@ -4803,12 +4859,6 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   const siteGroups = groupBy === "site"
     ? buildSiteGroups(visibleItems.filter((i) => i.listKey === "shopping"))
     : null;
-  const siteGlobalTotal = siteGroups
-    ? siteGroups.sites.reduce((sum, s) => sum + s.total, 0) + siteGroups.noSite.total
-    : 0;
-  const siteGlobalCurrency = siteGroups
-    ? (siteGroups.sites.find((s) => s.currency)?.currency || siteGroups.noSite.currency)
-    : undefined;
 
   return (
     <div className="space-y-4">
@@ -4817,15 +4867,59 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
         <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vue d'ensemble</p>
         <h2 className="type-h2">{isCourses ? "Tous les achats" : "Toutes les tâches"}</h2>
         <p className="mt-1 text-sm text-slate-600">
-          {totalPending > 0 ? `${totalPending} élément${totalPending > 1 ? "s" : ""} en attente.` : "Tout est fait — rien en attente."}
+          {isCourses
+            ? `${visibleItems.length} achat${visibleItems.length > 1 ? "s" : ""} affiché${visibleItems.length > 1 ? "s" : ""}${visibleTotal > 0 ? ` · ${formatPrice(visibleTotal, visibleCurrency)}` : ""}`
+            : totalPending > 0 ? `${totalPending} élément${totalPending > 1 ? "s" : ""} en attente.` : "Tout est fait — rien en attente."}
         </p>
+        {isCourses && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {[
+              missingPriceOnly
+                ? { key: null, label: "Tous", count: courseBase.length, active: statusFilter.length === 0, title: "Tous les achats sans prix" }
+                : { key: null, label: "En cours", count: inProgressCount, active: statusFilter.length === 0, title: "Tous les achats sauf Acheté / Reçu" },
+              ...STATUSES
+                .filter((s) => statusCounts[s.key] > 0 || statusFilter.includes(s.key))
+                .map((s) => ({ key: s.key, label: s.title, count: statusCounts[s.key], active: statusFilter.includes(s.key), dot: s.dot })),
+            ].map(({ key, label, count, active, dot, title }) => (
+              <button key={key || "en-cours"} type="button" title={title}
+                onClick={() => (key ? toggleStatusFilter(key) : setStatusFilter([]))}
+                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  active ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white text-slate-700 hover:bg-slate-50"
+                }`}>
+                {dot && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />}
+                {label}
+                <span className={active ? "text-white/60" : "text-slate-400"}>{count}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {isCourses && [{ key: "all", label: "Toutes" }, { key: "selected", label: "Sélectionnées pour achat" }].map(({ key, label }) => (
-            <button key={key} type="button" onClick={() => setFilter(key)}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${filter === key ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white hover:bg-slate-50"}`}>
-              {label}
-            </button>
-          ))}
+          {isCourses && (
+            <>
+              <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher un article, un site…"
+                className="min-w-[180px] flex-1 rounded-lg border border-black/15 bg-white px-3 py-1.5 text-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none sm:max-w-xs" />
+              <select value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)}
+                className="rounded-lg border border-black/15 bg-white px-2 py-1.5 text-sm text-slate-700">
+                <option value="all">Toutes les pièces</option>
+                {allRoomKeys.map((key) => (
+                  <option key={key} value={key}>{key === "general" ? "Général" : allRoomPresets[key]?.label}</option>
+                ))}
+              </select>
+              {/* Filtre ouvert depuis le Budget ; pas de contrôle permanent pour rester simple */}
+              {missingPriceOnly && (
+                <button type="button" onClick={() => setMissingPriceOnly(false)} title="Retirer ce filtre"
+                  className="flex items-center gap-1 rounded-full border border-[#dcb8a0] bg-[#f6ebe3] px-2.5 py-1 text-xs font-medium text-[#8a5636] hover:bg-[#f0dfd3]">
+                  Sans prix <span aria-hidden>×</span>
+                </button>
+              )}
+              {filtersActive && (
+                <button type="button" onClick={resetFilters} className="px-1 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-800">
+                  Réinitialiser
+                </button>
+              )}
+            </>
+          )}
           <div className="ml-auto flex items-center gap-2">
             {/* Group by toggle */}
             <div className="flex overflow-hidden rounded-lg border border-black/15">
@@ -4850,28 +4944,34 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
                 </button>
               )}
             </div>
-            <button type="button" onClick={() => setHideDone((v) => !v)}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${hideDone ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white hover:bg-slate-50"}`}>
-              {hideDone ? "Voir terminés" : "Masquer terminés"}
-            </button>
+            {/* Achats : les reçus se voient via le filtre « Acheté / Reçu » */}
+            {!isCourses && (
+              <button type="button" onClick={() => setHideDone((v) => !v)}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${hideDone ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white hover:bg-slate-50"}`}>
+                {hideDone ? "Voir terminés" : "Masquer terminés"}
+              </button>
+            )}
           </div>
         </div>
       </div>
 
+      {isCourses && filtersActive && visibleItems.length === 0 && (
+        <div className="rounded-xl border border-dashed border-black/15 bg-white/60 p-6 text-center text-sm text-slate-500">
+          Aucun achat ne correspond à ces filtres.{" "}
+          <button type="button" onClick={resetFilters} className="font-medium text-slate-800 underline underline-offset-2">Réinitialiser</button>
+        </div>
+      )}
+
       {/* Vue par pièce (+ section "Appartement" pour les éléments non liés à une pièce) */}
-      {groupBy === "room" && ["general", ...orderedActiveRooms].map((key) => {
+      {groupBy === "room" && allRoomKeys.filter((key) => !isCourses || roomFilter === "all" || key === roomFilter).map((key) => {
         const preset = key === "general" ? { label: "Général" } : allRoomPresets[key];
-        const list = roomLists[key] || {};
-        const allItems = isCourses
-          ? (list.shopping || [])
-              .filter((i) => filter !== "selected" || isSelectedForPurchase(i))
-              .map((i) => ({ ...i, listKey: "shopping", roomKey: key }))
-          : (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey: key }));
-        const visible = hideDone ? allItems.filter((i) => !i.done) : allItems;
+        const visible = visibleItems.filter((i) => i.roomKey === key);
         const sorted = [...visible.filter((i) => !i.done), ...visible.filter((i) => i.done)];
         const isOpen = roomInputOpen[key] || false;
         const inputVal = roomInputs[key] || "";
         const addListKey = isCourses ? "shopping" : "todos";
+        // Avec des filtres actifs, on masque les pièces sans résultat
+        if (isCourses && filtersActive && sorted.length === 0 && !isOpen) return null;
         return (
           <div key={key} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
             <div className="mb-3 flex items-center justify-between">
@@ -4923,7 +5023,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
           ...weeks.map((w) => ({ label: weekLabel(w.monday), items: w.items, accent: "text-slate-900", bg: "bg-white border-black/10" })),
           ...(noDate.length ? [{ label: "Sans échéance", items: noDate, accent: "text-slate-500", bg: "bg-white border-black/10" }] : []),
         ];
-        if (sections.length === 0) return <div className="py-12 text-center text-sm text-slate-400">Aucun élément à afficher.</div>;
+        if (sections.length === 0) return isCourses && filtersActive ? null : <div className="py-12 text-center text-sm text-slate-400">Aucun élément à afficher.</div>;
         return sections.map(({ label, items, accent, bg }) => (
           <div key={label} className={`rounded-xl border p-4 ${bg}`}>
             <h3 className={`mb-3 text-sm font-semibold uppercase tracking-wide ${accent}`}>{label}</h3>
@@ -4938,23 +5038,16 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
       {groupBy === "site" && siteGroups && (() => {
         const { sites, noSite } = siteGroups;
         if (sites.length === 0 && noSite.items.length === 0) {
-          return (
+          // Avec des filtres, le message « aucun résultat » est déjà affiché au-dessus
+          return filtersActive ? null : (
             <div className="py-12 text-center text-sm text-slate-400">
-              {filter === "selected"
-                ? "Aucun article sélectionné pour l'achat — sélectionnez des articles depuis une pièce pour les voir ici."
-                : "Aucune course pour l'instant — ajoutez des articles depuis une pièce pour les voir ici."}
+              Aucun achat pour l'instant — ajoutez des articles depuis une pièce pour les voir ici.
             </div>
           );
         }
+        // Le total des achats affichés est dans l'en-tête (il suit les filtres)
         return (
           <>
-            <div className="flex items-center justify-between rounded-xl border border-slate-900 bg-slate-900 p-4 text-white">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">Budget global</p>
-                <p className="text-lg font-semibold">{formatPrice(siteGlobalTotal, siteGlobalCurrency)}</p>
-              </div>
-              <p className="text-sm text-white/70">{sites.length} site{sites.length > 1 ? "s" : ""} d'achat</p>
-            </div>
             {sites.map(({ domain, items, total, currency }) => (
               <div key={domain} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
                 <div className="mb-3 flex items-center justify-between">
@@ -5015,8 +5108,7 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
   const domain = (() => {
     try { return new URL(item.url).hostname.replace(/^www\./, ""); } catch { return ""; }
   })();
-  const isCustomTitle = item.text && item.text !== item.url;
-  const cardTitle = isCustomTitle ? item.text : (item.previewTitle || domain);
+  const cardTitle = linkItemTitle(item);
 
   const priceRow = editingPrice ? (
     <input
@@ -6979,12 +7071,32 @@ export default function App() {
   const [roomOrder, setRoomOrder] = useState(null);
   const [draggingRoom, setDraggingRoom] = useState(null);
   const [fileDragActive, setFileDragActive] = useState(false);
-  const [pasteToast, setPasteToast] = useState(false);
+  // Notification courte en bas de l'écran (photo collée, lien copié…)
+  const [toastMessage, setToastMessage] = useState(null);
+  const toastTimerRef = useRef(null);
+  const showToast = (message) => {
+    clearTimeout(toastTimerRef.current);
+    setToastMessage(message);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 2500);
+  };
+  const copyInviteLink = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/?invite=${inviteCode}`);
+    } catch {
+      showToast("Impossible de copier le lien — vérifiez l'accès au presse-papiers");
+      return;
+    }
+    showToast("Lien d'invitation copié ✓");
+    setCopyInviteSuccess(true);
+    setTimeout(() => setCopyInviteSuccess(false), 2000);
+  };
   const dragCounterRef = useRef(0);
   const [chatHistory, setChatHistory] = useState({});
   const [generalContext, setGeneralContext] = useState("");
   const [generalResources, setGeneralResources] = useState([]);
   const [budgetTarget, setBudgetTarget] = useState(null);
+  // Filtres à appliquer à l'ouverture de la vue Achats (liens depuis le Budget)
+  const [achatsPreset, setAchatsPreset] = useState(null);
   const [activityFeed, setActivityFeed] = useState([]);
   const [activityLastViewed, setActivityLastViewed] = useState(
     () => localStorage.getItem("activityLastViewed") || null
@@ -7416,8 +7528,7 @@ export default function App() {
       if (!imageFiles.length) return;
       e.preventDefault();
       handleAddImagesGlobal(imageFiles);
-      setPasteToast(true);
-      setTimeout(() => setPasteToast(false), 2500);
+      showToast("Photo collée dans les inspirations ✓");
     };
     window.addEventListener("dragenter", handleDragEnter);
     window.addEventListener("dragleave", handleDragLeave);
@@ -8479,9 +8590,7 @@ export default function App() {
       done: projectMembers.length > 1,
       onClick: () => {
         if (!inviteCode) { setShowMembersModal(true); return; }
-        navigator.clipboard.writeText(`${window.location.origin}/?invite=${inviteCode}`);
-        setCopyInviteSuccess(true);
-        setTimeout(() => setCopyInviteSuccess(false), 2000);
+        copyInviteLink();
       },
     },
     {
@@ -8928,12 +9037,7 @@ export default function App() {
                 <button
                   type="button"
                   title="Inviter quelqu'un"
-                  onClick={() => {
-                    const inviteUrl = `${window.location.origin}/?invite=${inviteCode}`;
-                    navigator.clipboard.writeText(inviteUrl);
-                    setCopyInviteSuccess(true);
-                    setTimeout(() => setCopyInviteSuccess(false), 2000);
-                  }}
+                  onClick={copyInviteLink}
                   className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-[#4D4A47] transition-colors hover:bg-black/[0.05] hover:text-[#1C1A17]"
                 >
                   {copyInviteSuccess ? (
@@ -9173,7 +9277,9 @@ export default function App() {
               />
             );
           })() : generalMode === "todos" ? (
+            // key : Tâches et Achats ne partagent pas l'état de leurs filtres
             <TodosGlobalView
+              key="todos"
               scope="todos"
               orderedActiveRooms={orderedActiveRooms}
               allRoomPresets={allRoomPresets}
@@ -9191,6 +9297,7 @@ export default function App() {
             />
           ) : generalMode === "courses" ? (
             <TodosGlobalView
+              key="courses"
               scope="courses"
               orderedActiveRooms={orderedActiveRooms}
               allRoomPresets={allRoomPresets}
@@ -9205,6 +9312,8 @@ export default function App() {
               projectMembers={projectMembers}
               setPersons={setPersons}
               savePersonsFn={savePersonsToServer}
+              preset={achatsPreset}
+              onPresetConsumed={() => setAchatsPreset(null)}
             />
           ) : generalMode === "budget" ? (
             <BudgetView
@@ -9221,6 +9330,11 @@ export default function App() {
                 setRoom(key);
                 setViewMode("room");
                 setRoomMode("courses");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onOpenAchats={(preset) => {
+                setAchatsPreset(preset);
+                setGeneralMode("courses");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             />
@@ -10002,12 +10116,14 @@ export default function App() {
         roomLabel={preset.label}
       />
 
-      {pasteToast && (
+      {toastMessage && (
         <div
+          role="status"
+          aria-live="polite"
           className="fixed bottom-6 left-1/2 z-[300] -translate-x-1/2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white shadow-xl"
           style={{ animation: "toastSlideUp 0.2s ease-out both" }}
         >
-          Photo collée dans les inspirations ✓
+          {toastMessage}
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { STATUSES, effectiveStatus, statusMeta, deriveFlagsFromStatus, SPENT_STATUSES, PENDING_STATUSES } from "./lib/itemStatus.js";
+import { STATUSES, effectiveStatus, statusMeta, deriveFlagsFromStatus, SPENT_STATUSES, PENDING_STATUSES, BUDGETED_STATUSES } from "./lib/itemStatus.js";
 
 function sumPrice(items) {
   return items.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
@@ -11,7 +11,7 @@ function sumPrice(items) {
 // encore fiable à ce stade). Couleurs alignées sur la charte de l'app
 // (or #CDAA73 = en attente, sauge #8FA37E = dépensé/soldé, terracotta = alerte)
 // plutôt que des couleurs de dashboard génériques (orange/sky/rouge).
-export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, saveRoomItemsFn, projectId, budgetTarget, onSetBudgetTarget, formatPrice, onNavigateToRoom }) {
+export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, saveRoomItemsFn, projectId, budgetTarget, onSetBudgetTarget, formatPrice, onNavigateToRoom, onOpenAchats }) {
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [addingLine, setAddingLine] = useState(false);
@@ -28,15 +28,18 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
   const spentItems = bucket(allShopping, SPENT_STATUSES);
   const pendingItems = bucket(allShopping, PENDING_STATUSES);
   const ideaCount = allShopping.filter((i) => ["envie", "devis_demande"].includes(effectiveStatus(i))).length;
+  const missingPriceCount = allShopping.filter((i) => BUDGETED_STATUSES.includes(effectiveStatus(i)) && typeof i.price !== "number").length;
 
   const spentAmount = sumPrice(spentItems);
   const pendingAmount = sumPrice(pendingItems);
   const currency = spentItems.find((i) => i.priceCurrency)?.priceCurrency || pendingItems.find((i) => i.priceCurrency)?.priceCurrency;
-  const remaining = typeof budgetTarget === "number" ? budgetTarget - spentAmount : null;
-  const progressPct = typeof budgetTarget === "number" && budgetTarget > 0
-    ? Math.min(100, (spentAmount / budgetTarget) * 100)
-    : 0;
-  const overBudget = typeof budgetTarget === "number" && spentAmount > budgetTarget;
+  // Le reste déduit aussi les dépenses en attente : c'est la vraie marge disponible
+  const hasTarget = typeof budgetTarget === "number" && budgetTarget > 0;
+  const committedAmount = spentAmount + pendingAmount;
+  const remaining = hasTarget ? budgetTarget - committedAmount : null;
+  const spentPct = hasTarget ? Math.min(100, (spentAmount / budgetTarget) * 100) : 0;
+  const pendingPct = hasTarget ? Math.min(100 - spentPct, (pendingAmount / budgetTarget) * 100) : 0;
+  const overBudget = hasTarget && committedAmount > budgetTarget;
 
   const statusOrder = Object.fromEntries(STATUSES.map((s, idx) => [s.key, idx]));
   const sortByStatus = (items) => [...items].sort((a, b) => statusOrder[effectiveStatus(a)] - statusOrder[effectiveStatus(b)]);
@@ -117,12 +120,18 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
           )}
         </div>
 
-        {typeof budgetTarget === "number" && (
+        {hasTarget && (
           <div className="mt-3">
-            <div className="h-2 w-full overflow-hidden rounded-full bg-black/10">
-              <div className={`h-full rounded-full ${overBudget ? "bg-[#C97B5F]" : "bg-[#8FA37E]"}`}
-                style={{ width: `${progressPct}%` }} />
+            {/* Barre en deux segments : dépensé (sauge) puis en attente (or) */}
+            <div className="flex h-2 w-full overflow-hidden rounded-full bg-black/10">
+              <div className={`h-full ${overBudget ? "bg-[#C97B5F]" : "bg-[#8FA37E]"}`} style={{ width: `${spentPct}%` }} />
+              <div className={`h-full ${overBudget ? "bg-[#C97B5F]/60" : "bg-[#CDAA73]"}`} style={{ width: `${pendingPct}%` }} />
             </div>
+            {overBudget && (
+              <p className="mt-1.5 text-xs font-medium text-[#B3543A]">
+                Dépassement prévu de {formatPrice(committedAmount - budgetTarget, currency)} en comptant les dépenses en attente.
+              </p>
+            )}
           </div>
         )}
 
@@ -139,12 +148,27 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
             <p className={`text-lg font-semibold ${overBudget ? "text-[#B3543A]" : "text-[#1C1A17]"}`}>
               {remaining != null ? formatPrice(remaining, currency) : "—"}
             </p>
-            <p className="text-xs text-[#4D4A47]/70">Reste</p>
+            <p className="text-xs text-[#4D4A47]/70">Reste après engagements</p>
           </div>
         </div>
 
-        {ideaCount > 0 && (
-          <p className="mt-3 text-xs text-[#4D4A47]/70">{ideaCount} idée{ideaCount > 1 ? "s" : ""} non budgétée{ideaCount > 1 ? "s" : ""} (envie / devis demandé)</p>
+        {(missingPriceCount > 0 || ideaCount > 0) && (
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            {missingPriceCount > 0 && (
+              <button type="button"
+                onClick={() => onOpenAchats?.({ missingPrice: true })}
+                className="font-medium text-[#B3543A] underline decoration-[#B3543A]/30 underline-offset-2 hover:decoration-[#B3543A]">
+                {missingPriceCount} achat{missingPriceCount > 1 ? "s" : ""} sans prix, non compté{missingPriceCount > 1 ? "s" : ""} dans le budget — compléter →
+              </button>
+            )}
+            {ideaCount > 0 && (
+              <button type="button"
+                onClick={() => onOpenAchats?.({ statuses: ["envie", "devis_demande"] })}
+                className="text-[#4D4A47]/70 underline decoration-black/15 underline-offset-2 hover:text-[#4D4A47] hover:decoration-black/40">
+                {ideaCount} idée{ideaCount > 1 ? "s" : ""} non budgétée{ideaCount > 1 ? "s" : ""} (envie / devis demandé) →
+              </button>
+            )}
+          </div>
         )}
       </div>
 

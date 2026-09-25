@@ -12,7 +12,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { FB, fbLabel } from "./farrowBall.js";
 import { COLOR_CATALOGS, ALL_COLORS_LIBRARY, describeColor, catalogAndFamilyOfHex, formatColorCode } from "./colorCatalogs.js";
-import { STATUSES, effectiveStatus, deriveFlagsFromStatus, selectStyleForStatus } from "./lib/itemStatus.js";
+import { STATUSES, BUDGETED_STATUSES, effectiveStatus, deriveFlagsFromStatus, selectStyleForStatus } from "./lib/itemStatus.js";
 import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, PersonPicker } from "./lib/itemHelpers.jsx";
 import { ShoppingKanban } from "./ShoppingKanban.jsx";
 import { BudgetView } from "./BudgetView.jsx";
@@ -4540,12 +4540,17 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
   );
 }
 
-function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null }) {
+function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null, preset = null, onPresetConsumed = null }) {
   const isCourses = scope === "courses";
-  // Filtres des achats — statuts vides = « En cours » (tout sauf Acheté / Reçu)
-  const [statusFilter, setStatusFilter] = useState([]);
-  const [roomFilter, setRoomFilter] = useState("all");
+  // Filtres des achats — statuts vides = « En cours » (tout sauf Acheté / Reçu).
+  // `preset` : filtres imposés à l'ouverture (liens depuis la vue Budget).
+  const [statusFilter, setStatusFilter] = useState(() => preset?.statuses || []);
+  const [roomFilter, setRoomFilter] = useState(() => preset?.room || "all");
+  const [missingPriceOnly, setMissingPriceOnly] = useState(() => !!preset?.missingPrice);
   const [search, setSearch] = useState("");
+  useEffect(() => {
+    if (preset) onPresetConsumed?.();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [hideDone, setHideDone] = useState(true); // tâches uniquement
   const [groupBy, setGroupBy] = useState("room"); // "room" | "week"
   const [roomInputs, setRoomInputs] = useState({}); // { [roomKey]: string }
@@ -4624,15 +4629,19 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   const searchQuery = search.trim().toLowerCase();
   const matchesRoomAndSearch = (i) =>
     (roomFilter === "all" || i.roomKey === roomFilter) &&
+    // « Sans prix » = achats comptés dans le budget (devis fait → reçu) mais sans prix, comme l'alerte du Budget
+    (!missingPriceOnly || (typeof i.price !== "number" && BUDGETED_STATUSES.includes(effectiveStatus(i)))) &&
     (!searchQuery || `${i.url ? linkItemTitle(i) : i.text || ""} ${i.url || ""}`.toLowerCase().includes(searchQuery));
   const matchesStatus = (i) => {
     const status = effectiveStatus(i);
-    return statusFilter.length ? statusFilter.includes(status) : status !== "achete";
+    if (statusFilter.length) return statusFilter.includes(status);
+    // Filtre « Sans prix » : inclut aussi les achats reçus, comptés dans l'alerte du Budget
+    return missingPriceOnly || status !== "achete";
   };
   const toggleStatusFilter = (key) =>
     setStatusFilter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
-  const filtersActive = statusFilter.length > 0 || roomFilter !== "all" || !!searchQuery;
-  const resetFilters = () => { setStatusFilter([]); setRoomFilter("all"); setSearch(""); };
+  const filtersActive = statusFilter.length > 0 || roomFilter !== "all" || missingPriceOnly || !!searchQuery;
+  const resetFilters = () => { setStatusFilter([]); setRoomFilter("all"); setMissingPriceOnly(false); setSearch(""); };
 
   // Les compteurs de statut tiennent compte de la pièce et de la recherche
   const courseBase = isCourses ? allItemsFlat.filter(matchesRoomAndSearch) : [];
@@ -4684,6 +4693,20 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
     return { overdue, weeks: sortedWeeks.map(([, v]) => v), noDate };
   };
 
+  // ── Prix (achats avec ou sans lien) ──────────────────────────────────────
+  const startEditPrice = (item) => {
+    setEditingPriceId(item.id);
+    setEditingPriceValue(item.price != null ? String(item.price) : "");
+  };
+  const savePrice = (item) => {
+    const parsed = parseFloat(editingPriceValue.replace(/\s/g, "").replace(",", "."));
+    updateItemMeta(item.roomKey, item.listKey, item.id, isNaN(parsed)
+      ? { price: undefined, priceCurrency: undefined }
+      : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
+    setEditingPriceId(null);
+    setEditingPriceValue("");
+  };
+
   // ── Shared item row ──────────────────────────────────────────────────────
   const renderItemRow = (item, showRoom = false) => {
     const { roomKey, listKey, id } = item;
@@ -4713,6 +4736,23 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
             <span className="min-w-0 flex-1" />
           ) : (
             <span className={`min-w-0 flex-1 break-words text-sm ${item.done && listKey !== "shopping" ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.text}</span>
+          )}
+          {/* Prix des achats sans lien (ceux avec lien l'éditent dans leur aperçu) */}
+          {listKey === "shopping" && !item.url && (
+            editingPriceId === id ? (
+              <input type="text" inputMode="decimal" autoFocus value={editingPriceValue} placeholder="Prix"
+                onChange={(e) => setEditingPriceValue(e.target.value)}
+                onBlur={() => savePrice(item)}
+                onKeyDown={(e) => { if (e.key === "Enter") savePrice(item); if (e.key === "Escape") { setEditingPriceId(null); setEditingPriceValue(""); } }}
+                className="w-20 shrink-0 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-xs outline-none" />
+            ) : (
+              <button type="button" onClick={() => startEditPrice(item)} title="Modifier le prix"
+                className={typeof item.price === "number"
+                  ? "shrink-0 text-xs font-semibold text-slate-600 hover:underline"
+                  : "shrink-0 rounded-full border border-dashed border-black/20 px-2 py-0.5 text-[10px] text-slate-400 hover:border-black/40 hover:text-slate-600"}>
+                {typeof item.price === "number" ? formatPrice(item.price, item.priceCurrency) : "+ Prix"}
+              </button>
+            )
           )}
           {showRoom && (
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
@@ -4755,7 +4795,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
             onAddDueDate={() => setEditingDate(dateKey)}
             onAddAssignee={() => setOpenPicker(pickerKey)}
             onEditTitle={item.url ? () => { setEditingTitleId(id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
-            onEditPrice={item.url ? () => { setEditingPriceId(id); setEditingPriceValue(item.price != null ? String(item.price) : ""); } : undefined}
+            onEditPrice={listKey === "shopping" ? () => startEditPrice(item) : undefined}
             onDelete={() => deleteItem(roomKey, listKey, id)}
           />
         </div>
@@ -4775,11 +4815,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
               editingPriceValue={editingPriceValue}
               onChangePriceValue={setEditingPriceValue}
               onStartEditPrice={(currentPrice) => { setEditingPriceId(id); setEditingPriceValue(currentPrice === "" ? "" : String(currentPrice)); }}
-              onSaveEditPrice={() => {
-                const parsed = parseFloat(editingPriceValue.replace(",", "."));
-                updateItemMeta(roomKey, listKey, id, isNaN(parsed) ? { price: undefined, priceCurrency: undefined } : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
-                setEditingPriceId(null); setEditingPriceValue("");
-              }}
+              onSaveEditPrice={() => savePrice(item)}
               onCancelEditPrice={() => { setEditingPriceId(null); setEditingPriceValue(""); }}
             />
           </div>
@@ -4838,7 +4874,9 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
         {isCourses && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {[
-              { key: null, label: "En cours", count: inProgressCount, active: statusFilter.length === 0, title: "Tous les achats sauf Acheté / Reçu" },
+              missingPriceOnly
+                ? { key: null, label: "Tous", count: courseBase.length, active: statusFilter.length === 0, title: "Tous les achats sans prix" }
+                : { key: null, label: "En cours", count: inProgressCount, active: statusFilter.length === 0, title: "Tous les achats sauf Acheté / Reçu" },
               ...STATUSES
                 .filter((s) => statusCounts[s.key] > 0 || statusFilter.includes(s.key))
                 .map((s) => ({ key: s.key, label: s.title, count: statusCounts[s.key], active: statusFilter.includes(s.key), dot: s.dot })),
@@ -4868,6 +4906,13 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
                   <option key={key} value={key}>{key === "general" ? "Général" : allRoomPresets[key]?.label}</option>
                 ))}
               </select>
+              {/* Filtre ouvert depuis le Budget ; pas de contrôle permanent pour rester simple */}
+              {missingPriceOnly && (
+                <button type="button" onClick={() => setMissingPriceOnly(false)} title="Retirer ce filtre"
+                  className="flex items-center gap-1 rounded-full border border-[#dcb8a0] bg-[#f6ebe3] px-2.5 py-1 text-xs font-medium text-[#8a5636] hover:bg-[#f0dfd3]">
+                  Sans prix <span aria-hidden>×</span>
+                </button>
+              )}
               {filtersActive && (
                 <button type="button" onClick={resetFilters} className="px-1 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-800">
                   Réinitialiser
@@ -7050,6 +7095,8 @@ export default function App() {
   const [generalContext, setGeneralContext] = useState("");
   const [generalResources, setGeneralResources] = useState([]);
   const [budgetTarget, setBudgetTarget] = useState(null);
+  // Filtres à appliquer à l'ouverture de la vue Achats (liens depuis le Budget)
+  const [achatsPreset, setAchatsPreset] = useState(null);
   const [activityFeed, setActivityFeed] = useState([]);
   const [activityLastViewed, setActivityLastViewed] = useState(
     () => localStorage.getItem("activityLastViewed") || null
@@ -9230,7 +9277,9 @@ export default function App() {
               />
             );
           })() : generalMode === "todos" ? (
+            // key : Tâches et Achats ne partagent pas l'état de leurs filtres
             <TodosGlobalView
+              key="todos"
               scope="todos"
               orderedActiveRooms={orderedActiveRooms}
               allRoomPresets={allRoomPresets}
@@ -9248,6 +9297,7 @@ export default function App() {
             />
           ) : generalMode === "courses" ? (
             <TodosGlobalView
+              key="courses"
               scope="courses"
               orderedActiveRooms={orderedActiveRooms}
               allRoomPresets={allRoomPresets}
@@ -9262,6 +9312,8 @@ export default function App() {
               projectMembers={projectMembers}
               setPersons={setPersons}
               savePersonsFn={savePersonsToServer}
+              preset={achatsPreset}
+              onPresetConsumed={() => setAchatsPreset(null)}
             />
           ) : generalMode === "budget" ? (
             <BudgetView
@@ -9278,6 +9330,11 @@ export default function App() {
                 setRoom(key);
                 setViewMode("room");
                 setRoomMode("courses");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onOpenAchats={(preset) => {
+                setAchatsPreset(preset);
+                setGeneralMode("courses");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             />

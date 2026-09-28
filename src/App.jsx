@@ -4542,16 +4542,17 @@ function ChatPanel({ room, isGeneral = false, availableRooms = [], globalSelecte
 
 function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, projectId, saveRoomItemsFn, itemReactions = {}, currentUserId = null, onToggleReaction = null, persons = [], projectMembers = [], setPersons = null, savePersonsFn = null, preset = null, onPresetConsumed = null }) {
   const isCourses = scope === "courses";
-  // Filtres des achats — statuts vides = « En cours » (tout sauf Acheté / Reçu).
+  // Filtres — statuts vides = vue par défaut : « En cours » pour les achats
+  // (tout sauf Acheté / Reçu), « À faire » pour les tâches (non terminées).
   // `preset` : filtres imposés à l'ouverture (liens depuis la vue Budget).
   const [statusFilter, setStatusFilter] = useState(() => preset?.statuses || []);
   const [roomFilter, setRoomFilter] = useState(() => preset?.room || "all");
+  const [personFilter, setPersonFilter] = useState("all"); // "all" | nom | "__none"
   const [missingPriceOnly, setMissingPriceOnly] = useState(() => !!preset?.missingPrice);
   const [search, setSearch] = useState("");
   useEffect(() => {
     if (preset) onPresetConsumed?.();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [hideDone, setHideDone] = useState(true); // tâches uniquement
   const [groupBy, setGroupBy] = useState("room"); // "room" | "week"
   const [roomInputs, setRoomInputs] = useState({}); // { [roomKey]: string }
   const [roomInputOpen, setRoomInputOpen] = useState({}); // { [roomKey]: bool }
@@ -4625,14 +4626,18 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
       : (list.todos || []).map((i) => ({ ...i, listKey: "todos", roomKey }));
   });
 
-  // ── Filtres des achats : statut (plusieurs possibles), pièce, recherche ──
+  // ── Filtres : statut (plusieurs possibles), pièce, personne, recherche ──
   const searchQuery = search.trim().toLowerCase();
-  const matchesRoomAndSearch = (i) =>
+  const matchesBase = (i) =>
     (roomFilter === "all" || i.roomKey === roomFilter) &&
+    (personFilter === "all" || (personFilter === "__none" ? !i.assignee : i.assignee === personFilter)) &&
     // « Sans prix » = achats comptés dans le budget (devis fait → reçu) mais sans prix, comme l'alerte du Budget
     (!missingPriceOnly || (typeof i.price !== "number" && BUDGETED_STATUSES.includes(effectiveStatus(i)))) &&
     (!searchQuery || `${i.url ? linkItemTitle(i) : i.text || ""} ${i.url || ""}`.toLowerCase().includes(searchQuery));
+  // Tâches : pas de statut stocké, on le déduit (terminée / en retard / à faire)
+  const todoStatus = (i) => (i.done ? "done" : isDueOverdue(i.dueDate) ? "overdue" : "todo");
   const matchesStatus = (i) => {
+    if (!isCourses) return statusFilter.length ? statusFilter.includes(todoStatus(i)) : !i.done;
     const status = effectiveStatus(i);
     if (statusFilter.length) return statusFilter.includes(status);
     // Filtre « Sans prix » : inclut aussi les achats reçus, comptés dans l'alerte du Budget
@@ -4640,21 +4645,29 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   };
   const toggleStatusFilter = (key) =>
     setStatusFilter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
-  const filtersActive = statusFilter.length > 0 || roomFilter !== "all" || missingPriceOnly || !!searchQuery;
-  const resetFilters = () => { setStatusFilter([]); setRoomFilter("all"); setMissingPriceOnly(false); setSearch(""); };
+  const filtersActive = statusFilter.length > 0 || roomFilter !== "all" || personFilter !== "all" || missingPriceOnly || !!searchQuery;
+  const resetFilters = () => { setStatusFilter([]); setRoomFilter("all"); setPersonFilter("all"); setMissingPriceOnly(false); setSearch(""); };
 
-  // Les compteurs de statut tiennent compte de la pièce et de la recherche
-  const courseBase = isCourses ? allItemsFlat.filter(matchesRoomAndSearch) : [];
-  const statusCounts = Object.fromEntries(STATUSES.map((s) => [s.key, courseBase.filter((i) => effectiveStatus(i) === s.key).length]));
-  const inProgressCount = courseBase.filter((i) => effectiveStatus(i) !== "achete").length;
+  // Les compteurs de statut tiennent compte de la pièce, de la personne et de la recherche
+  const baseItems = allItemsFlat.filter(matchesBase);
+  const statusChips = isCourses
+    ? STATUSES.map((s) => ({ key: s.key, label: s.title, dot: s.dot, count: baseItems.filter((i) => effectiveStatus(i) === s.key).length }))
+    : [
+        { key: "overdue", label: "En retard", dot: "#C97B5F", count: baseItems.filter((i) => todoStatus(i) === "overdue").length },
+        { key: "done", label: "Terminées", dot: "#8FA37E", count: baseItems.filter((i) => i.done).length },
+      ];
+  const defaultChip = !isCourses
+    ? { label: "À faire", count: baseItems.filter((i) => !i.done).length, title: "Toutes les tâches non terminées" }
+    : missingPriceOnly
+      ? { label: "Tous", count: baseItems.length, title: "Tous les achats sans prix" }
+      : { label: "En cours", count: baseItems.filter((i) => effectiveStatus(i) !== "achete").length, title: "Tous les achats sauf Acheté / Reçu" };
+  // Filtre par personne proposé seulement si des éléments sont assignés
+  const assigneeNames = [...new Set(allItemsFlat.map((i) => i.assignee).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
 
-  const visibleItems = isCourses
-    ? courseBase.filter(matchesStatus)
-    : (hideDone ? allItemsFlat.filter((i) => !i.done) : allItemsFlat);
+  const visibleItems = baseItems.filter(matchesStatus);
   const visibleTotal = visibleItems.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
   const visibleCurrency = visibleItems.find((i) => i.priceCurrency)?.priceCurrency;
-
-  const totalPending = allItemsFlat.filter((i) => !i.done).length;
+  const visibleOverdue = isCourses ? 0 : visibleItems.filter((i) => todoStatus(i) === "overdue").length;
 
   // ── Week grouping helpers ────────────────────────────────────────────────
   const getMonday = (date) => {
@@ -4850,7 +4863,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   const groupCtx = filtersActive ? "filtered" : "all";
   const [groupOpen, setGroupOpen] = useState({ all: {}, filtered: {} }); // choix explicites par groupe
   const [bulkOpen, setBulkOpen] = useState({ all: null, filtered: null }); // « Tout déplier / Tout replier »
-  const isGroupOpen = (id) => !isCourses || (groupOpen[groupCtx][id] ?? bulkOpen[groupCtx] ?? filtersActive);
+  const isGroupOpen = (id) => groupOpen[groupCtx][id] ?? bulkOpen[groupCtx] ?? filtersActive;
   const toggleGroup = (id) => setGroupOpen((prev) => ({ ...prev, [groupCtx]: { ...prev[groupCtx], [id]: !isGroupOpen(id) } }));
   const openGroup = (id) => setGroupOpen((prev) => ({ ...prev, [groupCtx]: { ...prev[groupCtx], [id]: true } }));
   const setAllGroups = (open) => {
@@ -4860,20 +4873,13 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   useEffect(() => {
     setGroupOpen((prev) => ({ ...prev, filtered: {} }));
     setBulkOpen((prev) => ({ ...prev, filtered: null }));
-  }, [statusFilter, roomFilter, missingPriceOnly, searchQuery]);
+  }, [statusFilter, roomFilter, personFilter, missingPriceOnly, searchQuery]);
   const priceSum = (items) => items.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
 
-  // En-tête de groupe : cliquable (chevron + nombre d'achats) pour les achats, simple titre pour les tâches
+  // En-tête de groupe cliquable : chevron, titre, nombre d'éléments, puis total / actions
+  const itemNoun = isCourses ? "achat" : "tâche";
   const groupHeader = (id, { title, count, right = null }) => {
     const open = isGroupOpen(id);
-    if (!isCourses) {
-      return (
-        <div className="mb-3 flex items-center justify-between">
-          {title}
-          {right}
-        </div>
-      );
-    }
     return (
       <div className={`flex items-center justify-between gap-2 ${open ? "mb-3" : ""}`}>
         <button type="button" onClick={() => toggleGroup(id)} aria-expanded={open}
@@ -4883,7 +4889,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
             <polyline points="9 18 15 12 9 6" />
           </svg>
           {title}
-          <span className="shrink-0 text-xs font-normal text-slate-400">{count} achat{count > 1 ? "s" : ""}</span>
+          <span className="shrink-0 text-xs font-normal text-slate-400">{count} {itemNoun}{count > 1 ? "s" : ""}</span>
         </button>
         {right}
       </div>
@@ -4912,7 +4918,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
     ? buildSiteGroups(visibleItems.filter((i) => i.listKey === "shopping"))
     : null;
 
-  const roomGroupKeys = allRoomKeys.filter((key) => !isCourses || roomFilter === "all" || key === roomFilter);
+  const roomGroupKeys = allRoomKeys.filter((key) => roomFilter === "all" || key === roomFilter);
   const currentGroupIds = groupBy === "room"
     ? roomGroupKeys.map((key) => `room:${key}`)
     : groupBy === "site" && siteGroups
@@ -4929,56 +4935,56 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
         <p className="mt-1 text-sm text-slate-600">
           {isCourses
             ? `${visibleItems.length} achat${visibleItems.length > 1 ? "s" : ""} affiché${visibleItems.length > 1 ? "s" : ""}${visibleTotal > 0 ? ` · ${formatPrice(visibleTotal, visibleCurrency)}` : ""}`
-            : totalPending > 0 ? `${totalPending} élément${totalPending > 1 ? "s" : ""} en attente.` : "Tout est fait — rien en attente."}
+            : `${visibleItems.length} tâche${visibleItems.length > 1 ? "s" : ""} affichée${visibleItems.length > 1 ? "s" : ""}${visibleOverdue > 0 ? ` · ${visibleOverdue} en retard` : ""}`}
         </p>
-        {isCourses && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {[
-              missingPriceOnly
-                ? { key: null, label: "Tous", count: courseBase.length, active: statusFilter.length === 0, title: "Tous les achats sans prix" }
-                : { key: null, label: "En cours", count: inProgressCount, active: statusFilter.length === 0, title: "Tous les achats sauf Acheté / Reçu" },
-              ...STATUSES
-                .filter((s) => statusCounts[s.key] > 0 || statusFilter.includes(s.key))
-                .map((s) => ({ key: s.key, label: s.title, count: statusCounts[s.key], active: statusFilter.includes(s.key), dot: s.dot })),
-            ].map(({ key, label, count, active, dot, title }) => (
-              <button key={key || "en-cours"} type="button" title={title}
-                onClick={() => (key ? toggleStatusFilter(key) : setStatusFilter([]))}
-                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                  active ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white text-slate-700 hover:bg-slate-50"
-                }`}>
-                {dot && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />}
-                {label}
-                <span className={active ? "text-white/60" : "text-slate-400"}>{count}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {[
+            { key: null, ...defaultChip, active: statusFilter.length === 0 },
+            ...statusChips
+              .filter((c) => c.count > 0 || statusFilter.includes(c.key))
+              .map((c) => ({ ...c, active: statusFilter.includes(c.key) })),
+          ].map(({ key, label, count, active, dot, title }) => (
+            <button key={key || "en-cours"} type="button" title={title}
+              onClick={() => (key ? toggleStatusFilter(key) : setStatusFilter([]))}
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                active ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white text-slate-700 hover:bg-slate-50"
+              }`}>
+              {dot && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />}
+              {label}
+              <span className={active ? "text-white/60" : "text-slate-400"}>{count}</span>
+            </button>
+          ))}
+        </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {isCourses && (
-            <>
-              <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher un article, un site…"
-                className="min-w-[180px] flex-1 rounded-lg border border-black/15 bg-white px-3 py-1.5 text-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none sm:max-w-xs" />
-              <select value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)}
-                className="rounded-lg border border-black/15 bg-white px-2 py-1.5 text-sm text-slate-700">
-                <option value="all">Toutes les pièces</option>
-                {allRoomKeys.map((key) => (
-                  <option key={key} value={key}>{key === "general" ? "Général" : allRoomPresets[key]?.label}</option>
-                ))}
-              </select>
-              {/* Filtre ouvert depuis le Budget ; pas de contrôle permanent pour rester simple */}
-              {missingPriceOnly && (
-                <button type="button" onClick={() => setMissingPriceOnly(false)} title="Retirer ce filtre"
-                  className="flex items-center gap-1 rounded-full border border-[#dcb8a0] bg-[#f6ebe3] px-2.5 py-1 text-xs font-medium text-[#8a5636] hover:bg-[#f0dfd3]">
-                  Sans prix <span aria-hidden>×</span>
-                </button>
-              )}
-              {filtersActive && (
-                <button type="button" onClick={resetFilters} className="px-1 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-800">
-                  Réinitialiser
-                </button>
-              )}
-            </>
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder={isCourses ? "Rechercher un article, un site…" : "Rechercher une tâche…"}
+            className="min-w-[180px] flex-1 rounded-lg border border-black/15 bg-white px-3 py-1.5 text-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none sm:max-w-xs" />
+          <select value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)}
+            className="rounded-lg border border-black/15 bg-white px-2 py-1.5 text-sm text-slate-700">
+            <option value="all">Toutes les pièces</option>
+            {allRoomKeys.map((key) => (
+              <option key={key} value={key}>{key === "general" ? "Général" : allRoomPresets[key]?.label}</option>
+            ))}
+          </select>
+          {assigneeNames.length > 0 && (
+            <select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)} aria-label="Filtrer par personne"
+              className="rounded-lg border border-black/15 bg-white px-2 py-1.5 text-sm text-slate-700">
+              <option value="all">Toutes les personnes</option>
+              {assigneeNames.map((name) => <option key={name} value={name}>{name}</option>)}
+              <option value="__none">Non assigné</option>
+            </select>
+          )}
+          {/* Filtre ouvert depuis le Budget ; pas de contrôle permanent pour rester simple */}
+          {missingPriceOnly && (
+            <button type="button" onClick={() => setMissingPriceOnly(false)} title="Retirer ce filtre"
+              className="flex items-center gap-1 rounded-full border border-[#dcb8a0] bg-[#f6ebe3] px-2.5 py-1 text-xs font-medium text-[#8a5636] hover:bg-[#f0dfd3]">
+              Sans prix <span aria-hidden>×</span>
+            </button>
+          )}
+          {filtersActive && (
+            <button type="button" onClick={resetFilters} className="px-1 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-800">
+              Réinitialiser
+            </button>
           )}
           <div className="ml-auto flex items-center gap-2">
             {/* Group by toggle */}
@@ -5004,26 +5010,19 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
                 </button>
               )}
             </div>
-            {isCourses && currentGroupIds.length > 1 && (
+            {currentGroupIds.length > 1 && (
               <button type="button" onClick={() => setAllGroups(!allGroupsOpen)}
                 className="rounded-lg border border-black/15 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
                 {allGroupsOpen ? "Tout replier" : "Tout déplier"}
-              </button>
-            )}
-            {/* Achats : les reçus se voient via le filtre « Acheté / Reçu » */}
-            {!isCourses && (
-              <button type="button" onClick={() => setHideDone((v) => !v)}
-                className={`rounded-lg border px-3 py-1.5 text-sm ${hideDone ? "border-slate-900 bg-slate-900 text-white" : "border-black/15 bg-white hover:bg-slate-50"}`}>
-                {hideDone ? "Voir terminés" : "Masquer terminés"}
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {isCourses && filtersActive && visibleItems.length === 0 && (
+      {filtersActive && visibleItems.length === 0 && (
         <div className="rounded-xl border border-dashed border-black/15 bg-white/60 p-6 text-center text-sm text-slate-500">
-          Aucun achat ne correspond à ces filtres.{" "}
+          {isCourses ? "Aucun achat ne correspond à ces filtres." : "Aucune tâche ne correspond à ces filtres."}{" "}
           <button type="button" onClick={resetFilters} className="font-medium text-slate-800 underline underline-offset-2">Réinitialiser</button>
         </div>
       )}
@@ -5038,7 +5037,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
         const addListKey = isCourses ? "shopping" : "todos";
         const groupId = `room:${key}`;
         // Avec des filtres actifs, on masque les pièces sans résultat
-        if (isCourses && filtersActive && sorted.length === 0 && !isOpen) return null;
+        if (filtersActive && sorted.length === 0 && !isOpen) return null;
         const groupIsOpen = isGroupOpen(groupId) || isOpen;
         return (
           <div key={key} className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
@@ -5094,7 +5093,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
 
       {/* Vue par semaine */}
       {groupBy === "week" && weekGroups && (() => {
-        if (weekSections.length === 0) return isCourses && filtersActive ? null : <div className="py-12 text-center text-sm text-slate-400">Aucun élément à afficher.</div>;
+        if (weekSections.length === 0) return filtersActive ? null : <div className="py-12 text-center text-sm text-slate-400">Aucun élément à afficher.</div>;
         return weekSections.map(({ label, items, accent, bg }) => {
           const groupId = `week:${label}`;
           return (
@@ -7007,7 +7006,8 @@ function DialogHost() {
 }
 
 function computeGeneralBadges({ orderedActiveRooms, roomLists, discussionsCache, roomDocuments, mentionNotifications, activityFeed, activityLastViewed, user }) {
-  const tPending = orderedActiveRooms.reduce((acc, k) => {
+  // Inclut les tâches « Général », comme la vue Tâches et le compteur des discussions
+  const tPending = ["general", ...orderedActiveRooms].reduce((acc, k) => {
     const l = roomLists[k] || {};
     return acc + (l.todos || []).filter((i) => !i.done).length;
   }, 0);

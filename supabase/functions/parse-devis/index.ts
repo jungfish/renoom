@@ -47,7 +47,8 @@ Deno.serve(async (req) => {
       context: `Devis: ${documentName || "document"}, pièce: ${roomKey || "non précisée"}`,
     });
 
-    supabaseAdmin.from("ai_usage_events").insert({
+    // Attendu : sinon l'insert peut être coupé au retour de la réponse et l'import échappe au quota.
+    const { error: usageError } = await supabaseAdmin.from("ai_usage_events").insert({
       project_id: projectId,
       user_id: user.id,
       room_key: roomKey || null,
@@ -56,7 +57,8 @@ Deno.serve(async (req) => {
       input_tokens: 0,
       output_tokens: 0,
       web_search_calls: 0,
-    }).then(() => {}).catch(() => {});
+    });
+    if (usageError) console.error("ai_usage_events devis_parse:", usageError.message);
 
     return corsResponse(200, { lines });
   } catch (error) {

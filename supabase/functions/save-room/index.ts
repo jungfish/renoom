@@ -1,5 +1,6 @@
 import { corsResponse, optionsResponse } from "../_shared/_cors.ts";
 import { getUserFromRequest, supabaseWithToken } from "../_shared/_supabase.ts";
+import { sanitizeStoredUrl } from "../_shared/_safeFetch.ts";
 
 const CHAT_HISTORY_MAX = 50;
 
@@ -35,7 +36,7 @@ Deno.serve(async (req) => {
         list_key: listKey,
         text: item.text || "",
         done: item.done || false,
-        url: item.url || null,
+        url: sanitizeStoredUrl(item.url),
         image: typeof item.image === "string" && item.image.startsWith("data:") ? null : (item.image || null),
         preview_title: item.previewTitle || null,
         position: idx,
@@ -169,11 +170,12 @@ Deno.serve(async (req) => {
     // --- document POST ---
     if (action === "document" && req.method === "POST") {
       const { projectId, roomKey, document: doc } = body;
-      if (!projectId || !roomKey || !doc?.id || !doc?.url || !doc?.name)
+      const docUrl = sanitizeStoredUrl(doc?.url);
+      if (!projectId || !roomKey || !doc?.id || !docUrl || !doc?.name)
         return corsResponse(400, { error: "projectId, roomKey et document (id, url, name) requis." });
       const { error } = await supabase.from("room_documents").upsert({
         id: doc.id, project_id: projectId, room_key: roomKey,
-        name: doc.name, url: doc.url, type: doc.type || null,
+        name: doc.name, url: docUrl, type: doc.type || null,
         size: doc.size || null, uploaded_at: doc.uploadedAt || new Date().toISOString(),
       }, { onConflict: "id" });
       if (error) throw new Error(error.message);

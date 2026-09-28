@@ -19,6 +19,7 @@ import { BudgetView } from "./BudgetView.jsx";
 import { DevisImportReview } from "./components/DevisImportReview.jsx";
 import { PlanUsageModal } from "./components/PlanUsageModal.jsx";
 import { extractPdfText } from "./lib/pdfText.js";
+import { safeHref } from "./lib/safeHref.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
@@ -271,10 +272,24 @@ function isPdfUrl(url) {
   return clean.endsWith(".pdf") || url.startsWith("data:application/pdf");
 }
 
+// fetch authentifié pour les helpers hors composant (upload, aperçu de lien),
+// qui n'ont pas accès à authedFetch.
+async function apiFetch(url, options = {}) {
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...options.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+}
+
 async function uploadToBlob(dataUrl, filename) {
   if (!dataUrl?.startsWith("data:")) return dataUrl;
   try {
-    const res = await fetch(`${API_BASE}/upload-image`, {
+    const res = await apiFetch(`${API_BASE}/upload-image`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dataUrl, filename }),
@@ -289,7 +304,7 @@ async function uploadToBlob(dataUrl, filename) {
 
 async function uploadUrlToBlob(sourceUrl, filename) {
   try {
-    const res = await fetch(`${API_BASE}/upload-image`, {
+    const res = await apiFetch(`${API_BASE}/upload-image`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sourceUrl, filename }),
@@ -307,7 +322,7 @@ async function extractImageFromUrl(url) {
   const isDirectImage = /\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(url);
   if (isDirectImage && !isPinterest) return url;
   try {
-    const res = await fetch(`${API_BASE}/fetch-link-preview`, {
+    const res = await apiFetch(`${API_BASE}/fetch-link-preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
@@ -321,7 +336,7 @@ async function extractImageFromUrl(url) {
 }
 
 async function fetchLinkPreview(url) {
-  const res = await fetch(`${API_BASE}/fetch-link-preview`, {
+  const res = await apiFetch(`${API_BASE}/fetch-link-preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
@@ -1678,7 +1693,7 @@ function InstagramModal({ item, onClose }) {
         </div>
         <div className="mt-3 flex items-center justify-center">
           <a
-            href={item.originalUrl}
+            href={safeHref(item.originalUrl)}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs text-white/70 backdrop-blur hover:bg-white/20 hover:text-white"
@@ -1900,7 +1915,7 @@ function PlanPreview({
                 onClick={(e) => e.stopPropagation()}
               />
               <a
-                href={currentSrc}
+                href={safeHref(currentSrc)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="absolute bottom-3 right-3 z-10 rounded-md border border-black/15 bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm backdrop-blur hover:bg-white"
@@ -2012,7 +2027,7 @@ function PlanPreview({
         ) : null}
         {isMissing ? <div className="text-xs text-slate-500">Image manquante: ajoute une image avec le bouton +.</div> : null}
         {currentLink ? (
-          <a href={currentLink} target="_blank" rel="noreferrer" className="text-xs underline underline-offset-2">
+          <a href={safeHref(currentLink)} target="_blank" rel="noreferrer" className="text-xs underline underline-offset-2">
             Voir l'objet de cette vue
           </a>
         ) : null}
@@ -2321,7 +2336,7 @@ function Inspirations({ room, label, uploadedImages, setUploadedImages, inspirat
               </div>
               {linkValue ? (
                 <div className="absolute bottom-2 left-2 z-10 opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
-                  <a href={linkValue} target="_blank" rel="noreferrer" className="rounded-md border border-white/30 bg-black/50 px-2.5 py-1 text-xs text-white backdrop-blur hover:bg-black/70">
+                  <a href={safeHref(linkValue)} target="_blank" rel="noreferrer" className="rounded-md border border-white/30 bg-black/50 px-2.5 py-1 text-xs text-white backdrop-blur hover:bg-black/70">
                     Voir l'objet
                   </a>
                 </div>
@@ -2721,7 +2736,8 @@ function MaterialsSection({
                 className={`group relative overflow-hidden rounded-t-xl${isLinkPreview ? " h-52 sm:h-48" : ""}`}
                 onClick={() => {
                   if (isLinkPreview) {
-                    window.open(item.linkPreview.url, "_blank", "noreferrer");
+                    const href = safeHref(item.linkPreview.url);
+                    if (href) window.open(href, "_blank", "noreferrer");
                   } else if (onImageClick && imageSrc) {
                     const nonLinkItems = items.filter(({ item: it }) => !it.linkPreview);
                     const imageList = nonLinkItems.map(({ item: it, cardKey: ck }) => materialUploads[ck] || it.src).filter(Boolean);
@@ -2807,7 +2823,7 @@ function MaterialsSection({
                 {isLinkPreview ? (
                   <a
                     className="text-sm underline underline-offset-2"
-                    href={item.linkPreview.url}
+                    href={safeHref(item.linkPreview.url)}
                     target="_blank"
                     rel="noreferrer"
                     onClick={(e) => e.stopPropagation()}
@@ -2815,7 +2831,7 @@ function MaterialsSection({
                     Voir le produit →
                   </a>
                 ) : linkValue ? (
-                  <a className="text-sm underline underline-offset-2" href={linkValue} target="_blank" rel="noreferrer">
+                  <a className="text-sm underline underline-offset-2" href={safeHref(linkValue)} target="_blank" rel="noreferrer">
                     {item.cta || "Voir le produit"}
                   </a>
                 ) : null}
@@ -2966,7 +2982,7 @@ function GeneralResourcesSection({ generalResources, setGeneralResources }) {
                 <div className="p-3">
                   <p className="mb-0.5 text-[10px] text-slate-400">{hostname}</p>
                   <a
-                    href={resource.url}
+                    href={safeHref(resource.url)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="line-clamp-2 text-sm font-medium text-slate-900 hover:underline"
@@ -3045,7 +3061,7 @@ function DocumentsGlobalView({ orderedActiveRooms, allRoomPresets, roomDocuments
                     )}
                     <div className="min-w-0 flex-1">
                       <a
-                        href={doc.url}
+                        href={safeHref(doc.url)}
                         target="_blank"
                         rel="noreferrer"
                         className="block truncate text-sm font-medium text-slate-800 hover:underline"
@@ -3059,7 +3075,7 @@ function DocumentsGlobalView({ orderedActiveRooms, allRoomPresets, roomDocuments
                       </span>
                     </div>
                     <a
-                      href={doc.url}
+                      href={safeHref(doc.url)}
                       target="_blank"
                       rel="noreferrer"
                       className="shrink-0 rounded border border-black/10 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50"
@@ -3197,7 +3213,7 @@ function renderMessageContent(content) {
         parts.push(<em key={match.index}>{match[2]}</em>);
       } else {
         parts.push(
-          <a key={match.index} href={match[4]} target="_blank" rel="noopener noreferrer"
+          <a key={match.index} href={safeHref(match[4])} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1 rounded-md bg-white border border-black/15 px-2 py-0.5 text-xs font-medium text-slate-700 hover:border-slate-400 hover:text-slate-900 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-3 shrink-0 opacity-60"><path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z"/><path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z"/></svg>
             {match[3]}
@@ -3242,7 +3258,7 @@ function ProductCard({ title, url, onInvalid }) {
 
   return (
     <a
-      href={url}
+      href={safeHref(url)}
       target="_blank"
       rel="noopener noreferrer"
       className="flex min-w-[148px] max-w-[148px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white text-slate-800 shadow-sm transition-shadow hover:shadow-md"
@@ -3438,11 +3454,8 @@ function DiscussionThread({ discussionId, discussion, projectId, user, isOwner, 
     if (!file) return;
     setUploadingImage(true);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const r = await fetch(`${API_BASE}/upload-image`, { method: 'POST', body: fd });
-      const { url } = await r.json();
-      setLinkedImage(url);
+      const url = await uploadToBlob(await readFileAsDataUrl(file));
+      if (url) setLinkedImage(url);
     } catch {
       // ignore upload errors
     } finally {
@@ -5159,7 +5172,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
 function renderItemText(text, url) {
   if (url) {
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70">
+      <a href={safeHref(url)} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70">
         {text}
       </a>
     );
@@ -5232,7 +5245,7 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
 
   if (item.previewLoading) {
     return (
-      <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-black/8 bg-slate-50">
+      <a href={safeHref(item.url)} target="_blank" rel="noopener noreferrer" className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-black/8 bg-slate-50">
         <div className="h-20 w-24 shrink-0 animate-pulse bg-slate-200" />
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 px-3">
           <div className="h-3 w-3/4 animate-pulse rounded bg-slate-200" />
@@ -5268,7 +5281,7 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
   return (
     <div className="relative flex min-w-0 flex-1">
       <a
-        href={item.url}
+        href={safeHref(item.url)}
         target="_blank"
         rel="noopener noreferrer"
         className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-black/8 bg-slate-50 transition-colors hover:bg-slate-100"
@@ -5411,7 +5424,7 @@ function DocumentsSection({ room, roomDocuments, setRoomDocuments, projectId, sa
               )}
               <div className="min-w-0 flex-1">
                 <a
-                  href={doc.url}
+                  href={safeHref(doc.url)}
                   target="_blank"
                   rel="noreferrer"
                   className="block truncate text-sm font-medium text-slate-800 hover:underline"
@@ -8141,18 +8154,18 @@ export default function App() {
     setShowProjectPicker(false);
     setLoadingFromUrl(true);
     authedFetch(`${API_BASE}/load-project?id=${encodeURIComponent(id)}&t=${Date.now()}`, { cache: "no-store" })
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : {}))
       .then(({ projectConfig, name, isOwner: owner, inviteCode: code, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized }) => {
-        if (projectConfig) hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized });
+        // Sans config chargée, hydratedRef reste à false : l'autosave n'écrase
+        // pas le vrai projet avec l'état vide remis juste au-dessus.
+        if (!projectConfig) throw new Error("load-project");
+        hydrateState({ projectConfig, roomItems, chatMessages, roomNotesNormalized, roomDocumentsNormalized, roomNuancesNormalized, roomColorTestsNormalized, roomMediaNormalized });
         if (typeof owner === "boolean") setIsOwner(owner);
         if (code) setInviteCode(code);
         rememberProjectName(id, name, owner);
       })
-      .catch(() => {})
-      .finally(() => {
-        if (!hydratedRef.current) hydratedRef.current = true;
-        setLoadingFromUrl(false);
-      });
+      .catch(() => showToast("Impossible d'ouvrir ce projet. Réessayez."))
+      .finally(() => setLoadingFromUrl(false));
   };
 
   const handleCreateSnapshot = async (label) => {
@@ -9000,7 +9013,7 @@ export default function App() {
                           await authedFetch(`${API_BASE}/save-project`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ state: {}, id: p.id, name: newName }),
+                            body: JSON.stringify({ state: {}, id: p.id, name: newName, metaOnly: true }),
                           });
                           setUserProjects(prev => prev.map(pr => pr.id === p.id ? { ...pr, name: newName } : pr));
                           setRenamingProjectId(null);

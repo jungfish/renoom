@@ -4,6 +4,7 @@ import {
   formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, siteDomain, SiteFavicon, PersonPicker,
 } from "./lib/itemHelpers.jsx";
 import { STATUSES, effectiveStatus, selectStyleForStatus } from "./lib/itemStatus.js";
+import { safeHref } from "./lib/safeHref.js";
 
 // Kanban desktop (lg:+) des envies/courses — dérive ses colonnes du champ
 // `status` (7 étapes). La liste mobile garde le select de statut équivalent
@@ -122,7 +123,7 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                               <span className="mr-1.5 inline-block align-[-3px]"><SiteFavicon domain={siteDomain(item.url)} size={16} /></span>
                             )}
                             {item.url ? (
-                              <a href={item.url} target="_blank" rel="noopener noreferrer" draggable={false}
+                              <a href={safeHref(item.url)} target="_blank" rel="noopener noreferrer" draggable={false}
                                 className="hover:underline">
                                 {linkItemTitle(item)}
                               </a>

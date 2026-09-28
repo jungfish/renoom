@@ -1,15 +1,32 @@
-import { CORS_HEADERS, corsResponse, optionsResponse } from "../_shared/_cors.ts";
+import { corsResponse, optionsResponse } from "../_shared/_cors.ts";
+import { getUserFromRequest } from "../_shared/_supabase.ts";
+import { assertPublicHttpUrl, readBodyLimited, safeFetch, UnsafeUrlError } from "../_shared/_safeFetch.ts";
+
+const MAX_HTML_BYTES = 2 * 1024 * 1024;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
   if (req.method !== "POST") return corsResponse(405, { error: "Méthode non supportée." });
 
-  const { url } = await req.json();
-  if (!url) return corsResponse(400, { error: "URL required" });
+  const { user } = await getUserFromRequest(req);
+  if (!user) return corsResponse(401, { error: "Authentification requise." });
+
+  let url: string;
+  try {
+    ({ url } = await req.json());
+  } catch {
+    return corsResponse(400, { error: "JSON invalide." });
+  }
+  if (!url || typeof url !== "string") return corsResponse(400, { error: "URL required" });
+  try {
+    await assertPublicHttpUrl(url);
+  } catch (err) {
+    return corsResponse(400, { error: (err as Error).message });
+  }
 
   const isInstagram = url.includes("instagram.com");
   try {
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       headers: {
         "User-Agent": isInstagram
           ? "Mozilla/5.0 (compatible; Twitterbot/1.0)"
@@ -17,14 +34,13 @@ Deno.serve(async (req) => {
         Accept: "text/html,application/xhtml+xml",
         "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
       },
-      signal: AbortSignal.timeout(8000),
-    });
+    }, { timeoutMs: 8000 });
 
     if (!response.ok) {
       return corsResponse(200, { url, title: url, description: null, image: null });
     }
 
-    const html = await response.text();
+    const html = new TextDecoder().decode(await readBodyLimited(response, MAX_HTML_BYTES));
 
     const getOgTag = (prop: string) => {
       const patterns = [
@@ -80,7 +96,9 @@ Deno.serve(async (req) => {
       price,
       currency,
     });
-  } catch {
+  } catch (err) {
+    // Redirection vers une adresse interne : refus explicite plutôt qu'un aperçu vide
+    if (err instanceof UnsafeUrlError) return corsResponse(400, { error: err.message });
     return corsResponse(200, { url, title: url, description: null, image: null });
   }
 });

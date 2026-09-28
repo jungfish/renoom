@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "./_supabase.ts";
-import { isGodUser } from "./_god.ts";
+import { GOD_USER_IDS, isGodUser } from "./_god.ts";
 
 export type PlanLimits = {
   max_active_projects: number;
@@ -111,10 +111,12 @@ export async function countPdfExports30d(ownerId: string): Promise<number> {
   return count ?? 0;
 }
 
+// Les comptes admin, ajoutés d'office à chaque projet, ne consomment pas de place.
 export async function countProjectMembers(projectId: string): Promise<number> {
   const { count } = await supabaseAdmin
     .from("project_members")
     .select("user_id", { count: "exact", head: true })
-    .eq("project_id", projectId);
+    .eq("project_id", projectId)
+    .not("user_id", "in", `(${GOD_USER_IDS.join(",")})`);
   return count ?? 0;
 }

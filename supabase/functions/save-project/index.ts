@@ -2,6 +2,7 @@ import { corsResponse, optionsResponse } from "../_shared/_cors.ts";
 import { getUserFromRequest, supabaseAdmin, supabaseWithToken, writeChangeLog, stripBinaryData } from "../_shared/_supabase.ts";
 import { GOD_USER_IDS } from "../_shared/_god.ts";
 import { getEntitlements, countActiveProjects } from "../_shared/_entitlements.ts";
+import { sanitizeStoredUrl } from "../_shared/_safeFetch.ts";
 
 const MEDIA_FIELDS = [
   "uploadedImages", "inspirationLinks", "aiInspirations", "instagramItems",
@@ -9,6 +10,31 @@ const MEDIA_FIELDS = [
   "extraMaterialImages", "extraMaterialMeta", "planUploads", "planLinks",
   "extraPlanImages",
 ] as const;
+
+const orNull = (v: unknown) => v || null;
+const numberOrNull = (v: unknown) => (typeof v === "number" ? v : null);
+const sanitizeResources = (v: unknown) =>
+  Array.isArray(v)
+    ? v.map((r) => (r && typeof r === "object" && "url" in r
+      ? { ...r, url: sanitizeStoredUrl((r as Record<string, unknown>).url) }
+      : r))
+    : [];
+
+// [clé dans state, colonne projects, normalisation]
+const PROJECT_COLUMNS: [string, string, (v: unknown) => unknown][] = [
+  ["room",             "active_room",       orNull],
+  ["viewMode",         "view_mode",         orNull],
+  ["generalMode",      "general_mode",      orNull],
+  ["globalAccent",     "global_accent",     orNull],
+  ["warmth",           "warmth",            numberOrNull],
+  ["generalContext",   "general_context",   orNull],
+  ["customRooms",      "custom_rooms",      (v) => v || []],
+  ["hiddenRooms",      "hidden_rooms",      (v) => v || []],
+  ["roomOrder",        "room_order",        orNull],
+  ["generalResources", "general_resources", sanitizeResources],
+  ["budgetTarget",     "budget_target",     numberOrNull],
+  ["globalPalette",    "global_palette",    orNull],
+];
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
@@ -24,7 +50,7 @@ Deno.serve(async (req) => {
   const body = await req.json();
   const { state, id, snapshot, snapshotLabel, name, metaOnly } = body;
 
-  if (!state) return corsResponse(400, { error: "state requis." });
+  if (!state || typeof state !== "object") return corsResponse(400, { error: "state requis." });
 
   const projectId = id || generateId();
   const isNewProject = !id;
@@ -43,19 +69,12 @@ Deno.serve(async (req) => {
     const upsertData: Record<string, unknown> = {
       id: projectId,
       updated_at: new Date().toISOString(),
-      active_room:       state.room             || null,
-      view_mode:         state.viewMode         || null,
-      general_mode:      state.generalMode      || null,
-      global_accent:     state.globalAccent     || null,
-      warmth:            typeof state.warmth === "number" ? state.warmth : null,
-      general_context:   state.generalContext   || null,
-      custom_rooms:      state.customRooms      || [],
-      hidden_rooms:      state.hiddenRooms      || [],
-      room_order:        state.roomOrder        || null,
-      general_resources: state.generalResources || [],
-      budget_target:     typeof state.budgetTarget === "number" ? state.budgetTarget : null,
-      global_palette:    state.globalPalette     || null,
     };
+    // Projet existant : on n'écrit que les clés présentes dans state (un
+    // renommage envoie state: {} et ne doit rien remettre à zéro).
+    for (const [stateKey, column, normalize] of PROJECT_COLUMNS) {
+      if (isNewProject || stateKey in state) upsertData[column] = normalize(state[stateKey]);
+    }
 
     if (isNewProject) {
       upsertData.owner_id = user.id;
@@ -71,9 +90,9 @@ Deno.serve(async (req) => {
       if (name && member.role === "owner") upsertData.name = name;
     }
 
-    const { error: upsertError } = await supabaseAdmin
-      .from("projects")
-      .upsert(upsertData, { onConflict: "id" });
+    const { error: upsertError } = isNewProject
+      ? await supabaseAdmin.from("projects").upsert(upsertData, { onConflict: "id" })
+      : await supabaseAdmin.from("projects").update(upsertData).eq("id", projectId);
     if (upsertError) throw new Error(upsertError.message);
 
     if (isNewProject) {

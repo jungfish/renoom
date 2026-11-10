@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { STATUSES, effectiveStatus, statusMeta, deriveFlagsFromStatus, SPENT_STATUSES, PENDING_STATUSES, BUDGETED_STATUSES } from "./lib/itemStatus.js";
+import { STATUSES, effectiveStatus, statusMeta, deriveFlagsFromStatus, isArchived, countsInBudget, SPENT_STATUSES, PENDING_STATUSES, BUDGETED_STATUSES } from "./lib/itemStatus.js";
 
 function sumPrice(items) {
   return items.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
@@ -11,6 +11,8 @@ function sumPrice(items) {
 // encore fiable à ce stade). Couleurs alignées sur la charte de l'app
 // (or #CDAA73 = en attente, sauge #8FA37E = dépensé/soldé, terracotta = alerte)
 // plutôt que des couleurs de dashboard génériques (orange/sky/rouge).
+// Archivés : seuls les achats Commandé / Acheté restent comptés (argent sorti),
+// voir countsInBudget ; idées et devis archivés sont considérés abandonnés.
 export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setRoomLists, saveRoomItemsFn, projectId, budgetTarget, onSetBudgetTarget, formatPrice, onNavigateToRoom, onOpenAchats }) {
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -24,11 +26,13 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
   const withPrice = (items) => items.filter((i) => typeof i.price === "number");
   const bucket = (items, statuses) => withPrice(items).filter((i) => statuses.includes(effectiveStatus(i)));
 
-  const allShopping = allKeys.flatMap((key) => (roomLists[key]?.shopping || []).map((i) => ({ ...i, roomKey: key })));
+  const budgetItems = (key) => (roomLists[key]?.shopping || []).filter(countsInBudget);
+  const allShopping = allKeys.flatMap((key) => budgetItems(key).map((i) => ({ ...i, roomKey: key })));
   const spentItems = bucket(allShopping, SPENT_STATUSES);
   const pendingItems = bucket(allShopping, PENDING_STATUSES);
   const ideaCount = allShopping.filter((i) => ["envie", "devis_demande"].includes(effectiveStatus(i))).length;
-  const missingPriceCount = allShopping.filter((i) => BUDGETED_STATUSES.includes(effectiveStatus(i)) && typeof i.price !== "number").length;
+  // Hors archivés : l'alerte ouvre « Tous les achats », qui ne les montre pas par défaut
+  const missingPriceCount = allShopping.filter((i) => !isArchived(i) && BUDGETED_STATUSES.includes(effectiveStatus(i)) && typeof i.price !== "number").length;
 
   const spentAmount = sumPrice(spentItems);
   const pendingAmount = sumPrice(pendingItems);
@@ -45,7 +49,7 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
   const sortByStatus = (items) => [...items].sort((a, b) => statusOrder[effectiveStatus(a)] - statusOrder[effectiveStatus(b)]);
   const linesByRoom = allKeys
     .map((key) => {
-      const items = roomLists[key]?.shopping || [];
+      const items = budgetItems(key);
       return {
         key,
         label: roomLabel(key),
@@ -57,7 +61,7 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
     .filter((g) => g.items.length > 0);
 
   const perRoom = allKeys.map((key) => {
-    const items = roomLists[key]?.shopping || [];
+    const items = budgetItems(key);
     return {
       key,
       label: roomLabel(key),

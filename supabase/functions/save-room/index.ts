@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
         price_currency: item.priceCurrency || null,
         selected_for_purchase: item.selectedForPurchase === true,
         status: listKey === "shopping" ? ((typeof item.status === "string" && item.status) || "envie") : null,
+        archived_at: listKey === "shopping" && typeof item.archivedAt === "string" && !isNaN(Date.parse(item.archivedAt)) ? item.archivedAt : null,
       }));
 
       const ids = rows.map((r) => r.id).filter(Boolean) as string[];

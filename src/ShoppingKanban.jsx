@@ -11,7 +11,7 @@ import { safeHref } from "./lib/safeHref.js";
 // pour rester utilisable sans glisser-déposer. Les colonnes sans item se
 // replient automatiquement (cliquables pour les déplier) afin qu'un cycle
 // à 7 étapes reste lisible sans configuration.
-export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSetDueDate, onSetAssignee, onSetTitle, onSetPrice, allPersons, onCreatePerson }) {
+export function ShoppingKanban({ items, formatPrice, onMoveItem, onArchive, onDelete, onSetDueDate, onSetAssignee, onSetTitle, onSetPrice, allPersons, onCreatePerson }) {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
   // Images produit qui ne chargent pas : la carte affiche alors le logo du site
@@ -136,6 +136,7 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                           onAddAssignee={() => setOpenPickerId(`item-${item.id}`)}
                           onEditTitle={() => { setEditingTitleId(item.id); setEditingTitleValue(linkItemTitle(item)); }}
                           onEditPrice={() => { setEditingPriceId(item.id); setEditingPriceValue(item.price != null ? String(item.price) : ""); }}
+                          onToggleArchive={onArchive ? () => onArchive(item.id) : undefined}
                           onDelete={() => onDelete(item.id)}
                         />
                       </div>

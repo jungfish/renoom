@@ -47,6 +47,7 @@ Deno.serve(async (req) => {
         quantity: listKey === "shopping" && typeof item.quantity === "number" && Number.isFinite(item.quantity) && item.quantity > 0 && item.quantity !== 1 ? item.quantity : null,
         selected_for_purchase: item.selectedForPurchase === true,
         status: listKey === "shopping" ? ((typeof item.status === "string" && item.status) || "envie") : null,
+        archived_at: listKey === "shopping" && typeof item.archivedAt === "string" && !isNaN(Date.parse(item.archivedAt)) ? item.archivedAt : null,
       }));
 
       const ids = rows.map((r) => r.id).filter(Boolean) as string[];

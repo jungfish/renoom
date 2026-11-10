@@ -20,6 +20,20 @@ export const PENDING_STATUSES = ["devis_fait", "echantillon_commande", "selectio
 // Statuts comptés dans le budget : sans prix à ces étapes, un achat fausse les totaux
 export const BUDGETED_STATUSES = [...PENDING_STATUSES, ...SPENT_STATUSES];
 
+// Archivage : drapeau `archivedAt` indépendant du statut — l'achat garde son
+// étape (on distingue un achat reçu rangé d'une idée abandonnée). Les items
+// archivés restent dans `roomLists` (save-room supprime en base ce qui n'est
+// plus dans la liste) : seules les vues les filtrent.
+export function isArchived(item) {
+  return !!item?.archivedAt;
+}
+
+// Budget : l'argent sorti reste compté même archivé ; un devis ou une idée
+// archivés sont considérés comme abandonnés et sortent des totaux.
+export function countsInBudget(item) {
+  return !isArchived(item) || SPENT_STATUSES.includes(effectiveStatus(item));
+}
+
 // `done`/`selected_for_purchase` restent en base pour ne pas casser le code
 // existant (export PDF, "Budget global", outil IA du chat) qui les lit
 // encore — tout changement de statut doit aussi mettre à jour ces 2 champs.

@@ -12,7 +12,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { FB, fbLabel } from "./farrowBall.js";
 import { COLOR_CATALOGS, ALL_COLORS_LIBRARY, describeColor, catalogAndFamilyOfHex, formatColorCode } from "./colorCatalogs.js";
-import { STATUSES, BUDGETED_STATUSES, effectiveStatus, deriveFlagsFromStatus, selectStyleForStatus } from "./lib/itemStatus.js";
+import { STATUSES, BUDGETED_STATUSES, effectiveStatus, deriveFlagsFromStatus, selectStyleForStatus, isArchived } from "./lib/itemStatus.js";
 import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, siteDomain, SiteFavicon, PersonPicker, QuantityControl, hasQuantity, itemQuantity, lineTotal, sumLineTotals, parseQuantity } from "./lib/itemHelpers.jsx";
 import { ShoppingKanban } from "./ShoppingKanban.jsx";
 import { BudgetView } from "./BudgetView.jsx";
@@ -4575,6 +4575,8 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   const [roomFilter, setRoomFilter] = useState(() => preset?.room || "all");
   const [personFilter, setPersonFilter] = useState("all"); // "all" | nom | "__none"
   const [missingPriceOnly, setMissingPriceOnly] = useState(() => !!preset?.missingPrice);
+  // Achats : les archivés sont exclus partout, sauf dans ce mode qui n'affiche qu'eux
+  const [showArchived, setShowArchived] = useState(() => !!preset?.archived);
   const [search, setSearch] = useState("");
   useEffect(() => {
     if (preset) onPresetConsumed?.();
@@ -4667,16 +4669,21 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
     if (!isCourses) return statusFilter.length ? statusFilter.includes(todoStatus(i)) : !i.done;
     const status = effectiveStatus(i);
     if (statusFilter.length) return statusFilter.includes(status);
-    // Filtre « Sans prix » : inclut aussi les achats reçus, comptés dans l'alerte du Budget
-    return missingPriceOnly || status !== "achete";
+    // Filtre « Sans prix » : inclut aussi les achats reçus, comptés dans l'alerte du Budget.
+    // Archivés : tous les statuts, on vient y rechercher un achat rangé.
+    return showArchived || missingPriceOnly || status !== "achete";
   };
   const toggleStatusFilter = (key) =>
     setStatusFilter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
-  const filtersActive = statusFilter.length > 0 || roomFilter !== "all" || personFilter !== "all" || missingPriceOnly || !!searchQuery;
-  const resetFilters = () => { setStatusFilter([]); setRoomFilter("all"); setPersonFilter("all"); setMissingPriceOnly(false); setSearch(""); };
+  const toggleShowArchived = () => { setShowArchived((v) => !v); setStatusFilter([]); };
+  const filtersActive = statusFilter.length > 0 || roomFilter !== "all" || personFilter !== "all" || missingPriceOnly || showArchived || !!searchQuery;
+  const resetFilters = () => { setStatusFilter([]); setRoomFilter("all"); setPersonFilter("all"); setMissingPriceOnly(false); setShowArchived(false); setSearch(""); };
 
-  // Les compteurs de statut tiennent compte de la pièce, de la personne et de la recherche
-  const baseItems = allItemsFlat.filter(matchesBase);
+  // Les compteurs de statut tiennent compte de la pièce, de la personne, de la recherche
+  // et du mode archives (un achat archivé n'est compté que dans ce mode)
+  const baseAll = allItemsFlat.filter(matchesBase);
+  const archivedCount = isCourses ? baseAll.filter(isArchived).length : 0;
+  const baseItems = isCourses ? baseAll.filter((i) => isArchived(i) === showArchived) : baseAll;
   const statusChips = isCourses
     ? STATUSES.map((s) => ({ key: s.key, label: s.title, dot: s.dot, count: baseItems.filter((i) => effectiveStatus(i) === s.key).length }))
     : [
@@ -4685,6 +4692,8 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
       ];
   const defaultChip = !isCourses
     ? { label: "À faire", count: baseItems.filter((i) => !i.done).length, title: "Toutes les tâches non terminées" }
+    : showArchived
+      ? { label: "Tous", count: baseItems.length, title: "Tous les achats archivés" }
     : missingPriceOnly
       ? { label: "Tous", count: baseItems.length, title: "Tous les achats sans prix" }
       : { label: "En cours", count: baseItems.filter((i) => effectiveStatus(i) !== "achete").length, title: "Tous les achats sauf Acheté / Reçu" };
@@ -4846,6 +4855,9 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
             onEditTitle={item.url ? () => { setEditingTitleId(id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
             onEditPrice={listKey === "shopping" ? () => startEditPrice(item) : undefined}
             onEditQuantity={listKey === "shopping" ? () => setEditingQtyId(id) : undefined}
+            onToggleArchive={listKey === "shopping"
+              ? () => updateItemMeta(roomKey, listKey, id, { archivedAt: isArchived(item) ? undefined : new Date().toISOString() })
+              : undefined}
             onDelete={() => deleteItem(roomKey, listKey, id)}
           />
         </div>
@@ -4914,7 +4926,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   useEffect(() => {
     setGroupOpen((prev) => ({ ...prev, filtered: {} }));
     setBulkOpen((prev) => ({ ...prev, filtered: null }));
-  }, [statusFilter, roomFilter, personFilter, missingPriceOnly, searchQuery]);
+  }, [statusFilter, roomFilter, personFilter, missingPriceOnly, showArchived, searchQuery]);
   const priceSum = sumLineTotals;
 
   // En-tête de groupe cliquable : chevron, titre, nombre d'éléments, puis total / actions
@@ -4975,7 +4987,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
         <h2 className="type-h2">{isCourses ? "Tous les achats" : "Toutes les tâches"}</h2>
         <p className="mt-1 text-sm text-slate-600">
           {isCourses
-            ? `${visibleItems.length} achat${visibleItems.length > 1 ? "s" : ""} affiché${visibleItems.length > 1 ? "s" : ""}${visibleTotal > 0 ? ` · ${formatPrice(visibleTotal, visibleCurrency)}` : ""}`
+            ? `${visibleItems.length} achat${visibleItems.length > 1 ? "s" : ""} ${showArchived ? "archivé" : "affiché"}${visibleItems.length > 1 ? "s" : ""}${visibleTotal > 0 ? ` · ${formatPrice(visibleTotal, visibleCurrency)}` : ""}`
             : `${visibleItems.length} tâche${visibleItems.length > 1 ? "s" : ""} affichée${visibleItems.length > 1 ? "s" : ""}${visibleOverdue > 0 ? ` · ${visibleOverdue} en retard` : ""}`}
         </p>
         <div className="mt-3 flex flex-wrap gap-1.5">
@@ -4995,6 +5007,18 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
               <span className={active ? "text-white/60" : "text-slate-400"}>{count}</span>
             </button>
           ))}
+          {/* Bascule vers les achats archivés — en pointillés pour la distinguer des statuts */}
+          {isCourses && (archivedCount > 0 || showArchived) && (
+            <button type="button" onClick={toggleShowArchived} aria-pressed={showArchived}
+              title={showArchived ? "Revenir aux achats en cours" : "Voir les achats archivés"}
+              className={`flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-xs font-medium transition-colors ${
+                showArchived ? "border-slate-900 bg-slate-900 text-white" : "border-black/25 bg-white/60 text-slate-500 hover:bg-white"
+              }`}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+              Archivés
+              <span className={showArchived ? "text-white/60" : "text-slate-400"}>{archivedCount}</span>
+            </button>
+          )}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
@@ -5088,7 +5112,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
               right: (
                 <div className="flex shrink-0 items-center gap-2">
                   {isCourses && totalPill(priceSum(sorted), sorted.find((i) => i.priceCurrency)?.priceCurrency)}
-                  {!isOpen && (
+                  {!isOpen && !showArchived && (
                     <button type="button"
                       onClick={() => {
                         openGroup(groupId);
@@ -5612,6 +5636,8 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
 
   const list = roomLists[room] || {};
   const shopping = list.shopping || [];
+  // Achats affichés dans la pièce : les archivés n'apparaissent que dans « Tous les achats »
+  const activeShopping = shopping.filter((i) => !isArchived(i));
   const todos = list.todos || [];
 
   useEffect(() => {
@@ -5682,11 +5708,14 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
     if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, newItems);
   };
 
-  const clearDoneItems = (listKey) => {
-    const currentItems = (roomLists[room] || {})[listKey] || [];
-    const newItems = currentItems.filter((item) => !item.done);
-    setRoomLists((prev) => ({ ...prev, [room]: { ...(prev[room] || {}), [listKey]: newItems } }));
-    if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, newItems);
+  // Archive (sans supprimer) les achats reçus : les supprimer faisait
+  // disparaître leur montant du budget dépensé.
+  const archiveDoneShopping = () => {
+    const now = new Date().toISOString();
+    const currentItems = (roomLists[room] || {}).shopping || [];
+    const newItems = currentItems.map((item) => (item.done && !isArchived(item) ? { ...item, archivedAt: now } : item));
+    setRoomLists((prev) => ({ ...prev, [room]: { ...(prev[room] || {}), shopping: newItems } }));
+    if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, "shopping", newItems);
   };
 
   const updateItemMeta = (listKey, id, patch) => {
@@ -5694,6 +5723,11 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
     const newItems = currentItems.map(item => item.id === id ? { ...item, ...patch } : item);
     setRoomLists(prev => ({ ...prev, [room]: { ...(prev[room] || {}), [listKey]: newItems } }));
     if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, newItems);
+  };
+
+  const toggleArchiveShopping = (id) => {
+    const item = ((roomLists[room] || {}).shopping || []).find((i) => i.id === id);
+    if (item) updateItemMeta("shopping", id, { archivedAt: isArchived(item) ? undefined : new Date().toISOString() });
   };
 
   const saveListPrice = (item) => {
@@ -5866,6 +5900,7 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
                   onEditTitle={listKey === "shopping" && item.url ? () => { setEditingTitleId(item.id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
                   onEditPrice={listKey === "shopping" ? () => { setEditingPriceId(item.id); setEditingPriceValue(item.price != null ? String(item.price) : ""); } : undefined}
                   onEditQuantity={listKey === "shopping" ? () => setEditingQtyId(item.id) : undefined}
+                  onToggleArchive={listKey === "shopping" ? () => toggleArchiveShopping(item.id) : undefined}
                   onDelete={() => removeItem(listKey, item.id)}
                 />
                 </div>
@@ -5918,9 +5953,10 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
           </ul>
         )}
         {listKey === "shopping" && done.length > 0 && (
-          <button type="button" onClick={() => clearDoneItems("shopping")}
+          <button type="button" onClick={archiveDoneShopping}
+            title="Les achats archivés restent comptés dans le budget et visibles dans « Tous les achats »"
             className="mt-1 text-xs text-slate-400 hover:text-slate-600 transition-colors">
-            Effacer les sélectionnés ({done.length})
+            Archiver les achetés ({done.length})
           </button>
         )}
       </div>
@@ -5938,7 +5974,7 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
       <>
         <div className="lg:hidden">
           <div className="rounded-xl border border-black/10 bg-gradient-to-br from-[#fdf9f4] to-[#e8e1d6] p-4">
-            {renderList("shopping", shopping, "Mes achats", label)}
+            {renderList("shopping", activeShopping, "Mes achats", label)}
           </div>
         </div>
         <div className="hidden lg:block">
@@ -5955,9 +5991,10 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
               </button>
             </div>
             <ShoppingKanban
-              items={shopping}
+              items={activeShopping}
               formatPrice={formatPrice}
               onMoveItem={handleKanbanMove}
+              onArchive={toggleArchiveShopping}
               onDelete={(id) => removeItem("shopping", id)}
               onSetDueDate={(id, date) => updateItemMeta("shopping", id, { dueDate: date || undefined })}
               onSetAssignee={(id, name) => updateItemMeta("shopping", id, { assignee: name || undefined })}
@@ -7375,7 +7412,7 @@ export default function App() {
       line: p.line || "",
       roomNote: roomNotes[key] || "",
       todoItems: (roomLists[key]?.todos || []).filter((i) => !i.done).slice(0, 5).map((i) => ({ id: i.id, text: i.text })),
-      shoppingItems: (roomLists[key]?.shopping || []).filter((i) => !i.done).slice(0, 3).map((i) => {
+      shoppingItems: (roomLists[key]?.shopping || []).filter((i) => !i.done && !isArchived(i)).slice(0, 3).map((i) => {
           const rxs = itemReactions[i.id];
           const grouped = {};
           if (rxs?.length) rxs.forEach(r => { if (!grouped[r.emoji]) grouped[r.emoji] = []; grouped[r.emoji].push(r.userName); });
@@ -7394,7 +7431,7 @@ export default function App() {
 
   const globalSelectedTotal = viewMode === "general" ? (() => {
     const selected = ["general", ...orderedActiveRooms].flatMap((key) => (roomLists[key]?.shopping || [])).filter(
-      (i) => !i.done && i.selectedForPurchase && typeof i.price === "number"
+      (i) => !i.done && !isArchived(i) && i.selectedForPurchase && typeof i.price === "number"
     );
     if (!selected.length) return null;
     return {
@@ -7404,7 +7441,7 @@ export default function App() {
   })() : null;
 
   const aiShoppingItems = (roomLists[room]?.shopping || [])
-    .filter((i) => !i.done).slice(0, 5).map((i) => {
+    .filter((i) => !i.done && !isArchived(i)).slice(0, 5).map((i) => {
       const rxs = itemReactions[i.id];
       const grouped = {};
       if (rxs?.length) rxs.forEach(r => { if (!grouped[r.emoji]) grouped[r.emoji] = []; grouped[r.emoji].push(r.userName); });
@@ -7419,7 +7456,7 @@ export default function App() {
 
   const selectedTotal = (() => {
     const selected = (roomLists[room]?.shopping || []).filter(
-      (i) => !i.done && i.selectedForPurchase && typeof i.price === "number"
+      (i) => !i.done && !isArchived(i) && i.selectedForPurchase && typeof i.price === "number"
     );
     if (!selected.length) return null;
     return {
@@ -7492,7 +7529,7 @@ export default function App() {
         return cleaned || text;
       };
       const shoppingItems = (roomLists[room]?.shopping || [])
-        .filter((i) => !i.done)
+        .filter((i) => !i.done && !isArchived(i))
         .map((i) => ({
           text: stripTrailingUrl(linkItemTitle(i)),
           url: i.url && i.url !== i.text ? i.url : null,
@@ -8110,6 +8147,7 @@ export default function App() {
           quantity: item.quantity != null && Number(item.quantity) !== 1 ? Number(item.quantity) : undefined,
           selectedForPurchase: !!item.selected_for_purchase,
           status: item.status || undefined,
+          archivedAt: item.archived_at || undefined,
         });
       }
       setRoomLists(built);
@@ -8727,7 +8765,7 @@ export default function App() {
   };
 
   const roomTodoCount = (key) => (roomLists[key]?.todos || []).filter((item) => !item.done).length;
-  const roomCourseCount = (key) => (roomLists[key]?.shopping || []).filter((item) => !item.done).length;
+  const roomCourseCount = (key) => (roomLists[key]?.shopping || []).filter((item) => !item.done && !isArchived(item)).length;
   const roomPendingCount = (key) => roomTodoCount(key) + roomCourseCount(key);
 
   // ── Checklist « Démarrage » (accueil, propriétaire uniquement) ─────────────

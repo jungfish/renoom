@@ -1,5 +1,6 @@
 import { useEntitlements } from "./hooks/useEntitlements";
 import { SUPPORT_EMAIL } from "./config";
+import { isArchived } from "./lib/itemStatus.js";
 
 function textColor(hex) {
   const c = hex.replace("#", "");
@@ -44,7 +45,7 @@ export function Dashboard({
 
   const roomPending = (key) => {
     const list = roomLists[key] || {};
-    return [...(list.shopping || []), ...(list.todos || [])].filter((i) => !i.done).length;
+    return [...(list.shopping || []), ...(list.todos || [])].filter((i) => !i.done && !isArchived(i)).length;
   };
 
   const cards = [

@@ -11,6 +11,64 @@ export function stripTrailingUrl(text) {
   return cleaned || text;
 }
 
+// ── Quantité des achats ────────────────────────────────────────────────────
+// `price` reste le prix unitaire ; `quantity` (décimale, ex: 12,5 m²) est
+// absente quand elle vaut 1. Tous les totaux passent par lineTotal().
+export function itemQuantity(item) {
+  const q = Number(item?.quantity);
+  return Number.isFinite(q) && q > 0 ? q : 1;
+}
+export function hasQuantity(item) {
+  return itemQuantity(item) !== 1;
+}
+export function lineTotal(item) {
+  return typeof item?.price === "number" ? item.price * itemQuantity(item) : 0;
+}
+export function sumLineTotals(items) {
+  return items.reduce((sum, i) => sum + lineTotal(i), 0);
+}
+export function formatQuantity(q) {
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 3 }).format(q);
+}
+// Saisie libre ("2", "12,5", " 3 ") → nombre > 0, ou null si invalide/vide
+export function parseQuantity(raw) {
+  const q = parseFloat(String(raw ?? "").replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(q) && q > 0 ? Math.round(q * 1000) / 1000 : null;
+}
+// Patch à appliquer à l'item : 1 ou vide → on retire le champ
+export function quantityPatch(raw) {
+  const q = parseQuantity(raw);
+  return { quantity: q == null || q === 1 ? undefined : q };
+}
+
+// Badge "2 ×" devant le prix, cliquable pour éditer. Édition contrôlée par
+// le parent (`editing`) pour pouvoir l'ouvrir aussi depuis le menu "⋯".
+// Les clics ne remontent pas : le badge peut vivre dans un lien (aperçu).
+export function QuantityControl({ item, editing, onStartEdit, onSave, onCancel, className = "text-xs" }) {
+  const [value, setValue] = useState("");
+  useEffect(() => {
+    if (editing) setValue(hasQuantity(item) ? formatQuantity(itemQuantity(item)).replace(/\s/g, "") : "");
+  }, [editing]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  if (editing) {
+    return (
+      <input type="text" inputMode="decimal" autoFocus value={value} placeholder="Qté"
+        onClick={stop}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => onSave(quantityPatch(value))}
+        onKeyDown={(e) => { if (e.key === "Enter") onSave(quantityPatch(value)); if (e.key === "Escape") onCancel(); }}
+        className={`w-14 shrink-0 rounded border border-amber-300 bg-white px-1 py-0.5 outline-none ${className}`} />
+    );
+  }
+  if (!hasQuantity(item)) return null;
+  return (
+    <button type="button" onClick={(e) => { stop(e); onStartEdit(); }} title="Modifier la quantité"
+      className={`shrink-0 font-semibold text-slate-600 hover:underline ${className}`}>
+      {formatQuantity(itemQuantity(item))} ×
+    </button>
+  );
+}
+
 export function siteDomain(url) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
 }

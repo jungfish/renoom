@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ItemRowActions } from "./ItemRowActions.jsx";
 import {
   formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, siteDomain, SiteFavicon, PersonPicker,
+  QuantityControl, hasQuantity, lineTotal, sumLineTotals,
 } from "./lib/itemHelpers.jsx";
 import { STATUSES, effectiveStatus, selectStyleForStatus } from "./lib/itemStatus.js";
 import { safeHref } from "./lib/safeHref.js";
@@ -11,7 +12,7 @@ import { safeHref } from "./lib/safeHref.js";
 // pour rester utilisable sans glisser-déposer. Les colonnes sans item se
 // replient automatiquement (cliquables pour les déplier) afin qu'un cycle
 // à 7 étapes reste lisible sans configuration.
-export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSetDueDate, onSetAssignee, onSetTitle, onSetPrice, allPersons, onCreatePerson }) {
+export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSetDueDate, onSetAssignee, onSetTitle, onSetPrice, onSetQuantity, allPersons, onCreatePerson }) {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
   // Images produit qui ne chargent pas : la carte affiche alors le logo du site
@@ -23,6 +24,7 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
   const [editingTitleValue, setEditingTitleValue] = useState("");
   const [editingPriceId, setEditingPriceId] = useState(null);
   const [editingPriceValue, setEditingPriceValue] = useState("");
+  const [editingQtyId, setEditingQtyId] = useState(null);
   const [forceExpanded, setForceExpanded] = useState(() => new Set());
 
   const commitTitle = (item) => {
@@ -47,7 +49,7 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
         {columns.map((col) => {
           const isEmpty = col.items.length === 0;
           const collapsed = isEmpty && !forceExpanded.has(col.key);
-          const subtotal = col.items.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
+          const subtotal = sumLineTotals(col.items);
           const currency = col.items.find((i) => i.priceCurrency)?.priceCurrency;
 
           if (collapsed) {
@@ -136,22 +138,34 @@ export function ShoppingKanban({ items, formatPrice, onMoveItem, onDelete, onSet
                           onAddAssignee={() => setOpenPickerId(`item-${item.id}`)}
                           onEditTitle={() => { setEditingTitleId(item.id); setEditingTitleValue(linkItemTitle(item)); }}
                           onEditPrice={() => { setEditingPriceId(item.id); setEditingPriceValue(item.price != null ? String(item.price) : ""); }}
+                          onEditQuantity={onSetQuantity ? () => setEditingQtyId(item.id) : undefined}
                           onDelete={() => onDelete(item.id)}
                         />
                       </div>
-                      {editingPriceId === item.id ? (
-                        <input type="number" step="0.01" autoFocus value={editingPriceValue}
-                          onChange={(e) => setEditingPriceValue(e.target.value)}
-                          onBlur={() => commitPrice(item)}
-                          onKeyDown={(e) => { if (e.key === "Enter") commitPrice(item); if (e.key === "Escape") setEditingPriceId(null); }}
-                          placeholder="Prix"
-                          className="w-20 rounded border border-amber-300 bg-amber-50 px-1 py-0.5 text-xs outline-none" />
-                      ) : typeof item.price === "number" ? (
-                        <button type="button" onClick={() => { setEditingPriceId(item.id); setEditingPriceValue(String(item.price)); }}
-                          className="text-left text-xs font-medium text-slate-500 hover:underline" title="Modifier le prix">
-                          {formatPrice(item.price, item.priceCurrency)}
-                        </button>
-                      ) : null}
+                      {(editingPriceId === item.id || editingQtyId === item.id || typeof item.price === "number" || hasQuantity(item)) && (
+                        <div className="flex flex-wrap items-center gap-1 text-xs">
+                          <QuantityControl item={item} editing={editingQtyId === item.id}
+                            onStartEdit={() => setEditingQtyId(item.id)}
+                            onSave={(patch) => { onSetQuantity(item.id, patch.quantity); setEditingQtyId(null); }}
+                            onCancel={() => setEditingQtyId(null)} />
+                          {editingPriceId === item.id ? (
+                            <input type="number" step="0.01" autoFocus value={editingPriceValue}
+                              onChange={(e) => setEditingPriceValue(e.target.value)}
+                              onBlur={() => commitPrice(item)}
+                              onKeyDown={(e) => { if (e.key === "Enter") commitPrice(item); if (e.key === "Escape") setEditingPriceId(null); }}
+                              placeholder="Prix"
+                              className="w-20 rounded border border-amber-300 bg-amber-50 px-1 py-0.5 text-xs outline-none" />
+                          ) : typeof item.price === "number" ? (
+                            <button type="button" onClick={() => { setEditingPriceId(item.id); setEditingPriceValue(String(item.price)); }}
+                              className="text-left text-xs font-medium text-slate-500 hover:underline" title="Modifier le prix unitaire">
+                              {formatPrice(item.price, item.priceCurrency)}
+                            </button>
+                          ) : null}
+                          {hasQuantity(item) && typeof item.price === "number" && editingPriceId !== item.id && (
+                            <span className="text-slate-400">= {formatPrice(lineTotal(item), item.priceCurrency)}</span>
+                          )}
+                        </div>
+                      )}
                       <div className="flex flex-wrap items-center gap-1.5">
                         <select value={effectiveStatus(item)}
                           onChange={(e) => onMoveItem(item.id, e.target.value)}

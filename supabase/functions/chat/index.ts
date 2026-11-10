@@ -220,12 +220,14 @@ function buildGeneralTools(availableRooms: { key: string; label: string }[]) {
 
 const SYSTEM_BASE = "Assistant design intérieur, style rétro français. Aide aux décisions déco.\nRègles: français, concis, 3-6 phrases max. Univers rétro, coloré, doux — pas d'accents rouges ni de minimalisme. N'utilise web_search que si l'utilisateur demande explicitement des produits, prix ou liens précis — jamais pour des conseils de design généraux — et limite-toi à une seule recherche par réponse ; inclus des URLs directes. Écris TOUJOURS une réponse texte à l'utilisateur, même en appelant un outil : un appel d'outil seul (ex: save_room_note) ne remplace jamais une réponse conversationnelle qui traite réellement la demande.\nSi un document PDF est joint (devis, facture...), réponds aux questions dessus à partir du contenu extrait fourni. Si ce document contient des lignes d'articles avec des prix, signale à l'utilisateur qu'il peut cliquer sur le document dans la conversation pour l'analyser et en importer les lignes dans son budget — ne tente pas d'ajouter ces lignes toi-même via un outil.";
 
-type ShoppingItemCtx = { id: string; text: string; reactions?: Record<string, string[]>; selectedForPurchase?: boolean; price?: number; priceCurrency?: string };
+type ShoppingItemCtx = { id: string; text: string; reactions?: Record<string, string[]>; selectedForPurchase?: boolean; price?: number; priceCurrency?: string; quantity?: number };
 
 function formatShoppingItem(i: ShoppingItemCtx): string {
   const rx = i.reactions ? ` (${Object.entries(i.reactions).map(([e, u]) => `${e} ${u.join(", ")}`).join(" | ")})` : "";
   const sel = i.selectedForPurchase ? " [sélectionné pour achat]" : "";
-  const price = typeof i.price === "number" ? ` — ${i.price}${i.priceCurrency ? ` ${i.priceCurrency}` : ""}` : "";
+  const qty = typeof i.quantity === "number" && i.quantity !== 1 ? i.quantity : null;
+  const unit = typeof i.price === "number" ? `${i.price}${i.priceCurrency ? ` ${i.priceCurrency}` : ""}` : "";
+  const price = unit ? ` — ${qty ? `${qty} × ${unit} (prix unitaire)` : unit}` : qty ? ` — quantité ${qty}` : "";
   return (i.id ? `[${i.id}] ` : "") + i.text + price + rx + sel;
 }
 

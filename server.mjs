@@ -263,7 +263,7 @@ createServer(async (req, res) => {
         const eid = encodeURIComponent(id);
         const [projRes, itemsRes, chatRes, notesRes, docsRes, nuancesRes, mediaRes, colorTestsRes] = await Promise.all([
           fetch(`${SUPABASE_URL}/rest/v1/projects?id=eq.${eid}&select=name,invite_code,owner_id,active_room,view_mode,general_mode,global_accent,warmth,general_context,custom_rooms,hidden_rooms,room_order,general_resources,persons,updated_at`, { headers: sbH }),
-          fetch(`${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${eid}&select=id,room_key,list_key,text,done,url,image,preview_title,position,due_date,assignee,price,price_currency,archived_at&order=position.asc`, { headers: sbH }),
+          fetch(`${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${eid}&select=id,room_key,list_key,text,done,url,image,preview_title,position,due_date,assignee,price,price_currency,quantity,archived_at&order=position.asc`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/chat_messages?project_id=eq.${eid}&select=id,room_key,role,content,image_prompt,error,created_at&order=created_at.asc`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_notes?project_id=eq.${eid}&select=room_key,content`, { headers: sbH }),
           fetch(`${SUPABASE_URL}/rest/v1/room_documents?project_id=eq.${eid}&select=id,room_key,name,url,type,size,uploaded_at&order=uploaded_at.asc`, { headers: sbH }),
@@ -364,7 +364,7 @@ createServer(async (req, res) => {
       const SUPABASE_URL = process.env.SUPABASE_URL;
       try {
         const sbRes = await fetch(
-          `${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${encodeURIComponent(projectId)}&select=id,room_key,list_key,text,done,url,image,preview_title,position,due_date,assignee,price,price_currency,archived_at&order=position.asc`,
+          `${SUPABASE_URL}/rest/v1/room_items?project_id=eq.${encodeURIComponent(projectId)}&select=id,room_key,list_key,text,done,url,image,preview_title,position,due_date,assignee,price,price_currency,quantity,archived_at&order=position.asc`,
           { headers: getSupabaseHeaders(req, true) }
         );
         const items = await sbRes.json();
@@ -520,7 +520,7 @@ createServer(async (req, res) => {
           const now = new Date().toISOString();
           const eid = encodeURIComponent(projectId);
           if (items.length) {
-            const rows = items.map((item, i) => ({ id: item.id, project_id: projectId, room_key: roomKey, list_key: listKey, text: item.text || "", done: item.done || false, url: item.url || null, image: item.image || null, preview_title: item.previewTitle || null, position: i, updated_at: now, due_date: item.dueDate || null, assignee: item.assignee || null, price: item.price ?? null, price_currency: item.priceCurrency || null, selected_for_purchase: item.selectedForPurchase === true, status: listKey === "shopping" ? (item.status || "envie") : null, archived_at: listKey === "shopping" && item.archivedAt ? item.archivedAt : null }));
+            const rows = items.map((item, i) => ({ id: item.id, project_id: projectId, room_key: roomKey, list_key: listKey, text: item.text || "", done: item.done || false, url: item.url || null, image: item.image || null, preview_title: item.previewTitle || null, position: i, updated_at: now, due_date: item.dueDate || null, assignee: item.assignee || null, price: item.price ?? null, price_currency: item.priceCurrency || null, quantity: listKey === "shopping" && typeof item.quantity === "number" && item.quantity > 0 && item.quantity !== 1 ? item.quantity : null, selected_for_purchase: item.selectedForPurchase === true, status: listKey === "shopping" ? (item.status || "envie") : null, archived_at: listKey === "shopping" && item.archivedAt ? item.archivedAt : null }));
             const uRes = await fetch(`${SUPABASE_URL}/rest/v1/room_items`, { method: "POST", headers: { ...getSupabaseHeaders(req, true), "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify(rows) });
             if (!uRes.ok) { sendJson(res, 500, { error: await uRes.text() }); return; }
           }

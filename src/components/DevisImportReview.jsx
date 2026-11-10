@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { extractPdfText } from "../lib/pdfText.js";
 import { STATUSES, deriveFlagsFromStatus } from "../lib/itemStatus.js";
+import { quantityPatch } from "../lib/itemHelpers.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 const MIN_TEXT_LENGTH = 40;
@@ -46,7 +47,9 @@ export function DevisImportReview({ documentUrl, documentName, initialText, proj
           localId: `devis-${idx}`,
           checked: true,
           description: l.description,
-          quantity: l.quantity ?? 1,
+          // Seul le total est connu : on l'importe comme prix pour 1 unité,
+          // sinon il serait multiplié une seconde fois par la quantité.
+          quantity: l.unitPrice == null && l.total != null ? 1 : (l.quantity ?? 1),
           unitPrice: l.unitPrice ?? l.total ?? null,
           currency: l.currency || "EUR",
           roomKey: roomOptions.includes(l.suggestedRoom) ? l.suggestedRoom : roomKey || "general",
@@ -88,6 +91,7 @@ export function DevisImportReview({ documentUrl, documentName, initialText, proj
           done: false,
           price: typeof line.unitPrice === "number" ? line.unitPrice : undefined,
           priceCurrency: line.currency || "EUR",
+          ...quantityPatch(line.quantity),
           status: line.status,
           ...deriveFlagsFromStatus(line.status),
         }));
@@ -131,8 +135,8 @@ export function DevisImportReview({ documentUrl, documentName, initialText, proj
                     <input type="text" value={line.description}
                       onChange={(e) => updateLine(line.localId, { description: e.target.value })}
                       className="min-w-0 flex-1 rounded-md border border-black/15 px-2 py-1 text-sm" />
-                    <input type="number" min="1" value={line.quantity}
-                      onChange={(e) => updateLine(line.localId, { quantity: parseInt(e.target.value, 10) || 1 })}
+                    <input type="number" min="0" step="any" value={line.quantity}
+                      onChange={(e) => updateLine(line.localId, { quantity: e.target.value })}
                       className="w-14 rounded-md border border-black/15 px-1 py-1 text-sm" title="Quantité" />
                     <input type="number" step="0.01" value={line.unitPrice ?? ""}
                       onChange={(e) => updateLine(line.localId, { unitPrice: e.target.value === "" ? null : parseFloat(e.target.value) })}

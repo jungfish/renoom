@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { STATUSES, effectiveStatus, statusMeta, deriveFlagsFromStatus, isArchived, countsInBudget, SPENT_STATUSES, PENDING_STATUSES, BUDGETED_STATUSES } from "./lib/itemStatus.js";
-
-function sumPrice(items) {
-  return items.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
-}
+import { sumLineTotals as sumPrice, hasQuantity, itemQuantity, lineTotal, formatQuantity, parseQuantity } from "./lib/itemHelpers.jsx";
 
 // Vue Budget — objectif par projet, dépensé (Commandé + Acheté), en attente
 // de dépense (Devis fait + Échantillon commandé + Sélectionné). Envie et
@@ -17,7 +14,7 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [addingLine, setAddingLine] = useState(false);
-  const [newLine, setNewLine] = useState({ description: "", price: "", roomKey: "general", status: "selectionne" });
+  const [newLine, setNewLine] = useState({ description: "", price: "", quantity: "", roomKey: "general", status: "selectionne" });
   const [showAllLines, setShowAllLines] = useState(false);
 
   const allKeys = ["general", ...orderedActiveRooms];
@@ -74,6 +71,7 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
     e.preventDefault();
     if (!newLine.description.trim()) return;
     const price = parseFloat(String(newLine.price).replace(",", "."));
+    const quantity = parseQuantity(newLine.quantity);
     const targetRoom = newLine.roomKey;
     const currentItems = (roomLists[targetRoom] || {}).shopping || [];
     const item = {
@@ -82,13 +80,14 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
       done: false,
       price: isNaN(price) ? undefined : price,
       priceCurrency: "EUR",
+      ...(quantity && quantity !== 1 ? { quantity } : {}),
       status: newLine.status,
       ...deriveFlagsFromStatus(newLine.status),
     };
     const updated = [...currentItems, item];
     setRoomLists((prev) => ({ ...prev, [targetRoom]: { ...(prev[targetRoom] || {}), shopping: updated } }));
     if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, targetRoom, "shopping", updated);
-    setNewLine({ description: "", price: "", roomKey: "general", status: "selectionne" });
+    setNewLine({ description: "", price: "", quantity: "", roomKey: "general", status: "selectionne" });
     setAddingLine(false);
   };
 
@@ -182,9 +181,12 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
             <input type="text" autoFocus placeholder="Désignation" value={newLine.description}
               onChange={(e) => setNewLine((p) => ({ ...p, description: e.target.value }))}
               className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm" />
-            <input type="number" step="0.01" placeholder="Prix" value={newLine.price}
+            <input type="text" inputMode="decimal" placeholder="Qté" value={newLine.quantity} title="Quantité"
+              onChange={(e) => setNewLine((p) => ({ ...p, quantity: e.target.value }))}
+              className="w-16 rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm" />
+            <input type="number" step="0.01" placeholder="Prix unitaire" value={newLine.price}
               onChange={(e) => setNewLine((p) => ({ ...p, price: e.target.value }))}
-              className="w-24 rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm" />
+              className="w-28 rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm" />
             <select value={newLine.roomKey} onChange={(e) => setNewLine((p) => ({ ...p, roomKey: e.target.value }))}
               className="rounded-md border border-black/15 bg-white px-2 py-1.5 text-xs">
               {allKeys.map((k) => <option key={k} value={k}>{roomLabel(k)}</option>)}
@@ -242,8 +244,14 @@ export function BudgetView({ orderedActiveRooms, allRoomPresets, roomLists, setR
                         <li key={item.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: meta.dot }} title={meta.title} />
                           <span className="min-w-0 flex-1 truncate text-[#1C1A17]">{item.text}</span>
+                          {hasQuantity(item) && (
+                            <span className="shrink-0 text-xs text-slate-400"
+                              title={typeof item.price === "number" ? `${formatQuantity(itemQuantity(item))} × ${formatPrice(item.price, item.priceCurrency)}` : undefined}>
+                              {formatQuantity(itemQuantity(item))} ×
+                            </span>
+                          )}
                           <span className="w-20 shrink-0 text-right text-slate-500">
-                            {typeof item.price === "number" ? formatPrice(item.price, item.priceCurrency) : "—"}
+                            {typeof item.price === "number" ? formatPrice(lineTotal(item), item.priceCurrency) : "—"}
                           </span>
                         </li>
                       );

@@ -11,7 +11,7 @@ const MENU_WIDTH = 176; // w-44
 // clic) car le Kanban est dans un conteneur `overflow-x-auto`, qui force
 // l'axe vertical à cliper aussi (règle CSS overflow) — un menu positionné en
 // absolute serait coupé près du bas d'une colonne.
-export function ItemRowActions({ item, onAddDueDate, onAddAssignee, onEditTitle, onEditPrice, onToggleArchive, onDelete }) {
+export function ItemRowActions({ item, onAddDueDate, onAddAssignee, onEditTitle, onEditPrice, onEditQuantity, onToggleArchive, onDelete }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
@@ -72,6 +72,13 @@ export function ItemRowActions({ item, onAddDueDate, onAddAssignee, onEditTitle,
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-600 hover:bg-slate-50">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9h12"/><path d="M4 14h9"/><path d="M17 5a8 8 0 1 0 0 14"/></svg>
               {item.price != null ? "Modifier le prix" : "Ajouter un prix"}
+            </button>
+          )}
+          {onEditQuantity && (
+            <button type="button" onClick={() => { onEditQuantity(); setOpen(false); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-600 hover:bg-slate-50">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+              {item.quantity != null && Number(item.quantity) !== 1 ? "Modifier la quantité" : "Ajouter une quantité"}
             </button>
           )}
           {onToggleArchive && (

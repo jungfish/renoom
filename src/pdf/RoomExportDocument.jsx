@@ -12,6 +12,19 @@ function formatPrice(amount, currency) {
   return `${formatted} ${currency || "EUR"}`;
 }
 
+// Quantité ≠ 1 : le détail "3 x 45 EUR" va sous le titre, la colonne prix
+// affiche le total de la ligne (pas de "×" : glyphe absent de la police).
+function itemQty(item) {
+  const q = Number(item.quantity);
+  return Number.isFinite(q) && q > 0 ? q : 1;
+}
+function quantityDetail(item) {
+  const q = itemQty(item);
+  if (q === 1) return null;
+  const qty = String(Math.round(q * 1000) / 1000).replace(".", ",");
+  return typeof item.price === "number" ? `${qty} x ${formatPrice(item.price, item.priceCurrency)}` : `Quantite : ${qty}`;
+}
+
 function Swatch({ label, name, hex, small }) {
   return (
     <View style={small ? styles.swatchSmall : styles.swatch}>
@@ -28,9 +41,10 @@ function ShoppingRow({ item }) {
       {item.image ? <Image src={item.image} style={styles.tableThumb} /> : null}
       <View style={styles.tableCellText}>
         <Text>{item.text}</Text>
+        {quantityDetail(item) ? <Text style={styles.tableCellUrl}>{quantityDetail(item)}</Text> : null}
         {item.url ? <Link src={item.url} style={styles.tableCellUrl}>{item.url}</Link> : null}
       </View>
-      <Text style={styles.tableCellPrice}>{formatPrice(item.price, item.priceCurrency)}</Text>
+      <Text style={styles.tableCellPrice}>{formatPrice(typeof item.price === "number" ? item.price * itemQty(item) : item.price, item.priceCurrency)}</Text>
     </View>
   );
 }

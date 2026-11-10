@@ -13,7 +13,7 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { FB, fbLabel } from "./farrowBall.js";
 import { COLOR_CATALOGS, ALL_COLORS_LIBRARY, describeColor, catalogAndFamilyOfHex, formatColorCode } from "./colorCatalogs.js";
 import { STATUSES, BUDGETED_STATUSES, effectiveStatus, deriveFlagsFromStatus, selectStyleForStatus } from "./lib/itemStatus.js";
-import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, siteDomain, SiteFavicon, PersonPicker } from "./lib/itemHelpers.jsx";
+import { formatDueDate, isDueOverdue, isDueSoonDate, personColor, personInitials, linkItemTitle, siteDomain, SiteFavicon, PersonPicker, QuantityControl, hasQuantity, itemQuantity, lineTotal, sumLineTotals, parseQuantity } from "./lib/itemHelpers.jsx";
 import { ShoppingKanban } from "./ShoppingKanban.jsx";
 import { BudgetView } from "./BudgetView.jsx";
 import { DevisImportReview } from "./components/DevisImportReview.jsx";
@@ -1170,6 +1170,7 @@ function AddShoppingItemModal({ onAdd, onClose, allPersons, onCreatePerson }) {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
+  const [quantity, setQuantity] = useState("");
   const [status, setStatus] = useState("envie");
   const [dueDate, setDueDate] = useState("");
   const [assignee, setAssignee] = useState("");
@@ -1199,6 +1200,7 @@ function AddShoppingItemModal({ onAdd, onClose, allPersons, onCreatePerson }) {
       image: preview?.image || "",
       price: isNaN(parsedPrice) ? undefined : parsedPrice,
       currency: preview?.currency || "EUR",
+      quantity: parseQuantity(quantity) ?? undefined,
       status,
       dueDate: dueDate || undefined,
       assignee: assignee || undefined,
@@ -1245,13 +1247,24 @@ function AddShoppingItemModal({ onAdd, onClose, allPersons, onCreatePerson }) {
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="mb-1 block text-xs font-medium text-slate-600">Prix</label>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Prix unitaire</label>
               <input
                 type="number"
                 step="0.01"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 placeholder="0,00"
+                className="w-full rounded-lg border border-black/15 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </div>
+            <div className="w-20">
+              <label className="mb-1 block text-xs font-medium text-slate-600">Qté</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                placeholder="1"
                 className="w-full rounded-lg border border-black/15 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/20"
               />
             </div>
@@ -4574,6 +4587,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   const [editingTitleValue, setEditingTitleValue] = useState("");
   const [editingPriceId, setEditingPriceId] = useState(null);
   const [editingPriceValue, setEditingPriceValue] = useState("");
+  const [editingQtyId, setEditingQtyId] = useState(null);
   const [openPicker, setOpenPicker] = useState(null);
 
   const allPersons = [
@@ -4678,7 +4692,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
   const assigneeNames = [...new Set(allItemsFlat.map((i) => i.assignee).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
 
   const visibleItems = baseItems.filter(matchesStatus);
-  const visibleTotal = visibleItems.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
+  const visibleTotal = sumLineTotals(visibleItems);
   const visibleCurrency = visibleItems.find((i) => i.priceCurrency)?.priceCurrency;
   const visibleOverdue = isCourses ? 0 : visibleItems.filter((i) => todoStatus(i) === "overdue").length;
 
@@ -4763,7 +4777,13 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
           ) : (
             <span className={`min-w-0 flex-1 break-words text-sm ${item.done && listKey !== "shopping" ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.text}</span>
           )}
-          {/* Prix des achats sans lien (ceux avec lien l'éditent dans leur aperçu) */}
+          {/* Quantité + prix des achats sans lien (ceux avec lien les éditent dans leur aperçu) */}
+          {listKey === "shopping" && !item.url && (
+            <QuantityControl item={item} editing={editingQtyId === id}
+              onStartEdit={() => setEditingQtyId(id)}
+              onSave={(patch) => { updateItemMeta(roomKey, listKey, id, patch); setEditingQtyId(null); }}
+              onCancel={() => setEditingQtyId(null)} />
+          )}
           {listKey === "shopping" && !item.url && (
             editingPriceId === id ? (
               <input type="text" inputMode="decimal" autoFocus value={editingPriceValue} placeholder="Prix"
@@ -4779,6 +4799,9 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
                 {typeof item.price === "number" ? formatPrice(item.price, item.priceCurrency) : "+ Prix"}
               </button>
             )
+          )}
+          {listKey === "shopping" && !item.url && hasQuantity(item) && typeof item.price === "number" && editingPriceId !== id && (
+            <span className="shrink-0 text-xs text-slate-400">= {formatPrice(lineTotal(item), item.priceCurrency)}</span>
           )}
           {showRoom && (
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
@@ -4822,6 +4845,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
             onAddAssignee={() => setOpenPicker(pickerKey)}
             onEditTitle={item.url ? () => { setEditingTitleId(id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
             onEditPrice={listKey === "shopping" ? () => startEditPrice(item) : undefined}
+            onEditQuantity={listKey === "shopping" ? () => setEditingQtyId(id) : undefined}
             onDelete={() => deleteItem(roomKey, listKey, id)}
           />
         </div>
@@ -4843,6 +4867,10 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
               onStartEditPrice={(currentPrice) => { setEditingPriceId(id); setEditingPriceValue(currentPrice === "" ? "" : String(currentPrice)); }}
               onSaveEditPrice={() => savePrice(item)}
               onCancelEditPrice={() => { setEditingPriceId(null); setEditingPriceValue(""); }}
+              editingQuantity={editingQtyId === id}
+              onStartEditQuantity={() => setEditingQtyId(id)}
+              onSaveQuantity={listKey === "shopping" ? (patch) => { updateItemMeta(roomKey, listKey, id, patch); setEditingQtyId(null); } : undefined}
+              onCancelQuantity={() => setEditingQtyId(null)}
             />
           </div>
         )}
@@ -4887,7 +4915,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
     setGroupOpen((prev) => ({ ...prev, filtered: {} }));
     setBulkOpen((prev) => ({ ...prev, filtered: null }));
   }, [statusFilter, roomFilter, personFilter, missingPriceOnly, searchQuery]);
-  const priceSum = (items) => items.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
+  const priceSum = sumLineTotals;
 
   // En-tête de groupe cliquable : chevron, titre, nombre d'éléments, puis total / actions
   const itemNoun = isCourses ? "achat" : "tâche";
@@ -4921,7 +4949,7 @@ function TodosGlobalView({ scope, orderedActiveRooms, allRoomPresets, roomLists,
       if (!domain) { noSite.push(item); continue; }
       (groups[domain] = groups[domain] || []).push(item);
     }
-    const subtotal = (list) => list.reduce((sum, i) => sum + (typeof i.price === "number" ? i.price : 0), 0);
+    const subtotal = sumLineTotals;
     const sorted = Object.entries(groups)
       .map(([domain, list]) => ({ domain, items: list, total: subtotal(list), currency: list.find(i => i.priceCurrency)?.priceCurrency }))
       .sort((a, b) => b.total - a.total);
@@ -5196,14 +5224,15 @@ function renderItemText(text, url) {
 
 
 function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, onSaveEditTitle, onCancelEditTitle,
-  editingPrice, editingPriceValue, onChangePriceValue, onSaveEditPrice, onCancelEditPrice, onStartEditPrice }) {
+  editingPrice, editingPriceValue, onChangePriceValue, onSaveEditPrice, onCancelEditPrice, onStartEditPrice,
+  editingQuantity, onStartEditQuantity, onSaveQuantity, onCancelQuantity }) {
   const domain = siteDomain(item.url);
   const cardTitle = linkItemTitle(item);
   // Image produit cassée (lien expiré…) : on retombe sur le logo du site
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => { setImageFailed(false); }, [item.image]);
 
-  const priceRow = editingPrice ? (
+  const priceEl = editingPrice ? (
     <input
       type="number"
       step="0.01"
@@ -5221,10 +5250,23 @@ function LinkPreviewMini({ item, editingTitle, editingValue, onChangeEditValue, 
       type="button"
       onClick={e => { e.preventDefault(); e.stopPropagation(); onStartEditPrice?.(item.price); }}
       className="shrink-0 text-[11px] font-semibold text-slate-600 hover:underline"
-      title="Modifier le prix"
+      title="Modifier le prix unitaire"
     >
       {formatPrice(item.price, item.priceCurrency)}
     </button>
+  ) : null;
+  // Quantité "2 ×" + prix unitaire + total de la ligne quand la quantité ≠ 1
+  const priceRow = (editingPrice || editingQuantity || item.price != null || hasQuantity(item)) ? (
+    <span className="flex shrink-0 items-center gap-1 text-[11px]">
+      {onSaveQuantity && (
+        <QuantityControl item={item} editing={!!editingQuantity} className="text-[11px]"
+          onStartEdit={() => onStartEditQuantity?.()} onSave={onSaveQuantity} onCancel={() => onCancelQuantity?.()} />
+      )}
+      {priceEl}
+      {hasQuantity(item) && typeof item.price === "number" && !editingPrice && (
+        <span className="text-slate-400">= {formatPrice(lineTotal(item), item.priceCurrency)}</span>
+      )}
+    </span>
   ) : null;
 
   const imageEl = item.image && !imageFailed ? (
@@ -5562,6 +5604,7 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
   const [editingTitleValue, setEditingTitleValue] = useState("");
   const [editingPriceId, setEditingPriceId] = useState(null);
   const [editingPriceValue, setEditingPriceValue] = useState("");
+  const [editingQtyId, setEditingQtyId] = useState(null);
   const [showSelectedOnly, setShowSelectedOnly] = useState(false);
   const [addShoppingModalOpen, setAddShoppingModalOpen] = useState(false);
   const [addTaskModalOpen, setAddTaskModalOpen] = useState(false);
@@ -5653,16 +5696,24 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
     if (saveRoomItemsFn && projectId) saveRoomItemsFn(projectId, room, listKey, newItems);
   };
 
+  const saveListPrice = (item) => {
+    const parsed = parseFloat(editingPriceValue.replace(/\s/g, "").replace(",", "."));
+    updateItemMeta("shopping", item.id, isNaN(parsed) ? { price: undefined, priceCurrency: undefined } : { price: parsed, priceCurrency: item.priceCurrency || "EUR" });
+    setEditingPriceId(null);
+    setEditingPriceValue("");
+  };
+
   const handleKanbanMove = (itemId, targetStatus) => {
     updateItemMeta("shopping", itemId, { status: targetStatus, ...deriveFlagsFromStatus(targetStatus) });
   };
 
-  const addShoppingItemFromModal = ({ url, text, image, price, currency, status, dueDate, assignee }) => {
+  const addShoppingItemFromModal = ({ url, text, image, price, currency, quantity, status, dueDate, assignee }) => {
     const id = `shopping-${Date.now()}`;
     const newItem = {
       id, text: text || url, url, status, ...deriveFlagsFromStatus(status),
       ...(image ? { image } : {}),
       ...(price != null ? { price, priceCurrency: currency || "EUR" } : {}),
+      ...(quantity && quantity !== 1 ? { quantity } : {}),
       ...(dueDate ? { dueDate } : {}), ...(assignee ? { assignee } : {}),
     };
     const currentItems = (roomLists[room] || {}).shopping || [];
@@ -5711,7 +5762,7 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
           const selectedItems = items.filter(item => item.selectedForPurchase);
           const selectedCount = selectedItems.length;
           if (selectedCount === 0 && !showSelectedOnly) return null;
-          const selectedTotal = selectedItems.reduce((sum, item) => sum + (typeof item.price === "number" ? item.price : 0), 0);
+          const selectedTotal = sumLineTotals(selectedItems);
           const totalCurrency = selectedItems.find(item => item.priceCurrency)?.priceCurrency;
           return (
             <div className="flex flex-wrap items-center gap-2">
@@ -5755,6 +5806,28 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
                 ) : (
                   <span className={`min-w-0 flex-1 break-all text-sm ${item.done && listKey !== "shopping" ? "text-slate-400 line-through" : item.done ? "text-amber-800" : "text-slate-800"}`}>{item.text}</span>
                 )}
+                {/* Quantité + prix des achats sans lien (ceux avec lien les éditent dans leur aperçu) */}
+                {listKey === "shopping" && !item.url && (
+                  <QuantityControl item={item} editing={editingQtyId === item.id}
+                    onStartEdit={() => setEditingQtyId(item.id)}
+                    onSave={(patch) => { updateItemMeta(listKey, item.id, patch); setEditingQtyId(null); }}
+                    onCancel={() => setEditingQtyId(null)} />
+                )}
+                {listKey === "shopping" && !item.url && (editingPriceId === item.id ? (
+                  <input type="text" inputMode="decimal" autoFocus value={editingPriceValue} placeholder="Prix"
+                    onChange={(e) => setEditingPriceValue(e.target.value)}
+                    onBlur={() => saveListPrice(item)}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveListPrice(item); if (e.key === "Escape") { setEditingPriceId(null); setEditingPriceValue(""); } }}
+                    className="w-20 shrink-0 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-xs outline-none" />
+                ) : typeof item.price === "number" ? (
+                  <button type="button" onClick={() => { setEditingPriceId(item.id); setEditingPriceValue(String(item.price)); }}
+                    title="Modifier le prix unitaire" className="shrink-0 text-xs font-semibold text-slate-600 hover:underline">
+                    {formatPrice(item.price, item.priceCurrency)}
+                  </button>
+                ) : null)}
+                {listKey === "shopping" && !item.url && hasQuantity(item) && typeof item.price === "number" && editingPriceId !== item.id && (
+                  <span className="shrink-0 text-xs text-slate-400">= {formatPrice(lineTotal(item), item.priceCurrency)}</span>
+                )}
                 {/* Badge échéance */}
                 {editingDate === item.id ? (
                   <input type="date" autoFocus value={item.dueDate || ""}
@@ -5791,7 +5864,8 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
                   onAddDueDate={() => setEditingDate(item.id)}
                   onAddAssignee={() => setOpenPicker(`item-${item.id}`)}
                   onEditTitle={listKey === "shopping" && item.url ? () => { setEditingTitleId(item.id); setEditingTitleValue(linkItemTitle(item)); } : undefined}
-                  onEditPrice={listKey === "shopping" && item.url ? () => { setEditingPriceId(item.id); setEditingPriceValue(item.price != null ? String(item.price) : ""); } : undefined}
+                  onEditPrice={listKey === "shopping" ? () => { setEditingPriceId(item.id); setEditingPriceValue(item.price != null ? String(item.price) : ""); } : undefined}
+                  onEditQuantity={listKey === "shopping" ? () => setEditingQtyId(item.id) : undefined}
                   onDelete={() => removeItem(listKey, item.id)}
                 />
                 </div>
@@ -5824,6 +5898,10 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
                         setEditingPriceValue("");
                       }}
                       onCancelEditPrice={() => { setEditingPriceId(null); setEditingPriceValue(""); }}
+                      editingQuantity={listKey === "shopping" && editingQtyId === item.id}
+                      onStartEditQuantity={() => setEditingQtyId(item.id)}
+                      onSaveQuantity={listKey === "shopping" ? (patch) => { updateItemMeta(listKey, item.id, patch); setEditingQtyId(null); } : undefined}
+                      onCancelQuantity={() => setEditingQtyId(null)}
                     />
                   </div>
                 )}
@@ -5885,6 +5963,7 @@ function ListeSection({ scope, room, label, roomLists, setRoomLists, projectId, 
               onSetAssignee={(id, name) => updateItemMeta("shopping", id, { assignee: name || undefined })}
               onSetTitle={(id, text) => updateItemMeta("shopping", id, { text })}
               onSetPrice={(id, price, currency) => updateItemMeta("shopping", id, price == null ? { price: undefined, priceCurrency: undefined } : { price, priceCurrency: currency || "EUR" })}
+              onSetQuantity={(id, quantity) => updateItemMeta("shopping", id, { quantity })}
               allPersons={allPersons}
               onCreatePerson={createPerson}
             />
@@ -7305,6 +7384,7 @@ export default function App() {
           if (i.selectedForPurchase) result.selectedForPurchase = true;
           if (typeof i.price === "number") result.price = i.price;
           if (i.priceCurrency) result.priceCurrency = i.priceCurrency;
+          if (hasQuantity(i)) result.quantity = itemQuantity(i);
           return result;
         }),
       materialSummary: uploadedCatalogMaterials(key).map((m) => `${m.label}: ${m.value}`).slice(0, 3),
@@ -7318,7 +7398,7 @@ export default function App() {
     );
     if (!selected.length) return null;
     return {
-      amount: selected.reduce((sum, i) => sum + i.price, 0),
+      amount: sumLineTotals(selected),
       currency: selected.find((i) => i.priceCurrency)?.priceCurrency || null,
     };
   })() : null;
@@ -7333,6 +7413,7 @@ export default function App() {
       if (i.selectedForPurchase) result.selectedForPurchase = true;
       if (typeof i.price === "number") result.price = i.price;
       if (i.priceCurrency) result.priceCurrency = i.priceCurrency;
+      if (hasQuantity(i)) result.quantity = itemQuantity(i);
       return result;
     });
 
@@ -7342,7 +7423,7 @@ export default function App() {
     );
     if (!selected.length) return null;
     return {
-      amount: selected.reduce((sum, i) => sum + i.price, 0),
+      amount: sumLineTotals(selected),
       currency: selected.find((i) => i.priceCurrency)?.priceCurrency || null,
     };
   })();
@@ -7417,6 +7498,7 @@ export default function App() {
           url: i.url && i.url !== i.text ? i.url : null,
           price: i.price,
           priceCurrency: i.priceCurrency,
+          quantity: itemQuantity(i),
           selectedForPurchase: i.selectedForPurchase,
           image: i.image || null,
         }));
@@ -8025,6 +8107,7 @@ export default function App() {
           assignee: item.assignee || undefined,
           price: item.price ?? undefined,
           priceCurrency: item.price_currency || undefined,
+          quantity: item.quantity != null && Number(item.quantity) !== 1 ? Number(item.quantity) : undefined,
           selectedForPurchase: !!item.selected_for_purchase,
           status: item.status || undefined,
         });
